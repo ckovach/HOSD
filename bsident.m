@@ -1,6 +1,6 @@
 
 
-function out=bsident(x,winN,lpfilt,ncomp)
+function [out,Xadj,X,dt]=bsident(x,winN,lpfilt,ncomp)
 
 
 if nargin < 3 || isempty(lpfilt)
