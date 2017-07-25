@@ -37,12 +37,14 @@ if nargin < 2
     lowpass = .25;
 end
 
-if nargin <4
-    highpass=3/size(X,1);
-end
 wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
+
+if nargin <4
+    highpass=w(4);
+end
+
 %twin = fftshift(hann(nb));
 
 t = (fftshift((0:length(w)-1)-ceil(length(w)/2)))./length(w);
