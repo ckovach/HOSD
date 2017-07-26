@@ -1,6 +1,12 @@
 
 
-function [out,Xadj,X,dt]=bsident(x,winN,lpfilt,ncomp)
+function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp)
+
+niter = 10;
+
+%%% Method to identify impulse
+%impulse_method = 'zthreshold';
+impulse_method = 'kmeans';
 
 
 if nargin < 3 || isempty(lpfilt)
@@ -9,13 +15,38 @@ end
 if nargin <4 || isempty(ncomp)
     ncomp = 1;
 end
+% if nargin < 5 
+%     regressors = [];
+% end
+
 
 n = length(x);
-povlp = .5;
-[T,tt] = chopper([-winN/2 winN/2-1], 1:winN*(1-povlp):n,1);
-T(:,[1 end]) = [];
+default_povlp=.5;
+if isnumeric(segment)
+    if isscalar(segment)
+        segment= [-1 1]*segment/2;
+    end
+    segment = struct('Trange',segment,'fs',1,'povlp',default_povlp);
+end    
+if ~isfield(segment,'window')
+    segment.window = @hann;
+elseif isnumeric(segment.window)
+    segment.window = @(varargin)segment.window;
+end
+    
+if ~isfield(segment,'fs')
+    segment.fs=1;
+end
 
-niter = 10;
+if ~isfield(segment,'wint') && isfield(segment,'povlp')
+    segment.wint= 1/segment.fs:diff(segment.Trange)*(1-segment.povlp):n/segment.fs;
+end
+
+[T,tt] = chopper(segment.Trange, segment.wint,segment.fs);
+segment.wint(:,any(T<1 | T>n)) = [];
+T(:,any(T<1 | T>n)) = [];
+
+segment.tt = tt;
 
 nX = size(T,1);
 
@@ -28,10 +59,10 @@ for kk = 1:ncomp
     X = xresid(T);
 
 
-    Xadj = diag(hann(nX))*X;
+    Xadj = diag(segment.window(nX))*X;
     clear dt
     for k= 1:niter
-        [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt);
+        [dt(k,:),Xadj,B,BFILT,wb] = bstd2(Xadj,lpfilt,varargin{:});
         k
     end
 
@@ -62,7 +93,15 @@ for kk = 1:ncomp
 %     ximp(pk) = 1;
 
     %xrec = ifft(fft(ximp).*fft(f));%*nX/n;
-    xrec = ifft(fft(xfilt.*(zscore(xfilt)>thresh)).*fft(f));%*nX/n;
+    switch impulse_method
+        case 'zthreshold'
+            ximp = zscore(xfilt)>thresh;
+        case 'kmeans'
+            [km,kmc]  = kmeans(xfilt + 0./(zscore(xfilt)>1),2);
+            [~,mxi] = max(kmc);
+            ximp = km==mxi;
+    end
+    xrec = ifft(fft(xfilt.*ximp).*fft(f));%*nX/n;
     a = xrec'*xresid./sum(xrec.^2);
     xrec = a*xrec;
    
@@ -71,12 +110,15 @@ for kk = 1:ncomp
     out(kk).dt= sum(dt);
     out(kk).xrec = xrec;
     out(kk).xfilt = xfilt;
-    out(kk).thresh = thresh;
+    out(kk).ximp= find(ximp);
     
     out(kk).a = a;
     out(kk).exvar = 1-sum(abs(xresid-xrec).^2)./sum(abs(xresid).^2);
     out(kk).B = B;
     out(kk).wb = wb;
+    segment.wintadj = round(segment.wint+sum(dt));
+    out(kk).segment = segment;
+
      xresid =xresid-xrec;
 
 end
