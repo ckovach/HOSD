@@ -40,49 +40,83 @@ end
 wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
-
+%twin = fftshift(hann(nb));
 if nargin <4
     highpass=w(4);
 end
 
-%twin = fftshift(hann(nb));
-
 t = (fftshift((0:length(w)-1)-ceil(length(w)/2)))./length(w);
 [W1,W2] =ndgrid(w,w);
+PDConj = flipud(fftshift(W1<W2)) & W1~=-W2; %%% Conjugate symmetric part
+%PDIndx = W1>=0 & W2>=0 & W2<=W1 & ~PDConj; %%% Index into principal domain
+PDIndx = (W1>=0 & W2>=0 | W1<=0 & W2>=0 & W1+W2<=0) & ~PDConj; %%% The cross bispectrum is symmetric with 
+                                  %%%respect to only the exchange of w2 and -w2-w1, 
+                                  %%%so need to includ the entire positive
+                                  %%%quadrant and one region in W1<0 & W2>0
+                                  %%% quadrant.
+%%% Map into principal domain
+W1pd=W1;W2pd=W2;
+W1pd(PDConj) = -W1(PDConj);
+W2pd(PDConj) = -W2(PDConj);
+% wpi = W1pd <= 0 & W2pd>=0 & W1pd + W2pd <=0; 
+% W1pd(wpi) = -W1pd(wpi)-W2pd(wpi);
+wpi = W1pd >= 0 & W2pd<=0 & W1pd + W2pd <=0; 
+W2pd(wpi) = -W1pd(wpi)-W2pd(wpi);
+% wpi = W2pd>W1pd; 
+% w1temp = W1pd(wpi);
+% W1pd(wpi) = W2pd(wpi);
+% W2pd(wpi) = w1temp;
+
+I1pd = round(mod(W1pd*n,nb)+1);
+I2pd = round(mod(W2pd*n,nb)+1);
+
+% Map of all regions into the principal domain
+pdmap = sub2ind([1 1]*nb,I1pd,I2pd);
+
+
+
 [T1,T2] =ndgrid(t,t);
 
 %kpi = abs(W1)<lowpass & abs(W2)<lowpass;
 
 W3 = mod(-W1-W2+.5,1)-.5;
 
-I1 = round(mod(W1*n,n)+1);
-I2 = round(mod(W2*n,n)+1);
-I3 = round(mod(W3*n,n)+1);
+I1 = round(mod(W1(PDIndx)*n,n)+1);
+I2 = round(mod(W2(PDIndx)*n,n)+1);
+I3 = round(mod(W3(PDIndx)*n,n)+1);
 
+windx = round(mod(w*n,n)+1);
+ 
 FX = fft(X);
 FXwin = fft(X.*repmat(fwin(:),1,m));
-BB = FXwin(I1(:),:).*FXwin(I2(:),:).*FXwin(I3(:),:); 
+BB = FXwin(I1,:).*FXwin(I2,:).*FXwin(I3,:); 
 
 %%% Average Bispectrum
 NRM = zeros(nb);
 BIAS = NRM;
 switch normalization
     case 'awplv'
-        NRM(:) = sum(abs(BB),2);
-        BIAS(:) = sqrt(sum(abs(BB).^2,2)./NRM(:).^2);
+        nrm= sum(abs(BB),2);
+        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./nrm.^2);
+        BIAS(:) = BIAS(pdmap);
     case 'bicoh'
         BIAS=0;
-         NRM(:) = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
+         nrm = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
 %         NRM(:) = sqrt(sum(abs(FX(I3(:),:)).^2,2).*sum(abs(FX(I2(:),:).*FX(I1(:),:)).^2,2));
     case 'none'
         BIAS=0;
-        NRM = size(BB,3);
+        nrm = size(BB,3);
     otherwise
         error('unrecognized normalization')
 end
+NRM(PDIndx) = nrm;
+NRM = NRM(pdmap);
 
+  
 B = zeros(nb);
-B(:) = sum(BB,2)./NRM(:);
+B(PDIndx) = sum(BB,2)./nrm;
+B = B(pdmap);
+B(PDConj) = conj(B(PDConj));
 
 B = B-BIAS.*B./abs(B);
 Bout=B;
@@ -92,8 +126,8 @@ if snr_weighting
     
     
     if isempty(A)|| ~isequal(wlast,wfull)
-      A = sparse(size(X,1),numel(B),3*numel(B));
-        Aindx = mod(wfull([I1(:),I2(:),I3(:)])*size(X,1),size(X,1)) + 1 +repmat(((1:numel(B))'-1)*size(X,1),1,3);
+      A = sparse(size(X,1),sum(PDIndx(:)),3*sum(PDIndx(:)));
+        Aindx = mod(wfull([I1(:),I2(:),I3(:)])*size(X,1),size(X,1)) + 1 +repmat(((1:sum(PDIndx(:)))'-1)*size(X,1),1,3);
         A(Aindx(:))=1;
         wlast = wfull;
     end
@@ -104,15 +138,17 @@ if snr_weighting
   
     fls = zeros(size(X,1),1);
     geti = abs(wfull)<=max(abs(w));
-    fls(geti)=  log(abs(B(:)).^2+eps)'/A(geti,:);
+    fls(geti)=  log(abs(B(PDIndx)).^2+eps)'/A(geti,:);
    % wfls = wfull(abs(wfull)<=max(abs(w))*2);
     fls(abs(wfull)>max(abs(w)))=log(eps);
     snr = exp(fls)./(1-exp(fls));
  %   SNR = snr(I1).*snr(I2);%.*snr(I3);
-    SNR = snr(I1).*snr(I2).*snr(I3);
+    SNR = zeros(size(B));
+    SNR(PDIndx) = snr(I1).*snr(I2).*snr(I3);
+    SNR = SNR(pdmap);
     
  %   nrm = @(x)x./(abs(x)+eps).*abs(B).^2./(1-abs(B).^2);
-    nrm = @(x)x./(abs(x)+eps).*SNR;
+    nrmfun = @(x)x./(abs(x)+eps).*SNR;
 else    
      B(:) = B(:)./(NRM(:));
 
@@ -120,15 +156,18 @@ else
      TMW(:) = tmwin(T1).*tmwin(T2).*tmwin(T1-T2);
      B = fft2(ifft2(B).*TMW);
      B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass)=0;
-    nrm = @(x)x;
+    nrmfun = @(x)x;
 %    nrm = @(x)x./(abs(x)+eps).*abs(B).^2;
     
 end
 
-B23 = reshape(sum(FXwin(I2(:),:).*FXwin(I3(:),:),2),size(B));
+B23 = zeros(size(B));
+B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
+B23 = B23(pdmap);
+B23(PDConj) = conj(B23(PDConj));
 
-Bfilt = sum(nrm(B23.*conj(B)),2);
-FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(I1(:,1),:));
+Bfilt = sum(nrmfun(B23.*conj(B)),2);
+FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(windx,:));
 [~,mxi] =max(real(FPH));
 dt = w(mxi)./max(w)*n/2;
 dt = dt-mean(dt);
