@@ -1,6 +1,6 @@
 
 
-function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp)
+function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,varargin)
 
 niter = 10;
 
@@ -62,7 +62,7 @@ for kk = 1:ncomp
     Xadj = diag(segment.window(nX))*X;
     clear dt
     for k= 1:niter
-        [dt(k,:),Xadj,B,BFILT,wb] = bstd2(Xadj,lpfilt,varargin{:});
+        [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,varargin{:});
         k
     end
 
