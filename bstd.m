@@ -47,7 +47,9 @@ end
 
 t = (fftshift((0:length(w)-1)-ceil(length(w)/2)))./length(w);
 [W1,W2] =ndgrid(w,w);
-PDConj = flipud(fftshift(W1<W2)) & W1~=-W2; %%% Conjugate symmetric part
+
+PDConj = (W1<0 | W2<0) & W1+W2>0 | W1<=0&W2<=0 ;
+% PDConj = flipud(fftshift(W1<W2)) & W1~=-W2; %%% Conjugate symmetric part
 %PDIndx = W1>=0 & W2>=0 & W2<=W1 & ~PDConj; %%% Index into principal domain
 PDIndx = (W1>=0 & W2>=0 | W1<=0 & W2>=0 & W1+W2<=0) & ~PDConj; %%% The cross bispectrum is symmetric with 
                                   %%%respect to only the exchange of w2 and -w2-w1, 
@@ -118,7 +120,7 @@ B(PDIndx) = sum(BB,2)./nrm;
 B = B(pdmap);
 B(PDConj) = conj(B(PDConj));
 
-B = B-BIAS.*B./abs(B);
+B = B-BIAS.*B./(abs(B)+eps);
 Bout=B;
 
 
@@ -150,7 +152,7 @@ if snr_weighting
  %   nrm = @(x)x./(abs(x)+eps).*abs(B).^2./(1-abs(B).^2);
     nrmfun = @(x)x./(abs(x)+eps).*SNR;
 else    
-     B(:) = B(:)./(NRM(:));
+     B(:) = B(:)./(NRM(:)+eps);
 
      TMW=zeros(size(B));
      TMW(:) = tmwin(T1).*tmwin(T2).*tmwin(T1-T2);
@@ -167,6 +169,7 @@ B23 = B23(pdmap);
 B23(PDConj) = conj(B23(PDConj));
 
 Bfilt = sum(nrmfun(B23.*conj(B)),2);
+Bfilt(isnan(Bfilt))=0;
 FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(windx,:));
 [~,mxi] =max(real(FPH));
 dt = w(mxi)./max(w)*n/2;
