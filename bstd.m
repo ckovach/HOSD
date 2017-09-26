@@ -6,8 +6,9 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,tmwin,highpass)
 %
 %  Inputs:
 %       X : data matrix in time x trials  form
-%       lowpass :   lowpass cutoff as a proportion of sampling freq.
-%   
+%       lowpass : lowpass cutoff as a proportion of sampling rate. (NB 
+%                 proportion of sampling rate, not nyquist)
+%                   
 %  Outputs:
 %       dt : Estimated relative time delays for each trial
 %       Xadj : Data shifted according to dt
@@ -25,10 +26,10 @@ n = size(X,1);
 m = size(X,2);
 %fwin = rectwin(n);
 %fwin = hann(n);
-fwin = kaiser(n,3);
+fwin = kaiser(n,3);  %%% Default windowing in the time domain prior to calculating the bispectum
 sdtmwin = .25;
 if nargin < 3 || isempty(tmwin)
-    tmwin = @(x)exp(-(x./sdtmwin).^2);
+    tmwin = @(x)exp(-(x./sdtmwin).^2); %%% The bispectrum is smoothed according to this time-domain window (applied to the 3rd moment)
 elseif isnumeric(tmwin)
     tmwin = @(x)exp(-(x./tmwin).^2);
 end
@@ -48,27 +49,21 @@ end
 t = (fftshift((0:length(w)-1)-ceil(length(w)/2)))./length(w);
 [W1,W2] =ndgrid(w,w);
 
-PDConj = (W1<0 | W2<0) & W1+W2>0 | W1<=0&W2<=0 ;
-% PDConj = flipud(fftshift(W1<W2)) & W1~=-W2; %%% Conjugate symmetric part
-%PDIndx = W1>=0 & W2>=0 & W2<=W1 & ~PDConj; %%% Index into principal domain
+PDConj = (W1<0 | W2<0) & W1+W2>0 | W1<=0&W2<=0 ; %%% onjugate symmetric part
+
 PDIndx = (W1>=0 & W2>=0 | W1<=0 & W2>=0 & W1+W2<=0) & ~PDConj; %%% The cross bispectrum is symmetric with 
                                   %%%respect to only the exchange of w2 and -w2-w1, 
-                                  %%%so need to includ the entire positive
+                                  %%%so need to include the entire positive
                                   %%%quadrant and one region in W1<0 & W2>0
                                   %%% quadrant.
 %%% Map into principal domain
 W1pd=W1;W2pd=W2;
 W1pd(PDConj) = -W1(PDConj);
 W2pd(PDConj) = -W2(PDConj);
-% wpi = W1pd <= 0 & W2pd>=0 & W1pd + W2pd <=0; 
-% W1pd(wpi) = -W1pd(wpi)-W2pd(wpi);
 wpi = W1pd >= 0 & W2pd<=0 & W1pd + W2pd <=0; 
 W2pd(wpi) = -W1pd(wpi)-W2pd(wpi);
-% wpi = W2pd>W1pd; 
-% w1temp = W1pd(wpi);
-% W1pd(wpi) = W2pd(wpi);
-% W2pd(wpi) = w1temp;
 
+%%% Indices into the bispectral plane
 I1pd = round(mod(W1pd*n,nb)+1);
 I2pd = round(mod(W2pd*n,nb)+1);
 
@@ -97,15 +92,15 @@ BB = FXwin(I1,:).*FXwin(I2,:).*FXwin(I3,:);
 NRM = zeros(nb);
 BIAS = NRM;
 switch normalization
-    case 'awplv'
+    case 'awplv' %%% This normalizes such that the result is an amplitude-weighted mean phase difference. See Kovach 2017 (IEEE Trans. Sig. Proc. v65 n17, p4468)
         nrm= sum(abs(BB),2);
         BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./nrm.^2);
         BIAS(:) = BIAS(pdmap);
-    case 'bicoh'
+    case 'bicoh' %%% Normalize according to standard bicoherence
         BIAS=0;
          nrm = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
 %         NRM(:) = sqrt(sum(abs(FX(I3(:),:)).^2,2).*sum(abs(FX(I2(:),:).*FX(I1(:),:)).^2,2));
-    case 'none'
+    case 'none'  %%% No normalization.
         BIAS=0;
         nrm = size(BB,3);
     otherwise
@@ -124,8 +119,9 @@ B = B-BIAS.*B./(abs(B)+eps);
 Bout=B;
 
 
-if snr_weighting
-    
+if snr_weighting %%% This option attempts to estimate the signal-to-noise ratio and adjust weighting accordingly
+                 %%% More computationaly intensive, and doesn't seem to
+                 %%% produce appreciably improved results.
     
     if isempty(A)|| ~isequal(wlast,wfull)
       A = sparse(size(X,1),sum(PDIndx(:)),3*sum(PDIndx(:)));
@@ -168,8 +164,11 @@ B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
 B23 = B23(pdmap);
 B23(PDConj) = conj(B23(PDConj));
 
+%%% The optimal filter
 Bfilt = sum(nrmfun(B23.*conj(B)),2);
 Bfilt(isnan(Bfilt))=0;
+
+%%% Delays are determined from maxima in the data filtered by Bfilt.
 FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(windx,:));
 [~,mxi] =max(real(FPH));
 dt = w(mxi)./max(w)*n/2;

@@ -2,6 +2,52 @@
 
 function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,varargin)
 
+% out = bsident(x,segment,lpfilt,ncomp,varargin)
+%
+% Signal identification based on bispectral statistics. 
+% The signal is first divided into overlapping windows and the delay
+% correction implemented in BSTD is applied. The average of the
+% delay-corrected result is used to identify the salient feature. 
+%
+% Input arguments:
+%
+%  x - the input signal.
+%
+%  segment - the duration of segment windows in samples. Alternatively can
+%            be struct with details of more complicated segmentation schemes. 
+%
+%   lpfilt - lowpass filter as a proportion of the sampling freq. 
+%
+% Output arguments:
+%
+%   out - struct with the following fields:
+%         .B     - Bicoherence
+%         .wb    - Frequencies corresponding to rows and columns of B
+%         .BFILT - Optimal filter for feature identification
+%         .f     - feature identified in the average of the shift-corrected
+%                  segments.
+%         .xfilt - Signal filtered by BFILT
+%         .xrec  - Reconstructed "denoised" signal obtained by thresholding
+%                  xfilt (according to a simple threshold or kmeans) and 
+%                  convolving with the feature,f. 
+%         .dt    - delay correction for each segment following each iteration. 
+%                  The final correction is  dt = sum(out.dt);
+%         .ximp  - Indices of samples in xfilt that survive thresholding.
+%         .segment - struct with the  details of the sementation:
+%                      .Trange: time range of the segment window in samples
+%                      .fs: Assumpled sampling rate (default = 1).
+%                      .polvp: percent overlap of adjacent windows.
+%                      .wint: location of segment windows (time of center).
+%                           Segmentation matrix can be obtained with
+%                           T = chopper(Trange,wint,1);
+%                      .tt: window-relative time, i.e. Trange(1):1/fs:Trange(2)
+%                      .wintadj: delay-adjusted window times.
+%
+% See also BSTD, CHOPPER
+%
+%
+% C. Kovach 2017
+
 niter = 10;
 
 %%% Method to identify impulse
@@ -61,7 +107,7 @@ for kk = 1:ncomp
 
     Xadj = diag(segment.window(nX))*X;
     clear dt
-    for k= 1:niter
+    for k= 1:niter  %%% Apply bstd iteratively
         [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,varargin{:});
         k
     end
