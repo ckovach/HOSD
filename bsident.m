@@ -81,6 +81,7 @@ for kk = 1:ncomp
     H(nX) = 0;
     H = circshift(H,-floor(length(BFILT)/2));
     h = real(ifft(H));
+    bfilt = h;
     h(n) = 0;
     h = circshift(h,-floor(nX/2));
 
@@ -105,7 +106,7 @@ for kk = 1:ncomp
     a = xrec'*xresid./sum(xrec.^2);
     xrec = a*xrec;
    
-    out(kk).BFILT = BFILT;
+    out(kk).BFILT = bfilt;
     out(kk).f= mean(Xadj,2);
     out(kk).dt= sum(dt);
     out(kk).xrec = xrec;
