@@ -54,6 +54,8 @@ niter = 10;
 %impulse_method = 'zthreshold';
 impulse_method = 'kmeans';
 
+type = 'mean';
+% type = 'svd';
 
 if nargin < 3 || isempty(lpfilt)
     lpfilt = .1;
@@ -111,15 +113,19 @@ for kk = 1:ncomp
         [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,varargin{:});
         k
     end
+    
+    switch type
+        case 'svd'
+            [u,l] = svd(Xadj);
 
-    % FX = fft(X);
-    % wfull = ifftshift((0:nX-1) - floor(nX/2))/nX;
-    % FXshift = FX.*exp(1i*wfull'*sum(dt)*2*pi);
-    % Xshift = real(ifft(FXshift));
-    % f = mean(Xshift,2);
-    f = mean(Xadj,2);
-
-    f(n) = 0;
+            [~,pckeep] = min(diff(diag(l)));
+            f = u(:,1:pckeep)*sqrt(l(1:pckeep,1:pckeep));
+        case 'mean'
+            
+            f = mean(Xadj,2);
+    end
+    
+    f(n,:) = 0;
     f = circshift(f,-floor(nX/2));
 
     H = fftshift(BFILT);
@@ -163,7 +169,7 @@ for kk = 1:ncomp
     out(kk).exvar = 1-sum(abs(xresid-xrec).^2)./sum(abs(xresid).^2);
     out(kk).B = B;
     out(kk).wb = wb;
-    segment.wintadj = round(segment.wint+sum(dt));
+    segment.wintadj = segment.wint+round(sum(dt))./segment.fs;
     out(kk).segment = segment;
 
      xresid =xresid-xrec;
