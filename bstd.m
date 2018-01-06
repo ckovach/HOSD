@@ -150,11 +150,11 @@ if snr_weighting %%% This option attempts to estimate the signal-to-noise ratio 
     nrmfun = @(x)x./(abs(x)+eps).*SNR;
 else    
      B(:) = B(:)./(NRM(:)+eps);
-
+     B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass)=0;
+  
      TMW=zeros(size(B));
      TMW(:) = tmwin(T1).*tmwin(T2).*tmwin(T1-T2);
      B = fft2(ifft2(B).*TMW);
-     B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass)=0;
     nrmfun = @(x)x;
 %    nrm = @(x)x./(abs(x)+eps).*abs(B).^2;
     
