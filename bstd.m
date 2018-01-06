@@ -94,7 +94,7 @@ BIAS = NRM;
 switch normalization
     case 'awplv' %%% This normalizes such that the result is an amplitude-weighted mean phase difference. See Kovach 2017 (IEEE Trans. Sig. Proc. v65 n17, p4468)
         nrm= sum(abs(BB),2);
-        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./nrm.^2);
+        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
     case 'bicoh' %%% Normalize according to standard bicoherence
         BIAS=0;
@@ -116,6 +116,7 @@ B = B(pdmap);
 B(PDConj) = conj(B(PDConj));
 
 B = B-BIAS.*B./(abs(B)+eps);
+B(isnan(B))=0;
 Bout=B;
 
 
