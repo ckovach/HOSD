@@ -53,6 +53,8 @@ niter = 10;
 %%% Method to identify impulse
 %impulse_method = 'zthreshold';
 impulse_method = 'kmeans';
+%decomp_method = 'residual';
+decomp_method = 'direct';
 
 type = 'mean';
 % type = 'svd';
@@ -98,19 +100,27 @@ segment.tt = tt;
 
 nX = size(T,1);
 
-
+out = struct('BFILT',[],'f',[],'dt',[],'xrec',[],'xfilt',[],'ximp',[],'a',[],'exvar',[],'B',[],'wb',[],'segment',[]);
 xresid = x;
-
+X = x(T);
 thresh = 1;
+
 for kk = 1:ncomp
 %%
-    X = xresid(T);
-
+    switch decomp_method
+        case 'residual'
+            Fremove = [];
+        case 'direct'
+%            xresid=x;
+            Fremove=[out.f];
+    end
+      X = xresid(T);
+  
 
     Xadj = diag(segment.window(nX))*X;
     clear dt
     for k= 1:niter  %%% Apply bstd iteratively
-        [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,varargin{:});
+        [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,varargin{:});
         k
     end
     
@@ -135,7 +145,7 @@ for kk = 1:ncomp
     h = real(ifft(H));
     bfilt = h;
     h(n) = 0;
-    h = circshift(h,-floor(nX/2));
+    h = circshift(h,-ceil(nX/2));
 
     xfilt = ifft(fft(xresid).*fft(h));
 

@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,tmwin,highpass)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,tmwin,highpass)
 
 % Bispectral time delay estimation.
 %
@@ -28,7 +28,7 @@ m = size(X,2);
 %fwin = hann(n);
 fwin = kaiser(n,3);  %%% Default windowing in the time domain prior to calculating the bispectum
 sdtmwin = .25;
-if nargin < 3 || isempty(tmwin)
+if nargin < 4 || isempty(tmwin)
     tmwin = @(x)exp(-(x./sdtmwin).^2); %%% The bispectrum is smoothed according to this time-domain window (applied to the 3rd moment)
 elseif isnumeric(tmwin)
     tmwin = @(x)exp(-(x./tmwin).^2);
@@ -42,14 +42,14 @@ wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
 %twin = fftshift(hann(nb));
-if nargin <4
+if nargin <5
     highpass=w(4);
 end
 
 t = (fftshift((0:length(w)-1)-ceil(length(w)/2)))./length(w);
 [W1,W2] =ndgrid(w,w);
 
-PDConj = (W1<0 | W2<0) & W1+W2>0 | W1<=0&W2<=0 ; %%% onjugate symmetric part
+PDConj = (W1<0 | W2<0) & W1+W2>0 | W1<=0&W2<=0 ; %%% Conjugate symmetric part
 
 PDIndx = (W1>=0 & W2>=0 | W1<=0 & W2>=0 & W1+W2<=0) & ~PDConj; %%% The cross bispectrum is symmetric with 
                                   %%%respect to only the exchange of w2 and -w2-w1, 
@@ -83,7 +83,8 @@ I2 = round(mod(W2(PDIndx)*n,n)+1);
 I3 = round(mod(W3(PDIndx)*n,n)+1);
 
 windx = round(mod(w*n,n)+1);
- 
+
+
 FX = fft(X);
 FXwin = fft(X.*repmat(fwin(:),1,m));
 BB = FXwin(I1,:).*FXwin(I2,:).*FXwin(I3,:); 
@@ -109,9 +110,17 @@ end
 NRM(PDIndx) = nrm;
 NRM = NRM(pdmap);
 
-  
+sBBnrm = sum(BB,2)./nrm;
+if nargin >2 && ~isempty(Fremove)
+    
+%    FFremove = fft(Fremove.*repmat(fwin(:),1,size(Fremove,2)));
+    FFremove = fft(Fremove);
+    Bremove =  FFremove(I1,:).*FFremove(I2,:).*FFremove(I3,:)./repmat(nrm,1,size(FFremove,2)); 
+    Bremove = Bremove*(Bremove'*Bremove)^-.5;
+    sBBnrm = sBBnrm- Bremove*(Bremove'*sBBnrm);
+end
 B = zeros(nb);
-B(PDIndx) = sum(BB,2)./nrm;
+B(PDIndx) = sBBnrm;
 B = B(pdmap);
 B(PDConj) = conj(B(PDConj));
 
