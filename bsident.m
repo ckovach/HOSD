@@ -58,7 +58,7 @@ decomp_method = 'residual';
 resegment = false; %If true, the signal is resegmented after each iteration. This
                   % allows segments to drift to any position within the
                   % signal.
-showprog=true;
+showprog=false;
 
 type = 'mean';
 % type = 'svd';
