@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,tmwin,highpass)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,postwin,highpass)
 
 % Bispectral time delay estimation.
 %
@@ -26,12 +26,14 @@ n = size(X,1);
 m = size(X,2);
 %fwin = rectwin(n);
 %fwin = hann(n);
-fwin = kaiser(n,3);  %%% Default windowing in the time domain prior to calculating the bispectum
-sdtmwin = .25;
-if nargin < 4 || isempty(tmwin)
-    tmwin = @(x)exp(-(x./sdtmwin).^2); %%% The bispectrum is smoothed according to this time-domain window (applied to the 3rd moment)
-elseif isnumeric(tmwin)
-    tmwin = @(x)exp(-(x./tmwin).^2);
+if nargin < 5 || isempty(prewin)
+    prewin = kaiser(n,3);  %%% Default windowing in the time domain prior to calculating the bispectum
+end
+sdpostwin = .25;
+if nargin < 5 || isempty(postwin)
+    postwin = @(x)exp(-(x./sdpostwin).^2); %%% The bispectrum is smoothed according to this time-domain window (applied to the 3rd moment)
+elseif isnumeric(postwin)
+    postwin = @(x)exp(-(x./postwin).^2);
 end
 
 if nargin < 2
@@ -42,7 +44,7 @@ wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
 %twin = fftshift(hann(nb));
-if nargin <5
+if nargin <6
     highpass=w(4);
 end
 
@@ -86,7 +88,7 @@ windx = round(mod(w*n,n)+1);
 
 
 FX = fft(X);
-FXwin = fft(X.*repmat(fwin(:),1,m));
+FXwin = fft(X.*repmat(prewin(:),1,m));
 BB = FXwin(I1,:).*FXwin(I2,:).*FXwin(I3,:); 
 
 %%% Average Bispectrum
@@ -113,7 +115,7 @@ NRM = NRM(pdmap);
 sBBnrm = sum(BB,2)./nrm;
 if nargin >2 && ~isempty(Fremove)
     
-%    FFremove = fft(Fremove.*repmat(fwin(:),1,size(Fremove,2)));
+%    FFremove = fft(Fremove.*repmat(prewin(:),1,size(Fremove,2)));
     FFremove = fft(Fremove);
     Bremove =  FFremove(I1,:).*FFremove(I2,:).*FFremove(I3,:)./repmat(nrm,1,size(FFremove,2)); 
     Bremove = Bremove*(Bremove'*Bremove)^-.5;
@@ -140,7 +142,7 @@ if snr_weighting %%% This option attempts to estimate the signal-to-noise ratio 
         wlast = wfull;
     end
     TMW=zeros(size(B));
-    TMW(:) = tmwin(T1).*tmwin(T2).*tmwin(T1-T2);
+    TMW(:) = postwin(T1).*postwin(T2).*postwin(T1-T2);
     B = fft2(ifft2(B).*TMW);
     B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass)=0;
   
@@ -162,7 +164,7 @@ else
      B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass)=0;
   
      TMW=zeros(size(B));
-     TMW(:) = tmwin(T1).*tmwin(T2).*tmwin(T1-T2);
+     TMW(:) = postwin(T1).*postwin(T2).*postwin(T1-T2);
      B = fft2(ifft2(B).*TMW);
     nrmfun = @(x)x;
 %    nrm = @(x)x./(abs(x)+eps).*abs(B).^2;

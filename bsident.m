@@ -53,8 +53,12 @@ niter = 10;
 %%% Method to identify impulse
 %impulse_method = 'zthreshold';
 impulse_method = 'kmeans';
-%decomp_method = 'residual';
-decomp_method = 'direct';
+decomp_method = 'residual';
+%decomp_method = 'direct';
+resegment = false; %If true, the signal is resegmented after each iteration. This
+                  % allows segments to drift to any position within the
+                  % signal.
+showprog=true;
 
 type = 'mean';
 % type = 'svd';
@@ -92,6 +96,7 @@ if ~isfield(segment,'wint') && isfield(segment,'povlp')
     segment.wint= 1/segment.fs:diff(segment.Trange)*(1-segment.povlp):n/segment.fs;
 end
 
+wintorig = segment.wint;
 [T,tt] = chopper(segment.Trange, segment.wint,segment.fs);
 segment.wint(:,any(T<1 | T>n)) = [];
 T(:,any(T<1 | T>n)) = [];
@@ -105,6 +110,12 @@ xresid = x;
 X = x(T);
 thresh = 1;
 
+if showprog
+    fig = figure;
+    im = imagesc([],tt,X);
+    drawnow
+end
+    
 for kk = 1:ncomp
 %%
     switch decomp_method
@@ -116,12 +127,33 @@ for kk = 1:ncomp
     end
       X = xresid(T);
   
-
-    Xadj = diag(segment.window(nX))*X;
+    if resegment
+       Xadj = X;
+       prewin = segment.window(nX);
+    else
+        Xadj = diag(segment.window(nX))*X;
+        prewin=[];
+    end
     clear dt
     for k= 1:niter  %%% Apply bstd iteratively
-        [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,varargin{:});
-        k
+       [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,prewin,varargin{:});
+   
+       if resegment
+            [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
+            T(T<1)=1;
+            T(T>n)=n;
+            
+            Xadj = xresid(T);
+            
+%             segment.wint(:,any(T<1 | T>n)) = [];
+%            T(:,any(T<1 | T>n)) = [];
+       end
+       if showprog
+           set(im,'CData',Xadj)
+           title(sprintf('Iter. %i',k))
+           drawnow
+       end
+       k
     end
     
     switch type
@@ -179,11 +211,13 @@ for kk = 1:ncomp
     out(kk).exvar = 1-sum(abs(xresid-xrec).^2)./sum(abs(xresid).^2);
     out(kk).B = B;
     out(kk).wb = wb;
+           
     segment.wintadj = segment.wint+round(sum(dt))./segment.fs;
     out(kk).segment = segment;
-
-     xresid =xresid-xrec;
-
+    
+   % if strcmp(method,'residual')
+        xresid =xresid-xrec;
+    %end
 end
     
     
