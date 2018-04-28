@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,postwin,highpass)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass)
 
 % Bispectral time delay estimation.
 %
@@ -30,7 +30,7 @@ if nargin < 5 || isempty(prewin)
     prewin = kaiser(n,3);  %%% Default windowing in the time domain prior to calculating the bispectum
 end
 sdpostwin = .25;
-if nargin < 5 || isempty(postwin)
+if nargin < 6 || isempty(postwin)
     postwin = @(x)exp(-(x./sdpostwin).^2); %%% The bispectrum is smoothed according to this time-domain window (applied to the 3rd moment)
 elseif isnumeric(postwin)
     postwin = @(x)exp(-(x./postwin).^2);
@@ -39,12 +39,16 @@ end
 if nargin < 2
     lowpass = .25;
 end
-
+if nargin < 6 || isempty(win_weight) || isscalar(win_weight)
+   win_weight = ones(size(X,2),1); 
+else
+    win_weight = win_weight(:);
+end
 wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
 %twin = fftshift(hann(nb));
-if nargin <6
+if nargin <7
     highpass=w(4);
 end
 
@@ -96,12 +100,15 @@ NRM = zeros(nb);
 BIAS = NRM;
 switch normalization
     case 'awplv' %%% This normalizes such that the result is an amplitude-weighted mean phase difference. See Kovach 2017 (IEEE Trans. Sig. Proc. v65 n17, p4468)
-        nrm= sum(abs(BB),2);
-        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./(nrm.^2+eps));
+%        nrm= sum(abs(BB),2);
+%        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./(nrm.^2+eps));
+        nrm = abs(BB)*win_weight(:);
+        BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
     case 'bicoh' %%% Normalize according to standard bicoherence
         BIAS=0;
-         nrm = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
+%         nrm = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
+         nrm = sqrt((abs(FXwin(I1(:),:)).^2*win_weight).*(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight));
 %         NRM(:) = sqrt(sum(abs(FX(I3(:),:)).^2,2).*sum(abs(FX(I2(:),:).*FX(I1(:),:)).^2,2));
     case 'none'  %%% No normalization.
         BIAS=0;
@@ -112,7 +119,8 @@ end
 NRM(PDIndx) = nrm;
 NRM = NRM(pdmap);
 
-sBBnrm = sum(BB,2)./nrm;
+% sBBnrm = sum(BB,2)./nrm;
+sBBnrm = (BB*win_weight)./nrm;
 if nargin >2 && ~isempty(Fremove)
     
 %    FFremove = fft(Fremove.*repmat(prewin(:),1,size(Fremove,2)));
@@ -172,7 +180,8 @@ else
 end
 
 B23 = zeros(size(B));
-B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
+% B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
+B23(PDIndx) = (FXwin(I2(:),:).*FXwin(I3(:),:)*win_weight);
 B23 = B23(pdmap);
 B23(PDConj) = conj(B23(PDConj));
 
@@ -186,6 +195,7 @@ FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(windx,:));
 dt = w(mxi)./max(w)*n/2;
 dt = dt-mean(dt);
 
+%%% Circular shift according to the delay from the previous step
 FXadj = FX.*exp(1i*wfull'*dt*2*pi);
 Xadj = real(ifft(FXadj));
 

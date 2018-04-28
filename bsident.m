@@ -58,7 +58,9 @@ decomp_method = 'residual';
 resegment = false; %If true, the signal is resegmented after each iteration. This
                   % allows segments to drift to any position within the
                   % signal.
-showprog=false;
+showprog=true;
+%skewness_threshold =0; 
+skewness_threshold = false; %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
 
 type = 'mean';
 % type = 'svd';
@@ -116,6 +118,7 @@ if showprog
     drawnow
 end
     
+skewweight = ones(size(T,2),1);
 for kk = 1:ncomp
 %%
     switch decomp_method
@@ -136,7 +139,7 @@ for kk = 1:ncomp
     end
     clear dt
     for k= 1:niter  %%% Apply bstd iteratively
-       [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,prewin,varargin{:});
+       [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,prewin,skewweight,varargin{:});
    
        if resegment
             [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
@@ -149,9 +152,15 @@ for kk = 1:ncomp
 %            T(:,any(T<1 | T>n)) = [];
        end
        if showprog
-           set(im,'CData',Xadj)
+           set(im,'CData',Xadj*diag(skewweight))
            title(sprintf('Iter. %i',k))
            drawnow
+       end
+       if skewness_threshold > -Inf && ~(islogical(skewness_threshold)&&~skewness_threshold)
+           windx = round(mod(wb*size(Xadj,1),size(Xadj,1))+1);
+            FXadj = fft(Xadj);
+           Xfilt = real(ifft(FXadj(windx,:).*repmat(BFILT,1,size(Xadj,2))));
+           skewweight = skewness(Xfilt)'>skewness_threshold;
        end
        k
     end
@@ -164,7 +173,8 @@ for kk = 1:ncomp
             f = u(:,1:pckeep)*sqrt(l(1:pckeep,1:pckeep));
         case 'mean'
             
-            f = mean(Xadj,2);
+%            f = mean(Xadj,2);
+            f = Xadj*skewweight(:)./sum(skewweight);
     end
     
     f(n,:) = 0;
@@ -201,7 +211,9 @@ for kk = 1:ncomp
     xrec = a*xrec;
    
     out(kk).BFILT = bfilt;
-    out(kk).f= mean(Xadj,2);
+    %out(kk).f= mean(Xadj,2);
+    out(kk).f= Xadj*skewweight./sum(skewweight);
+    
     out(kk).dt= sum(dt);
     out(kk).xrec = xrec;
     out(kk).xfilt = xfilt;
@@ -214,7 +226,7 @@ for kk = 1:ncomp
            
     segment.wintadj = segment.wint+round(sum(dt))./segment.fs;
     out(kk).segment = segment;
-    
+    out(kk).segskew = skewness(Xadj);
    % if strcmp(method,'residual')
         xresid =xresid-xrec;
     %end
