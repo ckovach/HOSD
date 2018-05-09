@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
 
 % Bispectral time delay estimation.
 %
@@ -17,7 +17,9 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,win_wei
 %
 % C. Kovach 2017
 
-normalization  = 'awplv';
+if nargin < 8 || ~isempty(normalization)
+    normalization  = 'awplv';
+end
 snr_weighting = false;
 remove_supernyq = true; % Filter bispectrum in super-nyquist region.
 persistent A wlast
@@ -105,10 +107,17 @@ switch normalization
         nrm = abs(BB)*win_weight(:);
         BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
+    case 'pop' %%% Averge the product of power. Similar to awplv but using rms estimate
+        
+        nrm = sqrt((abs(FXwin(I1,:)).^2*win_weight(:)).*(abs(FXwin(I2,:)).^2*win_weight(:)).*(abs(FXwin(I3,:)).^2*win_weight(:))); 
+        BIAS=0;
+%         nrm = sqrt(abs(BB).^2*win_weight(:));
+%         BIAS = 0;
     case 'bicoh' %%% Normalize according to standard bicoherence
         BIAS=0;
 %         nrm = sqrt(sum(abs(FXwin(I1(:),:)).^2,2).*sum(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2,2));
-         nrm = sqrt((abs(FXwin(I1(:),:)).^2*win_weight).*(abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight));
+        S1S2 = (abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight);
+        nrm = sqrt((abs(FXwin(I1(:),:)).^2*win_weight).*S1S2);
 %         NRM(:) = sqrt(sum(abs(FX(I3(:),:)).^2,2).*sum(abs(FX(I2(:),:).*FX(I1(:),:)).^2,2));
     case 'none'  %%% No normalization.
         BIAS=0;
@@ -189,6 +198,14 @@ B23(PDConj) = conj(B23(PDConj));
 Bfilt = sum(nrmfun(B23.*conj(B)),2);
 Bfilt(isnan(Bfilt))=0;
 
+if nargout>7
+%%% Approximate ideal filter when records are already aligned
+    S1S2 = zeros(size(B));
+    S1S2(PDIndx) = abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight;
+    S1S2=S1S2(pdmap);
+   Bideal = Bfilt./(sum(abs(B23).^2./S1S2,2)+eps) ;
+   Bideal(1)=0;
+end
 %%% Delays are determined from maxima in the data filtered by Bfilt.
 FPH = ifft(repmat(Bfilt(:),1,m).*FXwin(windx,:));
 [~,mxi] =max(real(FPH));
