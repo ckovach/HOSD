@@ -49,9 +49,9 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 % C. Kovach 2017
 
 default_opts = struct('niter',10,...
-'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains peaks such that remaining peak values have 0 skewness
+'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains samples such that remaining samples have 0 skewness
 'decomp_method','residual',...%%% decompositions method
-'resegment',true,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
+'resegment',false,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
 'use_ideal_filter',false,...
 'pre_filter',true,... % Filter the signal so that it is zero-mean at the scale of the observation window
@@ -276,13 +276,14 @@ for kk = 1:opts.ncomp
             ximp(kept_peaks)=true;
         case 'skew0' % values such that remaining peaks have a 3rd cumnulant of 0;
             
+            skewness_threshold = sqrt(6/size(T,2)); % Approximate variance of skewness; use this threshold instead of 0.
              [srt,srti] = sort(zscore(xfilt));
             m1 = cumsum(srt)./(1:length(srt))'; % cumulatibe mean on sorted peaks
             m2 = cumsum(srt.^2)./(1:length(srt))'; % cumulative 2nd moment
             m3 = cumsum(srt.^3)./(1:length(srt))'; % cumulative 3rd moment
             %  Third cumulant
             c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
-            kept_times= srti(srt>0 & c3>0 ); % Keep all positive concave peaks within the set that 
+            kept_times= srti(srt>0 & c3> skewness_threshold ); % Keep all positive concave peaks within the set that 
          
             ximp=false(size(x));
             ximp(kept_times)=true;
