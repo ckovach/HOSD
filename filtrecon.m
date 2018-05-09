@@ -70,6 +70,12 @@ for k = 1:length(bsid)
     out(k).a = a;
     out(k).exvar = 1-sum(abs(xresid-xrec).^2)./sum(abs(xresid).^2);
       xresid =xresid-Xrec;
+    
+    %%%  A simple measure of compression: 
+    %%%     variance explained X total samples / number of values retained 
+    %%%     (length of f + number of  impulses used in constructing xrec)
+    out(kk).compression = out(kk).exvar*length(x)/(nX+length(out(kk).ximp));
+    xresid =xresid-xrec;
 
 end
     
