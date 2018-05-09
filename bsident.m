@@ -224,14 +224,14 @@ for kk = 1:opts.ncomp
 %     end
     out(kk).f= f;
 
-    switch decomp_method
-        case 'direct'
-%                     [T,tt] = chopper(segment.Trange, round(sum(dt,1))./segment.fs,segment.fs);
-             T(T<1)=1;
-             T(T>n)=n;
-     
-            Fremove(:,kk)= mean(xresid(T),2); %#ok<AGROW>
-    end
+%     switch opts.decomp_method
+%         case 'direct'
+% %                     [T,tt] = chopper(segment.Trange, round(sum(dt,1))./segment.fs,segment.fs);
+%              T(T<1)=1;
+%              T(T>n)=n;
+%      
+%             Fremove(:,kk)= mean(xresid(T),2); %#ok<AGROW>
+%     end
     f(n,:) = 0;
     f = circshift(f,-floor(nX/2));
     H = fftshift(BFILT);
