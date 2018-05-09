@@ -49,7 +49,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 % C. Kovach 2017
 
 default_opts = struct('niter',10,...
-'impulse_method','kmeans',...%%% Method to identify impulse
+'impulse_method','kmeans',...%%% Method to identify impulses; 'skew0' retains peaks such that remaining peak values have 0 skewness
 'decomp_method','residual',...%%% decompositions method
 'resegment',true,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
@@ -259,6 +259,21 @@ for kk = 1:opts.ncomp
             [km,kmc]  = kmeans(xfilt + 0./(zscore(xfilt)>1),2);
             [~,mxi] = max(kmc);
             ximp = km==mxi;
+        case 'skew0' % Retain peaks such that remaining peaks have a 3rd cumnulant of 0;
+            
+            pktype = getpeak(xfilt);
+            pk = find(pktype.*sign(xfilt)>0); % Keep only concave positive and convex negative peaks.
+             [srt,srti] = sort(zscore(xfilt(pk)));
+             pk = pk(srti);
+            m1 = cumsum(srt)./(1:length(srt))'; % cumulatibe mean on sorted peaks
+            m2 = cumsum(srt.^2)./(1:length(srt))'; % cumulative 2nd moment
+            m3 = cumsum(srt.^3)./(1:length(srt))'; % cumulative 3rd moment
+            %  Third cumulant
+            c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+            kept_peaks = pk(srt>0 & c3>0 ); % Keep all positive concave peaks within the set that 
+         
+            ximp=false(size(x));
+            ximp(kept_peaks)=true;
     end
     xrec = ifft(fft(xfilt.*ximp).*fft(f));%*nX/n;
     a = xrec'*xresid./sum(xrec.^2);
@@ -290,4 +305,43 @@ for kk = 1:opts.ncomp
   %  end
 end
     
+
+
+%%%%%%%%%%
+function pksign = getpeak(x)
+
+% Get peaks and concavity
+
+tol = eps;
+
+dx = diff([x(end);x;x(1)]);  %Again, compute difference on circular domain
+
+dx = dx.*(abs(dx)>tol); %Apply tolerance threshold
+
+sdx = sign(dx) ;
+
+dsdx = [sdx(end);sdx] - [sdx;sdx(1)];
+
+zeroc = sign([x;x(1)])~=sign([x(end);x]);
+% dsdx = diff(sdx);
+
+pk = abs(dsdx)>0;
+% pk([1 end]) = true;
+pksign = sign(dsdx.*pk);
+
+%%% When one or more adjacent values are equal, assign a peak  to
+%%% the first inflection for concave or convex regions, and to both
+%%% inflections for saddle points.
+if any(dx==0) && any(dx~=0) 
+    fpks = pksign(pk);
+    pk(pk) = [fpks(end);fpks(1:end-1)] ~= fpks;
+    pksign = pk.*pksign;
+end
     
+    
+
+% pk = pk(2:end-1);
+pksign = pksign(2:end-1);
+% zeroc = zeroc(2:end-1);
+
+
