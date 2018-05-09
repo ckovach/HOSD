@@ -1,6 +1,6 @@
 
 
-function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,varargin)
+function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 
 % out = bsident(x,segment,lpfilt,ncomp,varargin)
 %
@@ -48,28 +48,41 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,varargin)
 %
 % C. Kovach 2017
 
-niter = 10;
+default_opts = struct('niter',10,...
+'impulse_method','kmeans',...%%% Method to identify impulse
+'decomp_method','residual',...%%% decompositions method
+'resegment',true,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
+'showprog',true,... %% Show a real-time plot of the realignment 
+'use_ideal_filter',false,...
+'pre_filter',true,... % Filter the signal so that it is zero-mean at the scale of the observation window
+'skewness_threshold',-Inf,... %Exclude windows with filtered skewness below this threshold, under the assumption that do not contain the feature.
+'lpfilt',.25,...
+'ncomp',1); %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
 
-%%% Method to identify impulse
-%impulse_method = 'zthreshold';
-impulse_method = 'kmeans';
-decomp_method = 'residual';
-%decomp_method = 'direct';
-resegment = false; %If true, the signal is resegmented after each iteration. This
-                  % allows segments to drift to any position within the
-                  % signal.
-showprog=true;
-%skewness_threshold =0; 
-skewness_threshold = false; %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
-
-type = 'mean';
+if nargin > 4 && ~isempty(opts)
+    if isstruct(opts)
+        valid_fields = fieldnames(default_opts);
+        fns = fieldnames(opts);
+        for k = 1:length(fns)          
+            if ismember(fns{k},valid_fields)
+                default_opts.(fns{k}) = opts.(fns{k});
+            else
+                error('%s is not a recognized option.',fns{k});
+            end
+        end
+    else
+        varargin = {opts,varargin{:}};
+    end
+end
+opts = default_opts;
+% type = 'mean';
 % type = 'svd';
 
-if nargin < 3 || isempty(lpfilt)
-    lpfilt = .1;
+if nargin > 2 &&  ~isempty(lpfilt)
+    opts.lpfilt = lpfilt;
 end
-if nargin <4 || isempty(ncomp)
-    ncomp = 1;
+if nargin >3 && ~isempty(ncomp)
+    opts.ncomp = ncomp;
 end
 % if nargin < 5 
 %     regressors = [];
@@ -79,10 +92,13 @@ end
 n = length(x);
 default_povlp=.5;
 if isnumeric(segment)
-    if isscalar(segment)
+    if isempty(segment)
+        segment = opts.segment;
+    elseif isscalar(segment)
         segment= [-1 1]*segment/2;
     end
     segment = struct('Trange',segment,'fs',1,'povlp',default_povlp);
+   
 end    
 if ~isfield(segment,'window')
     segment.window = @hann;
@@ -98,30 +114,47 @@ if ~isfield(segment,'wint') && isfield(segment,'povlp')
     segment.wint= 1/segment.fs:diff(segment.Trange)*(1-segment.povlp):n/segment.fs;
 end
 
+
 wintorig = segment.wint;
 [T,tt] = chopper(segment.Trange, segment.wint,segment.fs);
 segment.wint(:,any(T<1 | T>n)) = [];
 T(:,any(T<1 | T>n)) = [];
 
-segment.tt = tt;
+if ~isfield(opts,'segment')
+        opts.segment = segment;
+end
 
+if ~isfield(opts,'bstdargs')
+        opts.bstdargs = varargin;
+end
+
+segment.tt = tt;
 nX = size(T,1);
 
-out = struct('BFILT',[],'f',[],'dt',[],'xrec',[],'xfilt',[],'ximp',[],'a',[],'exvar',[],'B',[],'wb',[],'segment',[]);
+
+if opts.pre_filter
+   
+    b = fir1(nX,4/nX,'high');
+    
+    x = filtfilt(b,1,x);
+    
+end
+
+out = struct('BFILT',[],'f',[],'dt',[],'xrec',[],'xfilt',[],'ximp',[],'a',[],'exvar',[],'B',[],'wb',[],'segment',[],'opts',opts);
 xresid = x;
 X = x(T);
 thresh = 1;
 
-if showprog
+if opts.showprog
     fig = figure;
     im = imagesc([],tt,X);
     drawnow
 end
     
 skewweight = ones(size(T,2),1);
-for kk = 1:ncomp
+for kk = 1:opts.ncomp
 %%
-    switch decomp_method
+    switch opts.decomp_method
         case 'residual'
             Fremove = [];
         case 'direct'
@@ -130,18 +163,22 @@ for kk = 1:ncomp
     end
       X = xresid(T);
   
-    if resegment
+    if opts.resegment
        Xadj = X;
        prewin = segment.window(nX);
     else
         Xadj = diag(segment.window(nX))*X;
-        prewin=[];
+%        prewin = hann(nX);
+         prewin=ones(nX,1);
     end
     clear dt
-    for k= 1:niter  %%% Apply bstd iteratively
-       [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,lpfilt,Fremove,prewin,skewweight,varargin{:});
-   
-       if resegment
+    for k= 1:opts.niter  %%% Apply bstd iteratively
+       if opts.use_ideal_filter && k==opts.niter            
+            [dt(k,:),Xadj,B,BFILT,wb,~,~,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+       else
+           [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+       end
+       if opts.resegment
             [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
             T(T<1)=1;
             T(T>n)=n;
@@ -151,35 +188,41 @@ for kk = 1:ncomp
 %             segment.wint(:,any(T<1 | T>n)) = [];
 %            T(:,any(T<1 | T>n)) = [];
        end
-       if showprog
+       if opts.showprog
            set(im,'CData',Xadj*diag(skewweight))
            title(sprintf('Iter. %i',k))
            drawnow
        end
-       if skewness_threshold > -Inf && ~(islogical(skewness_threshold)&&~skewness_threshold)
+       if opts.skewness_threshold > -Inf && ~(islogical(opts.skewness_threshold)&&~opts.skewness_threshold)
            windx = round(mod(wb*size(Xadj,1),size(Xadj,1))+1);
             FXadj = fft(Xadj);
            Xfilt = real(ifft(FXadj(windx,:).*repmat(BFILT,1,size(Xadj,2))));
-           skewweight = skewness(Xfilt)'>skewness_threshold;
+           skewweight = skewness(Xfilt)'>opts.skewness_threshold;
        end
        k
     end
-    
-    switch type
-        case 'svd'
-            [u,l] = svd(Xadj);
-
-            [~,pckeep] = min(diff(diag(l)));
-            f = u(:,1:pckeep)*sqrt(l(1:pckeep,1:pckeep));
-        case 'mean'
+    if opts.use_ideal_filter
+        BFILT=Bideal;
+    end
+%     switch type
+%         case 'svd'
+%             [u,l] = svd(Xadj);
+% 
+%             [~,pckeep] = min(diff(diag(l)));
+%             f = u(:,1:pckeep)*sqrt(l(1:pckeep,1:pckeep));
+%         case 'mean'
             
 %            f = mean(Xadj,2);
-            f = Xadj*skewweight(:)./sum(skewweight);
-    end
+            [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
+            T(T<1)=1;
+            T(T>n)=n;
+            f =  segment.window(nX).*(x(T)*skewweight(:)./sum(skewweight));
+%            f = Xadj*skewweight(:)./sum(skewweight);
+%     end
+    out(kk).f= f;
     
     f(n,:) = 0;
     f = circshift(f,-floor(nX/2));
-
     H = fftshift(BFILT);
     %H = H./sqrt(sum(abs(H).^2));
     H(nX) = 0;
@@ -198,7 +241,7 @@ for kk = 1:ncomp
 %     ximp(pk) = 1;
 
     %xrec = ifft(fft(ximp).*fft(f));%*nX/n;
-    switch impulse_method
+    switch opts.impulse_method
         case 'zthreshold'
             ximp = zscore(xfilt)>thresh;
         case 'kmeans'
@@ -212,7 +255,7 @@ for kk = 1:ncomp
    
     out(kk).BFILT = bfilt;
     %out(kk).f= mean(Xadj,2);
-    out(kk).f= Xadj*skewweight./sum(skewweight);
+%     out(kk).f= Xadj*skewweight./sum(skewweight);
     
     out(kk).dt= sum(dt);
     out(kk).xrec = xrec;
