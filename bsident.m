@@ -151,9 +151,10 @@ if opts.showprog
     drawnow
 end
     
+
+Fremove = [];
 skewweight = ones(size(T,2),1);
 for kk = 1:opts.ncomp
-%%
     switch opts.decomp_method
         case 'residual'
             Fremove = [];
@@ -211,8 +212,10 @@ for kk = 1:opts.ncomp
 %             [~,pckeep] = min(diff(diag(l)));
 %             f = u(:,1:pckeep)*sqrt(l(1:pckeep,1:pckeep));
 %         case 'mean'
+
             
 %            f = mean(Xadj,2);
+
             [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
             T(T<1)=1;
             T(T>n)=n;
@@ -220,7 +223,15 @@ for kk = 1:opts.ncomp
 %            f = Xadj*skewweight(:)./sum(skewweight);
 %     end
     out(kk).f= f;
-    
+
+    switch decomp_method
+        case 'direct'
+%                     [T,tt] = chopper(segment.Trange, round(sum(dt,1))./segment.fs,segment.fs);
+             T(T<1)=1;
+             T(T>n)=n;
+     
+            Fremove(:,kk)= mean(xresid(T),2); %#ok<AGROW>
+    end
     f(n,:) = 0;
     f = circshift(f,-floor(nX/2));
     H = fftshift(BFILT);
@@ -270,9 +281,13 @@ for kk = 1:opts.ncomp
     segment.wintadj = segment.wint+round(sum(dt))./segment.fs;
     out(kk).segment = segment;
     out(kk).segskew = skewness(Xadj);
-   % if strcmp(method,'residual')
+    %%%  A simple measure of compression: 
+    %%%     variance explained X total samples / number of values retained 
+    %%%     (length of f + number of  impulses used in constructing xrec)
+    out(kk).compression = out(kk).exvar*length(x)/(size(Xadj,1)+length(out(kk).ximp));
+ %   if strcmp(decomp_method,'residual')
         xresid =xresid-xrec;
-    %end
+  %  end
 end
     
     
