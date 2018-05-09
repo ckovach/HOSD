@@ -19,7 +19,7 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS] = bstd(X,lowpass,Fremove,prewin,win_wei
 
 normalization  = 'awplv';
 snr_weighting = false;
-
+remove_supernyq = true; % Filter bispectrum in super-nyquist region.
 persistent A wlast
 
 n = size(X,1);
@@ -83,7 +83,7 @@ pdmap = sub2ind([1 1]*nb,I1pd,I2pd);
 %kpi = abs(W1)<lowpass & abs(W2)<lowpass;
 
 W3 = mod(-W1-W2+.5,1)-.5;
-
+supernyq = abs(W1+W2)>.5; %region where frequency sum exceeds Nyquist.
 I1 = round(mod(W1(PDIndx)*n,n)+1);
 I2 = round(mod(W2(PDIndx)*n,n)+1);
 I3 = round(mod(W3(PDIndx)*n,n)+1);
@@ -123,8 +123,8 @@ NRM = NRM(pdmap);
 sBBnrm = (BB*win_weight)./nrm;
 if nargin >2 && ~isempty(Fremove)
     
-%    FFremove = fft(Fremove.*repmat(prewin(:),1,size(Fremove,2)));
-    FFremove = fft(Fremove);
+    FFremove = fft(Fremove.*repmat(prewin(:),1,size(Fremove,2)));
+%    FFremove = fft(Fremove);
     Bremove =  FFremove(I1,:).*FFremove(I2,:).*FFremove(I3,:)./repmat(nrm,1,size(FFremove,2)); 
     Bremove = Bremove*(Bremove'*Bremove)^-.5;
     sBBnrm = sBBnrm- Bremove*(Bremove'*sBBnrm);
@@ -152,7 +152,7 @@ if snr_weighting %%% This option attempts to estimate the signal-to-noise ratio 
     TMW=zeros(size(B));
     TMW(:) = postwin(T1).*postwin(T2).*postwin(T1-T2);
     B = fft2(ifft2(B).*TMW);
-    B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass)=0;
+    B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass| abs(W3)>=lowpass | (remove_supernyq & supernyq))=0;
   
     fls = zeros(size(X,1),1);
     geti = abs(wfull)<=max(abs(w));
@@ -169,7 +169,7 @@ if snr_weighting %%% This option attempts to estimate the signal-to-noise ratio 
     nrmfun = @(x)x./(abs(x)+eps).*SNR;
 else    
      B(:) = B(:)./(NRM(:)+eps);
-     B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass)=0;
+     B(abs(W1)<highpass|abs(W3)<highpass|abs(W2)<highpass | abs(W3)>=lowpass | (remove_supernyq & supernyq))=0;
   
      TMW=zeros(size(B));
      TMW(:) = postwin(T1).*postwin(T2).*postwin(T1-T2);
