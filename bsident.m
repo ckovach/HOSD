@@ -49,7 +49,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 % C. Kovach 2017
 
 default_opts = struct('niter',10,...
-'impulse_method','kmeans',...%%% Method to identify impulses; 'skew0' retains peaks such that remaining peak values have 0 skewness
+'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains peaks such that remaining peak values have 0 skewness
 'decomp_method','residual',...%%% decompositions method
 'resegment',true,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
@@ -259,7 +259,7 @@ for kk = 1:opts.ncomp
             [km,kmc]  = kmeans(xfilt + 0./(zscore(xfilt)>1),2);
             [~,mxi] = max(kmc);
             ximp = km==mxi;
-        case 'skew0' % Retain peaks such that remaining peaks have a 3rd cumnulant of 0;
+        case {'pkskew0','peak_skew0'} % Retain peaks such that remaining peaks have a 3rd cumnulant of 0;
             
             pktype = getpeak(xfilt);
             pk = find(pktype.*sign(xfilt)>0); % Keep only concave positive and convex negative peaks.
@@ -274,7 +274,20 @@ for kk = 1:opts.ncomp
          
             ximp=false(size(x));
             ximp(kept_peaks)=true;
+        case 'skew0' % values such that remaining peaks have a 3rd cumnulant of 0;
+            
+             [srt,srti] = sort(zscore(xfilt));
+            m1 = cumsum(srt)./(1:length(srt))'; % cumulatibe mean on sorted peaks
+            m2 = cumsum(srt.^2)./(1:length(srt))'; % cumulative 2nd moment
+            m3 = cumsum(srt.^3)./(1:length(srt))'; % cumulative 3rd moment
+            %  Third cumulant
+            c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+            kept_times= srti(srt>0 & c3>0 ); % Keep all positive concave peaks within the set that 
+         
+            ximp=false(size(x));
+            ximp(kept_times)=true;
     end
+    
     xrec = ifft(fft(xfilt.*ximp).*fft(f));%*nX/n;
     a = xrec'*xresid./sum(xrec.^2);
     xrec = a*xrec;
