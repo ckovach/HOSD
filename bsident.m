@@ -117,9 +117,9 @@ end
 
 
 wintorig = segment.wint;
-[T,tt] = chopper(segment.Trange, segment.wint,segment.fs);
-segment.wint(:,any(T<1 | T>n)) = [];
-T(:,any(T<1 | T>n)) = [];
+[T0,tt] = chopper(segment.Trange, segment.wint,segment.fs);
+segment.wint(:,any(T0<1 | T0>n)) = [];
+T0(:,any(T0<1 | T0>n)) = [];
 
 if ~isfield(opts,'segment')
         opts.segment = segment;
@@ -130,7 +130,7 @@ if ~isfield(opts,'bstdargs')
 end
 
 segment.tt = tt;
-nX = size(T,1);
+nX = size(T0,1);
 
 
 if opts.pre_filter
@@ -143,7 +143,7 @@ end
 
 out = struct('BFILT',[],'f',[],'dt',[],'xrec',[],'xfilt',[],'ximp',[],'a',[],'exvar',[],'B',[],'wb',[],'segment',[],'opts',opts);
 xresid = x;
-X = x(T);
+X = x(T0);
 thresh = 1;
 
 if opts.showprog
@@ -154,7 +154,7 @@ end
     
 
 Fremove = [];
-skewweight = ones(size(T,2),1);
+skewweight = ones(size(T0,2),1);
 for kk = 1:opts.ncomp
     switch opts.decomp_method
         case 'residual'
@@ -163,7 +163,7 @@ for kk = 1:opts.ncomp
 %            xresid=x;
             Fremove=[out.f];
     end
-      X = xresid(T);
+      X = xresid(T0);
   
     if opts.resegment
        Xadj = X;
@@ -216,11 +216,10 @@ for kk = 1:opts.ncomp
 
             
 %            f = mean(Xadj,2);
-
             [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
             T(T<1)=1;
             T(T>n)=n;
-            f =  segment.window(nX).*(x(T)*skewweight(:)./sum(skewweight));
+            f =  segment.window(nX).*(xresid(T)*skewweight(:)./sum(skewweight));
 %            f = Xadj*skewweight(:)./sum(skewweight);
 %     end
     out(kk).f= f;
