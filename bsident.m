@@ -50,7 +50,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 
 default_opts = struct('niter',10,...
 'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains samples such that remaining samples have 0 skewness
-'impulse_skewness_sd_threshold',2,...%%% Tfor the 'skew0' method, this sets the threshold in units of std dev. of the estimator.
+'impulse_skewness_sd_threshold',1.6,...%%% Tfor the 'skew0' method, this sets the threshold in units of std dev. of the estimator.
 'decomp_method','residual',...%%% decompositions method
 'resegment',false,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
@@ -171,7 +171,8 @@ for kk = 1:opts.ncomp
     else
         Xadj = diag(segment.window(nX))*X;
 %        prewin = hann(nX);
-         prewin=ones(nX,1);
+      %   prewin=ones(nX,1);
+         prewin=kaiser(nX,2); % Retain some tapering for stability
     end
     clear dt
     for k= 1:opts.niter  %%% Apply bstd iteratively
