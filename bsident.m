@@ -136,9 +136,10 @@ nX = size(T0,1);
 if opts.pre_filter
    
     b = fir1(nX,4/nX,'high');
-    
-    x = filtfilt(b,1,x);
-    
+    %%% pad x to mitigate edge effects
+    pad = mean(x)*ones(nX,1);
+    x = filtfilt(b,1,[pad;x;pad]);
+    x = x(nX+1:end-nX);
 end
 
 out = struct('BFILT',[],'f',[],'dt',[],'xrec',[],'xfilt',[],'ximp',[],'a',[],'exvar',[],'B',[],'wb',[],'segment',[],'opts',opts);
