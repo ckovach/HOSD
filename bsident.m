@@ -50,7 +50,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 
 default_opts = struct('niter',10,...
 'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains samples such that remaining samples have 0 skewness
-'impulse_skewness_sd_threshold',1.6,...%%% Tfor the 'skew0' method, this sets the threshold in units of std dev. of the estimator.
+'impulse_skewness_sd_threshold',1,...%%% Tfor the 'skew0' method, this sets the threshold in units of std dev. of the estimator.
 'decomp_method','residual',...%%% decompositions method
 'resegment',false,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
@@ -176,14 +176,16 @@ for kk = 1:opts.ncomp
          prewin=kaiser(nX,2); % Retain some tapering for stability
     end
     clear dt
-    for k= 1:opts.niter  %%% Apply bstd iteratively
+    for k= 1:opts.niter + 1  %%% Apply bstd iteratively. Adding 1 because the phase response of BFILT is lagged according to the average delay in the input not output. 
        if opts.use_ideal_filter && k==opts.niter            
             [dt(k,:),Xadj,B,BFILT,wb,~,~,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
        else
            [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
        end
-       if opts.resegment
-            [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
+       sdt = sum(dt,1);
+   
+       if opts.resegment 
+            [T,tt] = chopper(segment.Trange, segment.wint+ round(sdt)./segment.fs,segment.fs);
             T(T<1)=1;
             T(T>n)=n;
             
@@ -218,7 +220,10 @@ for kk = 1:opts.ncomp
 
             
 %            f = mean(Xadj,2);
-            [T,tt] = chopper(segment.Trange, segment.wint+ round(sum(dt,1))./segment.fs,segment.fs);
+        %   sdt = sdt-median(sdt);
+
+            sdt = sum(dt(1:end-1,:),1); %Note that BFILT accounts for the lags on the penultimate iteration, so excluding the last one here
+            [T,tt] = chopper(segment.Trange, segment.wint+ round(sdt)./segment.fs,segment.fs);
             T(T<1)=1;
             T(T>n)=n;
             f =  segment.window(nX).*(xresid(T)*skewweight(:)./sum(skewweight));
@@ -299,7 +304,7 @@ for kk = 1:opts.ncomp
     %out(kk).f= mean(Xadj,2);
 %     out(kk).f= Xadj*skewweight./sum(skewweight);
     
-    out(kk).dt= sum(dt);
+    out(kk).dt= sdt;
     out(kk).xrec = xrec;
     out(kk).xfilt = xfilt;
     out(kk).ximp= find(ximp);
@@ -309,7 +314,7 @@ for kk = 1:opts.ncomp
     out(kk).B = B;
     out(kk).wb = wb;
            
-    segment.wintadj = segment.wint+round(sum(dt))./segment.fs;
+    segment.wintadj = segment.wint+round(sdt)./segment.fs;
     out(kk).segment = segment;
     out(kk).segskew = skewness(Xadj);
     %%%  A simple measure of compression: 
