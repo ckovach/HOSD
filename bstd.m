@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal,HX] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
 
 % Bispectral time delay estimation.
 %
@@ -17,7 +17,7 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal] = bstd(X,lowpass,Fremove,prewin,
 %
 % C. Kovach 2017
 
-if nargin < 8 || ~isempty(normalization)
+if nargin < 8 || isempty(normalization)
     normalization  = 'awplv';
 end
 snr_weighting = false;
@@ -46,11 +46,13 @@ if nargin < 6 || isempty(win_weight) || isscalar(win_weight)
 else
     win_weight = win_weight(:);
 end
+win_weight=win_weight./sum(win_weight);
+
 wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
 %twin = fftshift(hann(nb));
-if nargin <7
+if nargin <7 || isempty(highpass)
     highpass=w(4);
 end
 
@@ -107,7 +109,12 @@ switch normalization
         nrm = abs(BB)*win_weight(:);
         BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
-    case 'pop' %%% Averge the product of power. Similar to awplv but using rms estimate
+    case 'rms'
+%        Similar to awplv but using rms estimate
+        nrm = sqrt((abs(FXwin(I1,:)).^2.*abs(FXwin(I2,:)).^2.*abs(FXwin(I3,:)).^2)*win_weight(:)); 
+        BIAS=0;
+
+    case 'pop' %%% Product of average power. 
         
         nrm = sqrt((abs(FXwin(I1,:)).^2*win_weight(:)).*(abs(FXwin(I2,:)).^2*win_weight(:)).*(abs(FXwin(I3,:)).^2*win_weight(:))); 
         BIAS=0;
@@ -187,6 +194,7 @@ else
 %    nrm = @(x)x./(abs(x)+eps).*abs(B).^2;
     
 end
+
 
 B23 = zeros(size(B));
 % B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
