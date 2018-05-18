@@ -107,7 +107,7 @@ switch normalization
 %        nrm= sum(abs(BB),2);
 %        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./(nrm.^2+eps));
         nrm = abs(BB)*win_weight(:);
-        BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight)./(nrm.^2+eps));
+        BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight.^2)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
     case 'rms'
 %        Similar to awplv but using rms estimate
