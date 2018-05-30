@@ -273,7 +273,7 @@ for kk = 1:opts.ncomp
             pk = find(pktype.*sign(xfilt)>0); % Keep only concave positive and convex negative peaks.
              [srt,srti] = sort(zscore(xfilt(pk)));
              pk = pk(srti);
-            keepsamples = ~isnan(iterz(srt,opts.outlier_threshold)); % Suppress extreme outliers           
+            keepsamples = ~isnan(iterz(srt,opts.outlier_threshold,-1)); % Suppress extreme outliers           
             m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
             m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
             m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
@@ -294,7 +294,7 @@ for kk = 1:opts.ncomp
             end
             
             [srt,srti] = sort(zscore(xfilt));
-             keepsamples = ~isnan(iterz(srt,opts.outlier_threshold)); % Suppress extreme outliers           
+             keepsamples = ~isnan(iterz(srt,opts.outlier_threshold,-1)); % Suppress extreme outliers           
             m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
             m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
             m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
