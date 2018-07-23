@@ -263,10 +263,13 @@ for kk = 1:opts.ncomp
     switch opts.impulse_method
         case 'zthreshold'
             ximp = zscore(xfilt)>thresh;
+            threshval = thresh*std(xfilt)+mean(xfilt);
         case 'kmeans'
             [km,kmc]  = kmeans(xfilt + 0./(zscore(xfilt)>1),2);
             [~,mxi] = max(kmc);
             ximp = km==mxi;
+            [srt,srti] = sort(xfilt);
+            threshval = srt(diff(ximp(srti))>0);
         case {'pkskew0','peak_skew0'} % Retain peaks such that remaining peaks have a 3rd cumnulant of 0;
             
             pktype = getpeak(xfilt);
@@ -279,10 +282,12 @@ for kk = 1:opts.ncomp
             m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
             %  Third cumulant
             c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
-            kept_peaks = pk(srt>0 & c3>0 ); % Keep all positive concave peaks within the set that 
+             keepsrt = srt>0 & c3> 0;
+            kept_peaks = pk(keepsrt); % Keep all positive concave peaks within the set that 
          
             ximp=false(size(x));
             ximp(kept_peaks)=true;
+             threshval = xfilt(pk(srti(diff(keepsrt)>0)));
         case 'skew0' % values such that remaining peaks have a 3rd cumnulant of 0;
             
             if opts.impulse_skewness_sd_threshold~=0
@@ -304,6 +309,7 @@ for kk = 1:opts.ncomp
             kept_times= srti(keepsrt); % Keep all positive concave peaks within the set that 
              ximp=false(size(x));
             ximp(kept_times)=true;
+            threshval = xfilt(srti(diff(keepsrt)>0));
 %             srti(keepsrt)=[];
 %             srt(keepsrt)=[];
             
@@ -331,6 +337,7 @@ for kk = 1:opts.ncomp
     segment.wintadj = segment.wint+round(sdt)./segment.fs;
     out(kk).segment = segment;
     out(kk).segskew = skewness(Xadj);
+    out(kk).threshval = threshval;
     %%%  A simple measure of compression: 
     %%%     variance explained X total samples / number of values retained 
     %%%     (length of f + number of  impulses used in constructing xrec)
