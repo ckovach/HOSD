@@ -404,7 +404,7 @@ end
 
 if side ==0
     zscore = @(x)abs(x-repmat(nanmean(x),size(x,1),1))./repmat(nanstd(x),size(x,1),1);
-elseif abs(side)==1;
+elseif abs(side)==1
     zscore = @(x)side*(x-repmat(nanmean(x),size(x,1),1))./repmat(nanstd(x),size(x,1),1);
 else
     error('Side parameter must be 0 (two-sided), 1( high threshold ), or -1 (low threshold)')
