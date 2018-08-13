@@ -1,5 +1,3 @@
-
-
 function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 
 % out = bsident(x,segment,lpfilt,ncomp,varargin)
@@ -15,6 +13,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 %
 %  segment - the duration of segment windows in samples. Alternatively can
 %            be struct with details of more complicated segmentation schemes. 
+%            See the out.segment field below for details. 
 %
 %   lpfilt - lowpass filter as a proportion of the sampling freq. 
 %
@@ -46,7 +45,8 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 % See also BSTD, CHOPPER
 %
 %
-% C. Kovach 2017
+% Copyright Christopher Kovach, University of Iowa 2017
+
 
 default_opts = struct('niter',10,...
 'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains samples such that remaining samples have 0 skewness
@@ -59,7 +59,8 @@ default_opts = struct('niter',10,...
 'pre_filter',true,... % Filter the signal so that it is zero-mean at the scale of the observation window
 'skewness_threshold',-Inf,... %Exclude windows with filtered skewness below this threshold, under the assumption that do not contain the feature.
 'lpfilt',.25,...
-'ncomp',1); %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
+'ncomp',1,...
+'bstdargs',{{}}); %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
 
 if nargin > 4 && ~isempty(opts)
     if isstruct(opts)
@@ -195,7 +196,7 @@ for kk = 1:opts.ncomp
 %             segment.wint(:,any(T<1 | T>n)) = [];
 %            T(:,any(T<1 | T>n)) = [];
        end
-       if opts.showprog
+       if opts.showprog && ishandle(im)
            set(im,'CData',Xadj*diag(skewweight))
            title(sprintf('Iter. %i',k))
            drawnow
