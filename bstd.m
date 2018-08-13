@@ -15,7 +15,7 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal,HX] = bstd(X,lowpass,Fremove,prew
 %       B : Signal bispectum
 %       BFILT: Optimal filter function for feature extraction
 %
-% C. Kovach 2017
+% Copyright Christopher Kovach, University of Iowa 2017
 
 if nargin < 8 || isempty(normalization)
     normalization  = 'awplv';
