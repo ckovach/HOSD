@@ -1,4 +1,4 @@
-function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
+function [out,Xadj,X,dt,PDIndx,pdmap]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 
 % out = bsident(x,segment,lpfilt,ncomp,varargin)
 %
@@ -51,7 +51,7 @@ function [out,Xadj,X,dt]=bsident(x,segment,lpfilt,ncomp,opts,varargin)
 default_opts = struct('niter',10,...
 'impulse_method','skew0',...%%% Method to identify impulses; 'skew0' retains samples such that remaining samples have 0 skewness
 'impulse_skewness_sd_threshold',0,...%%% For the 'skew0' method, this sets the threshold in units of std dev. of the estimator.
-'outlier_threshold',10,... %Exclude outliers above this value using ITERZ (iterated z-score) from the skewness computation
+'outlier_threshold',5,... %Exclude outliers above this value using ITERZ (iterated z-score) from the skewness computation
 'decomp_method','residual',...%%% decompositions method
 'resegment',false,... %If true, the signal is resegmented after each iteration. This allows segments to drift to any position within the signal.
 'showprog',true,... %% Show a real-time plot of the realignment 
@@ -70,7 +70,7 @@ if nargin > 4 && ~isempty(opts)
             if ismember(fns{k},valid_fields)
                 default_opts.(fns{k}) = opts.(fns{k});
             else
-                error('%s is not a recognized option.',fns{k});
+                wargning('%s is not a recognized option.',fns{k});
             end
         end
     else
@@ -180,9 +180,9 @@ for kk = 1:opts.ncomp
     clear dt
     for k= 1:opts.niter + 1  %%% Apply bstd iteratively. Adding 1 because the phase response of BFILT is lagged according to the average delay in the input not output. 
        if opts.use_ideal_filter && k==opts.niter            
-            [dt(k,:),Xadj,B,BFILT,wb,~,~,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+            [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
        else
-           [dt(k,:),Xadj,B,BFILT,wb] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+           [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
        end
        sdt = sum(dt,1);
    
@@ -201,11 +201,21 @@ for kk = 1:opts.ncomp
            title(sprintf('Iter. %i',k))
            drawnow
        end
+        
+     
        if opts.skewness_threshold > -Inf && ~(islogical(opts.skewness_threshold)&&~opts.skewness_threshold)
            windx = round(mod(wb*size(Xadj,1),size(Xadj,1))+1);
             FXadj = fft(Xadj);
            Xfilt = real(ifft(FXadj(windx,:).*repmat(BFILT,1,size(Xadj,2))));
            skewweight = skewness(Xfilt)'>opts.skewness_threshold;
+       end
+      if opts.outlier_threshold < Inf
+           windx = round(mod(wb*size(Xadj,1),size(Xadj,1))+1);
+            FXadj = fft(Xadj);
+           Xfilt = real(ifft(FXadj(windx,:).*repmat(BFILT,1,size(Xadj,2))));
+           skw = skewness(Xfilt);
+           skwout  =iterz(skw,opts.outlier_threshold)';
+           skewweight = skewweight & ~isnan(skwout);
        end
        k
     end
@@ -333,6 +343,7 @@ for kk = 1:opts.ncomp
     out(kk).a = a;
     out(kk).exvar = 1-sum(abs(xresid-xrec).^2)./sum(abs(xresid).^2);
     out(kk).B = B;
+    out(kk).NORM=NORM;
     out(kk).wb = wb;
            
     segment.wintadj = segment.wint+round(sdt)./segment.fs;

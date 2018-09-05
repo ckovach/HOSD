@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal,HX] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,PDIndx,pdmap,Bideal] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
 
 % Bispectral time delay estimation.
 %
@@ -17,6 +17,8 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal,HX] = bstd(X,lowpass,Fremove,prew
 %
 % Copyright Christopher Kovach, University of Iowa 2017
 
+
+post_projection=false; % Refine the filter estimate by reprojecting it into the bispectrum (experimental)
 if nargin < 8 || isempty(normalization)
     normalization  = 'awplv';
 end
@@ -41,7 +43,7 @@ end
 if nargin < 2
     lowpass = .25;
 end
-if nargin < 6 || isempty(win_weight) || isscalar(win_weight)
+if nargin < 5 || isempty(win_weight) || isscalar(win_weight)
    win_weight = ones(size(X,2),1); 
 else
     win_weight = win_weight(:);
@@ -205,8 +207,23 @@ B23(PDConj) = conj(B23(PDConj));
 %%% The optimal filter
 Bfilt = sum(nrmfun(B23.*conj(B)),2);
 Bfilt(isnan(Bfilt))=0;
+if post_projection
+    Bfilt2 = Bfilt./sqrt(sum(abs(Bfilt).^2));
+    W3pd = mod(-W1pd-W2pd+.5,1)-.5;
+    I3pd = round(mod(W3pd*n,nb)+1);
+    BFB = zeros(size(B));
+    
+    for k = 1:10
+        BFB(:) = Bfilt2(I2pd(:)).*Bfilt2(I3pd(:)).*NRM(:);
+        BFB(PDConj) = conj(BFB(PDConj));
+        Bfilt2 = conj(sum(BFB.*(B),2));
+        Bfilt2 = Bfilt2./sqrt(sum(abs(Bfilt2).^2));
+%         Q(:,end+1) = Bfilt2;
+    end
+    Bfilt=Bfilt2;
+end
 
-if nargout>7
+if nargout>9
 %%% Approximate ideal filter when records are already aligned
     S1S2 = zeros(size(B));
     S1S2(PDIndx) = abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight;
