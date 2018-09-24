@@ -66,17 +66,6 @@ Ws{order} = -Wsum;
 PD = false;
 for k = 1:nsig
       PD0 = Ws{1}>=0 & Ws{order}<=0; %First signature is always + and last always -.    
-  %    PD0=true;
-%     for sig = [-1 1];
-%         fsig = find(signatures(k,:)==sig);
-%          PD0 =  PD0&Ws{fsig(1)}*sig >0;
-%          for kk = 2:length(fsig)
-%              PD0 = PD0 & sig*Ws{fsig(kk)}>=sig*Ws{fsig(kk-1)};
-%          end
-%  
-%     end
-   
-%           PD0 =  PD0&Ws{1} >0;
          for kk = 2:order-1
              PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
          end
@@ -85,8 +74,4 @@ for k = 1:nsig
     PD = PD | PD0;
   
 end
-%   0 
-% Wpd = cellfun(@(x)x(PD),Ws,'uniformoutput',false);
-
-
-    
+ 
