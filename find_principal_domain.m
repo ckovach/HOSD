@@ -1,4 +1,4 @@
-function [PD,signatures,Ws,Is] = find_principal_domain(freqs,order)
+function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass)
 
 % Find the principal domain in a higher-order spectrum
 %
@@ -34,6 +34,13 @@ if nargin < 2 || isempty(order)
         order = 3;
     end
 end
+if nargin < 3 || isempty(lowpass)
+    lowpass = Inf*ones(1,order);
+end
+if nargin < 4 || isempty(highpass)
+    highpass = zeros(1,order);
+end
+
 %%    
 if isnumeric(freqs)    
     freqs = repmat({freqs},1,order);
@@ -57,19 +64,36 @@ Is = repmat({[]},1,order-1);
 
 Ws = {};
 Wsum=0;
+
 for k = 1:length(Is)
     Ws{k} = freqs{k}(Is{k});
     Wsum  = Wsum+Ws{k};
+    
 end
 Ws{order} = -Wsum;
-    
+
+keep  = true;
+for k = 1:length(Ws)
+    if ~isinf(lowpass(k))
+        keep = keep & abs(Ws{k})<lowpass(k);
+    end
+    if highpass(k)>0
+        keep = keep & abs(Ws{k})>highpass(k);
+    end
+end
+for k = 1:length(Ws)
+    Ws{k} = Ws{k}(keep);
+    if k<=length(Is)
+        Is{k} = Is{k}(keep);
+    end
+end
+
 PD = false;
 for k = 1:nsig
-      PD0 = Ws{1}>=0 & Ws{order}<=0; %First signature is always + and last always -.    
-         for kk = 2:order-1
-             PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
-         end
- 
+    PD0 = Ws{1}>=0 & Ws{order}<=0; %First signature is always + and last always -.  ;
+    for kk = 2:order-1
+      PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
+    end
 
     PD = PD | PD0;
   
