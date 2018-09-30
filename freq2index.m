@@ -1,4 +1,4 @@
-function out = freq2index(freqs,order,lowpass,highpass,freqindex,condense,frequency_spacing)
+function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing)
 
 % [Is,remap] = freq2index(freqs,order)
 %
@@ -16,8 +16,8 @@ if nargin < 7 || isempty(frequency_spacing)
     frequency_spacing = 'linear';
 end
 if nargin < 2 || isempty(order)
-    if iscell(freqs)
-        order = length(freqs);
+    if iscell(freqsin)
+        order = length(freqsin);
     else 
         order = 3;
     end
@@ -30,31 +30,33 @@ if nargin < 4 || isempty(highpass)
 end
 
 %%
-if isnumeric(freqs)
-    freqs = repmat({freqs},1,order);
+if isnumeric(freqsin)
+    freqsin = repmat({freqsin},1,order);
     if nargin < 6 || isempty(condense)
         condense = true;
     end
 elseif nargin < 6 || isempty(condense)
     condense = false; % If the indexing is the same for the different frequencies, then we will give the mapping into the principal domain
 end
-if nargin < 5 || isempty(freqindex)
-   freqindex = cellfun(@(x)1:length(x),freqs,'uniformoutput',false);
-elseif isnumeric(freqindex)
-    freqindex = repmat({freqindex},1,order);
-elseif length(freqindex)<order
-    freqindex(end+1:order) = freqindex(end);
+if nargin < 5 || isempty(keepfreqs)
+   keepfreqs = cellfun(@(x)1:length(x),freqsin,'uniformoutput',false);
+elseif isnumeric(keepfreqs)
+    keepfreqs = repmat({keepfreqs},1,order);
+elseif length(keepfreqs)<order
+    keepfreqs(end+1:order) = keepfreqs(end);
 end
 
 %%
 %%% For cross-polyspectra involving fewer signals than the specified order,
 %%% assume that the last signal is repeated.
-if length(freqs) < order
-    freqs(end+1:order) = freqs(end);
+if length(freqsin) < order
+    freqsin(end+1:order) = freqsin(end);
 end
 
 %%% Check if negative frequencies are explicitly represented
 %%% Will index into the negative frequencies if so.
+freqs = cellfun(@(fr,kp)fr(kp),freqsin,keepfreqs,'uniformoutput',false);
+
 nneg = sum(freqs{end}<0);
 npos = sum(freqs{end}>0);
 two_sided = nneg>npos/2; %%% Assume that negative frequencies are just padding if there aren't at least as many negative frequencies as half the number of positive frequencies.
@@ -80,21 +82,21 @@ switch frequency_spacing
         frcent(isnan(frcent))=0;
 end
 
-frsrti(end+1) = length(freqs{order})+1;
+  frsrti(end+1) = length(freqs{order})+1;
 [srt,srti] = sort([(-1)^two_sided*Fsum(:);frcent(:)]);
 E = [zeros(n,1);ones(length(frcent),1)];
 E = E(srti); 
 IND = zeros(size(E));
 IND(srti) = cumsum(E);
-IND(n+1:end) = [];
-IND(IND==0) = length(freqs{end})+1;
+ IND(n+1:end) = [];
+% IND(IND==0) = length(freqs{end})+1;
 IND =  frsrti(reshape(IND,size(Fsum)));
 
 Is{order}=IND(:) ;
 
 % keep = IND>0 & IND<=length(freqs{end});
 
-
+freqindex = cellfun(@(x)[find(x),0],keepfreqs,'uniformoutput',false);
 Is = cellfun(@(x,fri)fri(x(:))',Is,freqindex,'uniformoutput',false);
 Is = [Is{:}];
 %Isreduced = Is(keep,:);
@@ -102,8 +104,8 @@ W = [];
 for k = 1:order
    W(k,:) = Ws{k};%(keep);
 end
-remap = zeros(size(keep));
-remap(keep) = find(keep);
+subremap = zeros(size(keep));
+subremap(keep) = find(keep);
 
 tol = min(abs(diff([freqs{:}])))/2;
 
@@ -118,16 +120,16 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
    ismconj(1)=false;
 %   IsreducedPD = Isreduced(PD(keep),:);
    IsPD = Is(PD,:);
-   PDremap = zeros(size(remap));
+   PDremap = zeros(size(subremap));
    PDremap(keep) = ismi+ismiconj;
    %% Region that is the complex conjugate of the principal domain
-   PDconjugate = false(size(remap));
+   PDconjugate = false(size(subremap));
 %    PDconjugate(unaliased) = sum(sign(Wsrt(1:3,:)))<0;
    PDconjugate(keep) = ismconj;
    
 %   Isreduced = IsreducedPD;
    Is = IsPD;
-   remap = PDremap;
+   subremap = PDremap;
 else 
 %    PDconjugate = zeros(size(remap));
 %    PDconjugate(unaliased) = sum(sign(Wsrt(1:3,:)))<0;
@@ -135,10 +137,23 @@ else
     PDconjugate = false;
 end
 
+keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
+dims = cellfun(@(x)sum(x),keeplp);
+
+keepregion = false(dims);
+keepregion(keeplp2{:})=true;
+Z = zeros(dims);
+remap = Z;
+remap(keepregion) = subremap;
+
 remap(remap==0) = size(Is,1)+1;
 out.Is = Is;%Isreduced;
 out.freqs = freqs(1:end-1);
 out.keep = keep;
 out.principal_domain = PD;
 out.remap = remap;
-out.PDconj = PDconjugate;
+PDconj = false(size(Z));
+PDconj(keepregion) = PDconjugate;
+out.PDconj = PDconj;
+out.Bfreqs = cellfun(@(fr,kpfr)fr(kpfr),freqsin(1:end-1),keeplp,'uniformoutput',false);

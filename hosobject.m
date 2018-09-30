@@ -26,6 +26,8 @@ classdef hosobject < handle
        do_wave_update = true;
        do_filter_update = true;
        thresh = 0;
+       threshtemp = 1;
+       threshold_type = 'hard';
        keepfreqs
        pdonly = true;
      end
@@ -37,6 +39,7 @@ classdef hosobject < handle
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
+        thresholdbuffer=[];
         freqindx = [];
         waveform = [];
         bufferPos = 0;
@@ -79,6 +82,7 @@ classdef hosobject < handle
         BIAS
         fullmap
         feature
+        current_threshold % Current adaptive threshold level
     end
     
     methods
@@ -90,7 +94,7 @@ classdef hosobject < handle
                 me.buffersize = N;
             end
             
-            me.highpass = 1/N;
+            me.highpassval = 2/N;
             if nargin > 2 && ~isempty(sampling_rate)
                 me.sampling_rate=sampling_rate;
                 me.lowpassval = me.lowpassval*sampling_rate;
@@ -113,11 +117,12 @@ classdef hosobject < handle
             if order > length(freqs)
                 freqs(end+1:order) = freqs;
             end
+            me.order = order;
             me.freqs = freqs;
             me.update_frequency_indexing
             me.reset();
-            me.G = ones(length(me.keepfreqs{1}),1);
-
+            me.G = ones(sum(me.keepfreqs{1}),1);
+            
         end
         function reset(me)
             me.window_number = 0;
@@ -129,9 +134,11 @@ classdef hosobject < handle
             me.outputbuffer = z;
             me.waveform = z;
             me.shiftbuffer = z;
+            me.thresholdbuffer=z;
+%             me.G = ones(size(z));
             me.bufferPos = 0;
-            me.B = zeros(size(me.freqindx.Is,1)+1,1);
-            me.D = zeros(size(me.freqindx.Is,1)+1,1);
+            me.B(:)=0;
+            me.window_number=0;
         end
         function update_frequency_indexing(me)
             lowpass = me.lowpassval;
@@ -151,14 +158,20 @@ classdef hosobject < handle
             
             keepfreqs={};
             for k = 1:length(me.freqs)                
-                keepfreqs{k} = find(abs(me.freqs{k})<=lowpass(k)&abs(me.freqs{k})>=highpass(k));                
-                freqs{k} = freqs{k}(keepfreqs{k});
-                freqindex{k} = find(keepfreqs{k});
+                keepfreqs{k} =(abs(me.freqs{k})<=lowpass(k)&abs(me.freqs{k})>highpass(k));                 %#ok<*AGROW>
+%                 freqs{k} = freqs{k}(keepfreqs{k});
+               % freqindex{k} = find(keepfreqs{k});
             end    
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing            
-            me.freqindx = freq2index(freqs,order,lowpass,highpass,freqindex,me.pdonly);
-          
+            me.freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly); %#ok<*PROP>
+            Z =zeros(size(me.freqindx.Is,1)+1,1);
+            me.B = Z; 
+            me.Bpart = Z;
+            me.D = Z;
+             me.BIASnum=Z;
+            me.G= ones(sum(me.keepfreqs{1}),1);
+             me.reset;
         end
         function [lradj,lr] = learningfunction(me,learningrate,m,burnin)
             if nargin < 3 || isempty(m)
@@ -176,8 +189,14 @@ classdef hosobject < handle
           out = me.B(me.freqindx.remap);
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
         end
-        function out = get.bicoh(me)
-          out = me.Bfull./me.D(me.freqindx.remap);
+        function BC = get.bicoh(me)
+            
+          BC = me.B./me.D;
+           bias = me.BIASnum./(me.D.^2+eps);
+          BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+          BC = BC(me.freqindx.remap);
+          BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
+          
         end
         function out = get.BIAS(me)        
           bias = me.BIASnum./me.D.^2;
@@ -188,12 +207,15 @@ classdef hosobject < handle
         end
         function set.lowpass(me,a)
            me.lowpassval = a;
+            me.update_frequency_indexing;
         end
         function set.glowpass(me,a)
            me.glowpassval = a;
+            me.update_frequency_indexing;
         end
         function set.highpass(me,a)
            me.highpassval = a;
+            me.update_frequency_indexing;
         end
         function out = get.lowpass(me)
           out = me.lowpassval ;
@@ -233,7 +255,24 @@ classdef hosobject < handle
             out = ifftshift(real(ifft(F)));
             
         end
-
+        function set.filterfun(me,in)
+           
+            if length(in)>me.bufferN
+                warning('Filer function size does not match current buffer. Filter will be truncated.')
+               in(me.bufferN+1:end)=[];
+            elseif length(in)<me.bufferN;
+                warning('Filer function size does not match current buffer. Filter will be padded.')
+                in(end+1:me.bufferN) = 0;
+            end
+            F =fft(ifftshift(in));
+            me.filterfft = F;
+            
+        end
+        function set.filterfft(me,in)
+           
+            me.G = in(me.keepfreqs{1}) ;
+            
+        end
 %         %%%%%%%
 %         function out = get.current_learning_rate(me)
 %             out = me.learningfunction;
@@ -251,21 +290,38 @@ classdef hosobject < handle
         end
         %%%%%%%%
         function [Xfilt,FXshift] = apply_filter(me,X,varargin)
+            if length(X) == me.bufferN
                 FXwin = fft(repmat(me.win,1,size(X,2)).*X);
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
+            else
+                 Xin = X;
+                Xin(end+me.bufferN,:) = 0;
+                Xfilt = filter(me.filterfun,1,Xin);
+                Xfilt = Xfilt(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
+      
+            end
+            if nargout >1
                 [mx,mxi] = max(Xfilt);
 %                 FX = fft(X);
                 delt = me.radw*me.sampt(mxi);
                 FXshift = exp(1i*delt).*FXwin;
                 me.delay = delt;
-                
+            end
         end
+       
         %%%%%%%
         function out = get.H(me)
             
-            B = me.B(me.freqindx.remap); %#ok<*PROP>
-            B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
-            out = conj(B)./me.D(me.freqindx.remap).^2;
+%             B = me.B(me.freqindx.remap); %#ok<*PROP>
+%             B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
+%             out = conj(B)./me.D(me.freqindx.remap).^2;
+         BC = me.B./(me.D+eps);
+           bias = me.BIASnum./(me.D.^2+eps);
+          BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+          H = BC./(me.D+eps);
+          H = H(me.freqindx.remap);
+          H(me.freqindx.PDconj) = conj(H(me.freqindx.PDconj));
+          out = conj(H);
         end
         %%%%%%%
         function update_bispectrum(me,FX)
@@ -280,8 +336,9 @@ classdef hosobject < handle
             end
 %             Xwin = Xin.*me.win;
 %             FX = fft(Xwin);
-            FFX = 1;
-            for k = me.order:-1:1
+           % FFX = 1;
+            FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+            for k = me.order-1:-1:1
                 if k == 1
                     FFXpart = FFX;
                 end
@@ -333,9 +390,22 @@ classdef hosobject < handle
         end
         
         function update_filter(me)
+               
                Bpart = me.Bpart(me.freqindx.remap);
                Bpart(me.freqindx.PDconj) = conj(Bpart(me.freqindx.PDconj));
-               me.G = sum(Bpart.*me.H,2);
+               G = sum(Bpart(:,:).*me.H(:,:),2);
+     
+               %%% Remove linear phase trend so the energy of the filter
+               %%% is more-or-less centered
+                  dph = G(2:end).*conj(G(1:end-1));
+               arg = @(x)atan2(imag(x),real(x));
+               mdph = round(arg(sum(dph)./sum(abs(dph)))*length(G)/(2*pi));
+               
+               linphase = exp(-1i*mdph*fftfreq(length(G))'*2*pi);
+              me.Bpart = me.Bpart.*[linphase(me.freqindx.Is(:,1));0];
+              
+          %    me.G = Gshift(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
+                me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
         end
         
         function update_waveform(me,Xsh)
@@ -366,7 +436,7 @@ classdef hosobject < handle
             
             if nxin >= me.bufferN
                 me.bufferPos = 0; % Discard the buffer
-                stepn = me.poverlap*me.bufferN;
+                stepn = round(me.poverlap*me.bufferN);
                 nget = nxin - me.bufferN+1;
                 tindx = (0:me.bufferN-1)';
                 wint = (1:stepn:nget);
@@ -394,18 +464,33 @@ classdef hosobject < handle
             if nargin < 3
                 thresh= me.thresh;
             end
-               
-            Xcent = zscore(Xfilt);
+            
+             Xcent = zscore(Xfilt);
+            %Xcent = Xfilt;
             Xmom = Xcent.^me.order;
+            
             if mod(me.order,2)==0
-                Xmom = Xmom - repmat(mean(Xmom.^2).^(me.order/2),size(Xmom,1),1);
+                Xmom = Xmom - me.order*repmat(mean(Xcent.^2).^(me.order/2),size(Xmom,1),1);
             end
-            Xsrt = sort(Xmom);
-            Xcs = cumsum(Xsrt)>=thresh;
-            detect =any(Xcs);
-            trialthresh = sum(Xsrt(2:end,:).*diff(Xcs));
-            trialthresh(~detect) = Inf;
-            Xthresh = Xfilt.*(Xmom>=repmat(trialthresh,size(Xmom,1),1));
+            if size(Xfilt,1) == me.bufferN;
+                 trialthresh = me.current_threshold;
+            else
+                Xsrt = sort(Xmom);
+                Xcs = cumsum(Xsrt)>thresh;
+                detect =any(Xcs);
+                trialthresh = sum(Xsrt(2:end,:).*diff(Xcs));
+                trialthresh(~detect) = Inf;
+            end
+            switch me.threshold_type
+                case 'hard'
+                    THR = (Xmom>=repmat(trialthresh,size(Xmom,1),1));
+                case 'soft'
+                    sigm = @(x)1./(1+exp(-x));
+                    THR = sigm(me.threshtemp*(Xmom-repmat(trialthresh,size(Xmom,1),1)));
+                otherwise
+                    error('Unrecognized threshold type')
+            end
+            Xthresh = Xfilt.*THR;
             
         end
         function Xrec = reconstruct(me,X)
@@ -413,21 +498,21 @@ classdef hosobject < handle
             if nargin < 2
                 Xin = me.inputbuffer;
             end
-%             Xfilt = me.apply_filter(Xin);
-            Xin = X;
-            Xin(end+me.bufferN,:) = 0;
-            Xfilt = filter(me.filterfun,1,Xin);
+             Xfilt = me.apply_filter(X);
+           
            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             FXthresh =fft(me.filter_threshold(Xfilt));
             wf = ifftshift(me.waveform);
             wf(size(FXthresh,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
             featfft = fft(wf);
-            Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(Xin,2))));
-            Xrec = Xrec(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
-          
-            Xrec = Xrec*(X(:)'*Xrec(:))./sum(abs(Xrec(:)).^2); % Scale to minimize total mse.
-            if nargin < 2
+            Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
+%             Xrec = Xrec(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
+           a= sum(abs(Xrec(:)).^2);
+           if a > 0
+             Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
+           end
+           if nargin < 2
                 me.reconbuffer = Xrec;
             end
         end
@@ -443,6 +528,9 @@ classdef hosobject < handle
             end
             if me.do_filter_update
                me.update_filter(); 
+               Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
+               lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
+               me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
             end
             if me.do_wave_update
                 Xsh = real(ifft(FXsh(:,getwin)));
@@ -456,6 +544,15 @@ classdef hosobject < handle
         
         function out = update_criteria(me,Xfilt)
             out = true(1,size(Xfilt,2)); % Placeholder for now
+        end
+        
+        function out =get.current_threshold(me)
+           xsrt = diff(me.thresholdbuffer);
+           threshi = find(diff(me.thresholdbuffer>me.thresh));
+           if isempty(threshi)
+               threshi=length(xsrt);
+           end
+           out = xsrt(threshi);
         end
     end
     
