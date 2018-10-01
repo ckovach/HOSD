@@ -418,15 +418,17 @@ classdef hosobject < handle
         function write_buffer(me,snip)
             if length(snip)>me.bufferN
                 me.get_input(snip);
+                return
             end
             if me.bufferPos==me.bufferN
                 me.get_input(me.inputbuffer);
                 me.bufferPos = 0;
+                return
             end
             getsnip = min(me.bufferN-me.bufferPos,length(snip));
-            me.inputbuffer(getsnip+1:end) = me.inputbuffer(1:end-getsnip);
-            me.inputbuffer(1:getsnip) = snip;
-            me.bufferPos = me.bufferPos + getsnip;
+            me.inputbuffer(length(snip)+(1:end-length(snip))) = me.inputbuffer(1:me.bufferN-length(snip));
+            me.inputbuffer(1:length(snip)) = snip;
+            me.bufferPos = me.bufferPos + length(snip);
         end
         
         function get_input(me,xin)
@@ -493,12 +495,12 @@ classdef hosobject < handle
             Xthresh = Xfilt.*THR;
             
         end
-        function Xrec = reconstruct(me,X)
+        function [Xrec,Xfilt] = reconstruct(me,X)
             
             if nargin < 2
                 Xin = me.inputbuffer;
             end
-             Xfilt = me.apply_filter(X);
+             [Xfilt] = me.apply_filter(X);
            
            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             FXthresh =fft(me.filter_threshold(Xfilt));
