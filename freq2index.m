@@ -89,7 +89,7 @@ E = E(srti);
 IND = zeros(size(E));
 IND(srti) = cumsum(E);
  IND(n+1:end) = [];
-% IND(IND==0) = length(freqs{end})+1;
+%  IND(IND==0) = length(freqs{end})+1;
 IND =  frsrti(reshape(IND,size(Fsum)));
 
 Is{order}=IND(:) ;

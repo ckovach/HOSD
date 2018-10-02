@@ -53,7 +53,8 @@ classdef hosobject < handle
     properties (Access = private)
       bufferN = 1024;
       G = [];
-      wintype = 'hann';
+        wintype = 'rectwin';
+%     wintype = @(n)kaiser(n,3)
       win = hann(1024);
       BCpart = 0;
        highpassval = 0;
@@ -94,7 +95,7 @@ classdef hosobject < handle
                 me.buffersize = N;
             end
             
-            me.highpassval = 2/N;
+            me.highpassval = 3/N;
             if nargin > 2 && ~isempty(sampling_rate)
                 me.sampling_rate=sampling_rate;
                 me.lowpassval = me.lowpassval*sampling_rate;
@@ -292,6 +293,7 @@ classdef hosobject < handle
         function [Xfilt,FXshift] = apply_filter(me,X,varargin)
             if length(X) == me.bufferN
                 FXwin = fft(repmat(me.win,1,size(X,2)).*X);
+%                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
             else
                  Xin = X;
@@ -395,14 +397,14 @@ classdef hosobject < handle
                Bpart(me.freqindx.PDconj) = conj(Bpart(me.freqindx.PDconj));
                G = sum(Bpart(:,:).*me.H(:,:),2);
      
-               %%% Remove linear phase trend so the energy of the filter
-               %%% is more-or-less centered
-                  dph = G(2:end).*conj(G(1:end-1));
-               arg = @(x)atan2(imag(x),real(x));
-               mdph = round(arg(sum(dph)./sum(abs(dph)))*length(G)/(2*pi));
-               
-               linphase = exp(-1i*mdph*fftfreq(length(G))'*2*pi);
-              me.Bpart = me.Bpart.*[linphase(me.freqindx.Is(:,1));0];
+%                %%% Remove linear phase trend so the energy of the filter
+%                %%% is more-or-less centered
+%                   dph = G(2:end).*conj(G(1:end-1))./(abs(G(1:end-1))+abs(G(2:end))+eps)*2;
+%                arg = @(x)atan2(imag(x),real(x));
+%                mdph = (arg(sum(dph)./sum(abs(dph)))*length(G)/(2*pi));
+%                
+%                linphase = exp(-1i*mdph*fftfreq(length(G))'*2*pi);
+%               me.Bpart = me.Bpart.*[linphase(me.freqindx.Is(:,1));0];
               
           %    me.G = Gshift(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
