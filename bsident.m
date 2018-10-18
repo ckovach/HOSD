@@ -62,21 +62,47 @@ default_opts = struct('niter',10,...
 'ncomp',1,...
 'bstdargs',{{}}); %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
 
+optcell={};
 if nargin > 4 && ~isempty(opts)
     if isstruct(opts)
-        valid_fields = fieldnames(default_opts);
-        fns = fieldnames(opts);
-        for k = 1:length(fns)          
-            if ismember(fns{k},valid_fields)
-                default_opts.(fns{k}) = opts.(fns{k});
-            else
-                wargning('%s is not a recognized option.',fns{k});
-            end
+        fldn = fieldnames;
+        for k = 1:length(fldn)
+            optcell(1,k) = fldn{k}; %#ok<*AGROW>
+            optcell(2,k) = opts.(fldn{k});
         end
-    else
-        varargin = {opts,varargin{:}};
+    elseif ischar(opts)
+        optcell = {opts};
     end
 end
+varargin = [optcell(:)',varargin];
+
+valid_fields = fieldnames(default_opts);
+k = 1;
+while k <= length(varargin)
+    if ismember(varargin{k},valid_fields)
+        default_opts.(varargin{k}) = varargin{k+1};
+        k=k+1;
+    else
+        warning('%s is not a recognized option.',fns{k});
+        k=k+1;
+    end
+    k=k+1;
+end
+% if nargin > 4 ;%&& ~isempty(opts)
+%     if isstruct(opts)
+%         valid_fields = fieldnames(default_opts);
+%         fns = fieldnames(opts);
+%         for k = 1:length(fns)          
+%             if ismember(fns{k},valid_fields)
+%                 default_opts.(fns{k}) = opts.(fns{k});
+%             else
+%                 wargning('%s is not a recognized option.',fns{k});
+%             end
+%         end
+%     else
+%         varargin = [{opts},varargin(:)'];
+%     end
+% end
 opts = default_opts;
 % type = 'mean';
 % type = 'svd';
