@@ -59,16 +59,18 @@ default_opts = struct('niter',10,...
 'pre_filter',true,... % Filter the signal so that it is zero-mean at the scale of the observation window
 'skewness_threshold',-Inf,... %Exclude windows with filtered skewness below this threshold, under the assumption that do not contain the feature.
 'lpfilt',.25,...
+'hpfilt',[],...
+'postwin',[],...
 'ncomp',1,...
 'bstdargs',{{}}); %Exclude windows with negative skewness after BFILT, assuming they do not contain the transient with high signal to noise ratio. 
 
 optcell={};
 if nargin > 4 && ~isempty(opts)
     if isstruct(opts)
-        fldn = fieldnames;
+        fldn = fieldnames(opts);
         for k = 1:length(fldn)
-            optcell(1,k) = fldn{k}; %#ok<*AGROW>
-            optcell(2,k) = opts.(fldn{k});
+            optcell(1,k) = fldn(k); %#ok<*AGROW>
+            optcell(2,k) = {opts.(fldn{k})};
         end
     elseif ischar(opts)
         optcell = {opts};
@@ -83,7 +85,7 @@ while k <= length(varargin)
         default_opts.(varargin{k}) = varargin{k+1};
         k=k+1;
     else
-        warning('%s is not a recognized option.',fns{k});
+        warning('%s is not a recognized option.',varargin{k});
         k=k+1;
     end
     k=k+1;
@@ -206,9 +208,9 @@ for kk = 1:opts.ncomp
     clear dt
     for k= 1:opts.niter + 1  %%% Apply bstd iteratively. Adding 1 because the phase response of BFILT is lagged according to the average delay in the input not output. 
        if opts.use_ideal_filter && k==opts.niter            
-            [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+            [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap,Bideal] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.postwin,opts.hpfilt,opts.bstdargs{:});
        else
-           [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.bstdargs{:});
+           [dt(k,:),Xadj,B,BFILT,wb,NORM,BIAS,PDIndx,pdmap] = bstd(Xadj,opts.lpfilt,Fremove,prewin,skewweight,opts.postwin,opts.hpfilt,opts.bstdargs{:});
        end
        sdt = sum(dt,1);
    
