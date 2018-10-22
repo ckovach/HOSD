@@ -41,6 +41,13 @@ if nargin < 4 || isempty(highpass)
     highpass = zeros(1,order);
 end
 
+if isscalar(lowpass)
+    lowpass = ones(1,order)*lowpass;
+end
+
+if isscalar(highpass)
+    highpass= ones(1,order)*highpass;
+end
 %%    
 if isnumeric(freqs)    
     freqs = repmat({freqs},1,order);
