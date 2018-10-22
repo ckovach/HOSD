@@ -6,9 +6,9 @@ classdef hosobject < handle
     properties
        order = 3;
        freqs       
-       B = 0;
-       Bpart = 0;
-       D = 1;
+%        B = 0;
+%        Bpart = 0;
+%        D = 1;
        PSD = 0;
       
        
@@ -22,6 +22,7 @@ classdef hosobject < handle
        window_number = 0;
        poverlap = .5;
       
+       do_update = true;
        do_bsp_update = true;
        do_wave_update = true;
        do_filter_update = true;
@@ -30,6 +31,8 @@ classdef hosobject < handle
        threshold_type = 'hard';
        keepfreqs
        pdonly = true;
+       dat = [];
+      
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -61,7 +64,10 @@ classdef hosobject < handle
        lowpassval = .5; %%% Lowpass on the edges (max freq)
        glowpassval = .5; %%% Global lowpass
       BIASnum = 0;
-    
+        
+       Bval = 0;
+       Bpartval = 0;
+       Dval = 1;
     end
     properties (Dependent = true)
         
@@ -84,6 +90,9 @@ classdef hosobject < handle
         fullmap
         feature
         current_threshold % Current adaptive threshold level
+        B ;
+        Bpart ;
+        D ;
     end
     
     methods
@@ -265,7 +274,7 @@ classdef hosobject < handle
                 warning('Filer function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
-            F =fft(ifftshift(in));
+            F =fft(fftshift(in));
             me.filterfft = F;
             
         end
@@ -285,9 +294,20 @@ classdef hosobject < handle
             out = me.sumlr./me.sumlr2;
         end
         %%%%%%%
-        
+        function set.EDF(me,in)
+            
+            % When setting the EDF, take it to be a simple sample size
+            me.sumlr = 1;
+            me.sumlr2 = 1./in;
+            me.window_number = in;
+        end
+        %%%%%%%
         function out = get.feature(me)
            out = ifftshift(me.waveform); 
+        end
+         %%%%%%%
+        function set.feature(me,in)
+           me.waveform = fftshift(in); 
         end
         %%%%%%%%
         function [Xfilt,FXshift] = apply_filter(me,X,varargin)
@@ -299,7 +319,7 @@ classdef hosobject < handle
                  Xin = X;
                 Xin(end+me.bufferN,:) = 0;
                 Xfilt = filter(me.filterfun,1,Xin);
-                Xfilt = Xfilt(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
+                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2));
       
             end
             if nargout >1
@@ -311,6 +331,36 @@ classdef hosobject < handle
             end
         end
        
+        function out = get.B(me)
+           out = me.Bval; 
+        end
+        function out = get.D(me)
+           out = me.Dval; 
+        end
+        function out = get.Bpart(me)
+           out = me.Bpartval; 
+        end
+        function set.B(me,in)
+            if min(size(in))==1
+                me.Bval = in; 
+            else
+                me.Bval = [in(me.freqindx.reduce);0];
+            end
+        end
+        function set.D(me,in)
+            if min(size(in))==1
+              	me.Dval=in; 
+            else
+                me.Dval  = [in(me.freqindx.reduce);0];
+            end
+        end
+        function  set.Bpart(me,in)
+            if min(size(in))==1
+               	me.Bpartval=in; 
+            else
+               me.Bpartval = [in(me.freqindx.reduce);0];
+            end
+        end
         %%%%%%%
         function out = get.H(me)
             
@@ -324,6 +374,29 @@ classdef hosobject < handle
           H = H(me.freqindx.remap);
           H(me.freqindx.PDconj) = conj(H(me.freqindx.PDconj));
           out = conj(H);
+        end
+        %%%%%%%
+        function out = xfilt(me,in)
+           if nargin < 2
+               in = me.dat;
+           end
+           out = me.apply_filter(in);  
+        end
+        %%%%%%%
+        function [out,xthresh] = ximp(me,in)
+           if nargin < 2
+               in = me.dat;
+           end
+           xthresh = me.filter_threshold(me.apply_filter(in));  
+           out = find(xthresh);
+
+        end
+        %%%$
+        function out = xrec(me,in)
+           if nargin < 2
+               in = me.dat;
+           end
+           out = me.reconstruct(in);  
         end
         %%%%%%%
         function update_bispectrum(me,FX)
@@ -478,7 +551,23 @@ classdef hosobject < handle
             end
             if size(Xfilt,1) == me.bufferN;
                  trialthresh = me.current_threshold;
+            elseif me.order ==3
+                % For the bispectrum compute normalized skewness
+                keepsamples = ones(size(Xcent));
+                srt = sort(Xcent);
+                m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
+                m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
+                m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
+                %  Third cumulant
+                c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+                keepsrt = srt>0 & c3> me.thresh ;
+                detect = any(keepsrt);
+                trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.order;
+                trialthresh(~detect) = Inf;
             else
+                % For now, apply a simple threshold on the moment for
+                % orders > 3. This should be improved to use the proper
+                % cumulant.
                 Xsrt = sort(Xmom);
                 Xcs = cumsum(Xsrt)>thresh;
                 detect =any(Xcs);
@@ -522,6 +611,10 @@ classdef hosobject < handle
         end
         function do_updates(me,X)
             
+            if ~me.do_update
+               warning('Updating is currently disabled. Set do_update = true to enable.') 
+               return
+            end
             [Xfilt,FXsh] = me.apply_filter(X);
             getwin = me.update_criteria(Xfilt);
             if isempty(getwin)
