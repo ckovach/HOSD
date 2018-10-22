@@ -29,6 +29,13 @@ if nargin < 4 || isempty(highpass)
     highpass = 0;
 end
 
+if isscalar(lowpass)
+    lowpass = ones(1,order)*lowpass;
+end
+
+if isscalar(highpass)
+    highpass= ones(1,order)*highpass;
+end
 %%
 if isnumeric(freqsin)
     freqsin = repmat({freqsin},1,order);
@@ -90,6 +97,7 @@ IND = zeros(size(E));
 IND(srti) = cumsum(E);
  IND(n+1:end) = [];
 %  IND(IND==0) = length(freqs{end})+1;
+IND(IND==0) = length(frsrti);
 IND =  frsrti(reshape(IND,size(Fsum)));
 
 Is{order}=IND(:) ;
@@ -143,7 +151,11 @@ dims = cellfun(@(x)sum(x),keeplp);
 
 keepregion = false(dims);
 keepregion(keeplp2{:})=true;
+keepall = false(dims);
+keepall(keepregion) = keep;
 Z = zeros(dims);
+PDall=Z;
+PDall(keepall)=PD;
 remap = Z;
 remap(keepregion) = subremap;
 
@@ -153,6 +165,7 @@ out.freqs = freqs(1:end-1);
 out.keep = keep;
 out.principal_domain = PD;
 out.remap = remap;
+out.reduce = find(PDall);
 PDconj = false(size(Z));
 PDconj(keepregion) = PDconjugate;
 out.PDconj = PDconj;
