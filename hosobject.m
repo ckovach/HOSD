@@ -136,7 +136,6 @@ classdef hosobject < handle
         end
         function reset(me)
             me.window_number = 0;
-            me.waveform = zeros(me.bufferN,1);
             me.sumlr =0;
             me.sumlr2 = 0;
             z=zeros(me.bufferN,1);
