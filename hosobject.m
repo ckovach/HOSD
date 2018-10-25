@@ -56,7 +56,8 @@ classdef hosobject < handle
     properties (Access = private)
       bufferN = 1024;
       G = [];
-        wintype = 'rectwin';
+%         wintype = 'rectwin';
+      wintype = 'hann';
 %     wintype = @(n)kaiser(n,3)
       win = hann(1024);
       BCpart = 0;
@@ -104,7 +105,7 @@ classdef hosobject < handle
                 me.buffersize = N;
             end
             
-            me.highpassval = 3/N;
+            me.highpassval = 2/N;
             if nargin > 2 && ~isempty(sampling_rate)
                 me.sampling_rate=sampling_rate;
                 me.lowpassval = me.lowpassval*sampling_rate;
@@ -379,15 +380,22 @@ classdef hosobject < handle
            if nargin < 2
                in = me.dat;
            end
-           out = me.apply_filter(in);  
+           out = me(1).apply_filter(in);  
+           if length(me)>1
+               out = [out,me(2:end).xfilt(in-me(1).xrec(in))];
+           end
         end
         %%%%%%%
         function [out,xthresh] = ximp(me,in)
            if nargin < 2
                in = me.dat;
            end
-           xthresh = me.filter_threshold(me.apply_filter(in));  
-           out = find(xthresh);
+           xthresh = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
+           if length(me)>1
+               xthresh = [xthresh,me(2:end).ximp(in-me(1).xrec(in))];
+           end
+             out =sparse(xthresh>0);
+         
 
         end
         %%%$
@@ -395,7 +403,11 @@ classdef hosobject < handle
            if nargin < 2
                in = me.dat;
            end
-           out = me.reconstruct(in);  
+           
+           out = me(1).reconstruct(in); 
+           if length(me)>1
+               out = [out,me(2:end).xrec(in-out(:,1))];
+           end
         end
         %%%%%%%
         function update_bispectrum(me,FX)
@@ -512,20 +524,24 @@ classdef hosobject < handle
             
             if nxin >= me.bufferN
                 me.bufferPos = 0; % Discard the buffer
-                stepn = round(me.poverlap*me.bufferN);
-                nget = nxin - me.bufferN+1;
-                tindx = (0:me.bufferN-1)';
-                wint = (1:stepn:nget);
-            
-                T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
-                Xchop = xin(T);
-                
-                me.do_updates(Xchop)
-                    
-                snip = xin(T(end)+1:numel(xin));
-                if ~isempty(snip)
-                    me.write_buffer(snip);
+                if  size(xin,1) ~=me.bufferN 
+                    stepn = round(me.poverlap*me.bufferN);
+                    nget = nxin - me.bufferN+1;
+                    tindx = (0:me.bufferN-1)';
+                    wint = (1:stepn:nget);
+
+                    T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+                    Xchop = xin(T);
+                                
+                    snip = xin(T(end)+1:numel(xin));
+                    if ~isempty(snip)
+                        me.write_buffer(snip);
+                    end
+                else
+                    Xchop = xin;
                 end
+                me.do_updates(Xchop)
+        
             else
                 me.write_buffer(xin);
             end    
@@ -552,13 +568,16 @@ classdef hosobject < handle
                  trialthresh = me.current_threshold;
             elseif me.order ==3
                 % For the bispectrum compute normalized skewness
-                keepsamples = ones(size(Xcent));
-                srt = sort(Xcent);
+%                 keepsamples = ones(size(Xcent));
+                  srt = sort(Xcent);
+                outlier_threshold = 5;
+               keepsamples = ~isnan(iterz(srt,outlier_threshold,-1)); % Suppress extreme negative outliers           
                 m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
                 m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
                 m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
                 %  Third cumulant
                 c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+          
                 keepsrt = srt>0 & c3> me.thresh ;
                 detect = any(keepsrt);
                 trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.order;
