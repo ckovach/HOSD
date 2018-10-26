@@ -2,6 +2,13 @@ classdef hosobject < handle
    
     % Class implementing higher-order spectral filtering based on Kovach
     % 2018.
+    %
+    % Usage:
+    %        hos = hosobject(order,N,sampling_rate,lowpass,freqs,varargin)
+    %
+    % Inputs: 
+    %       order - order (default = 3)
+    %
     
     properties
        order = 3;
@@ -98,42 +105,71 @@ classdef hosobject < handle
     
     methods
        
-        function me = hosobject(order,N,sampling_rate,lowpass,freqs,varargin)
+        function me = hosobject(order,varargin)
             
             warning('THIS SCRIPT IS UNDER DEVELOPMENT AND PROBABLY DOESN''T WORK RIGHT NOW')
-            if nargin >1 && ~isempty(N)
-                me.buffersize = N;
+            if nargin < 1 
+                return
+            elseif nargin == 1
+                me.order = order;
+                return
+            else
+                me.order = order;
             end
-            
-            me.highpassval = 2/N;
+                
+            me.initialize(order,varargin{:});
+        end
+        
+      function initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
+      
+            if ~isscalar(N)
+                X = N;
+                N = size(X,1);
+            else
+                X = [];
+             end
+             if nargin >1 && ~isempty(N)
+                me(1).buffersize = N;
+             end
+            if nargin < 6
+                freqindex = [];
+            end
+            me(1).highpassval = 2/N;
             if nargin > 2 && ~isempty(sampling_rate)
-                me.sampling_rate=sampling_rate;
-                me.lowpassval = me.lowpassval*sampling_rate;
-                me.glowpassval = me.glowpassval*sampling_rate;
-                me.highpassval = me.highpassval*sampling_rate;
+                me(1).sampling_rate=sampling_rate;
+                me(1).lowpassval = me(1).lowpassval*sampling_rate;
+                me(1).glowpassval = me(1).glowpassval*sampling_rate;
+                me(1).highpassval = me(1).highpassval*sampling_rate;
             end
             if nargin > 3 && ~isempty(lowpass)
-                me.lowpassval=lowpass;
+                me(1).lowpassval=lowpass;
             end
              if nargin < 5 || isempty(freqs)
-                freqs = fftfreq(me.bufferN)*me.sampling_rate;
+                freqs = fftfreq(me(1).bufferN)*me(1).sampling_rate;
             end
             if isnumeric(freqs)
                 freqs = {freqs};
             end
-            if nargin < 1 || isempty(order)
-                order = max(length(freqs),me.order);
+            if length(freqs) > me(1).order
+                me(1).order = length(freqs);
             end
             
-            if order > length(freqs)
-                freqs(end+1:order) = freqs;
+            if me(1).order > length(freqs)
+                freqs(end+1:me(1).order) = freqs;
             end
-            me.order = order;
-            me.freqs = freqs;
-            me.update_frequency_indexing
-            me.reset();
-            me.G = ones(sum(me.keepfreqs{1}),1);
+%             me.order = order;
+            me(1).freqs = freqs;
+            me(1).update_frequency_indexing(freqindex)
+            me(1).reset();
+            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
             
+            if length(me)>1
+                me(2:end).initialize(N,sampling_rate,lowpass,freqs,freqindex,varargin{:});
+            end
+            
+            if ~isempty(X)
+                me.get_block(X);
+            end
         end
         function reset(me)
             me.window_number = 0;
@@ -148,9 +184,10 @@ classdef hosobject < handle
 %             me.G = ones(size(z));
             me.bufferPos = 0;
             me.B(:)=0;
+            me.G(:)=1;
             me.window_number=0;
         end
-        function update_frequency_indexing(me)
+        function update_frequency_indexing(me,freqindex)
             lowpass = me.lowpassval;
             order = me.order;
             freqs=me.freqs;
@@ -173,8 +210,13 @@ classdef hosobject < handle
                % freqindex{k} = find(keepfreqs{k});
             end    
             me.keepfreqs = keepfreqs;
-            %%% Initialize the indexing            
-            me.freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly); %#ok<*PROP>
+            %%% Initialize the indexing   
+            if nargin < 2 || isempty(freqindex)
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly); %#ok<*PROPLC,*PROP>
+            end
+            
+            me.freqindx  = freqindx;
+                
             Z =zeros(size(me.freqindx.Is,1)+1,1);
             me.B = Z; 
             me.Bpart = Z;
@@ -263,6 +305,7 @@ classdef hosobject < handle
            
             F = me.filterfft;
             out = ifftshift(real(ifft(F)));
+%             out = real(ifft(F));
             
         end
         function set.filterfun(me,in)
@@ -274,7 +317,8 @@ classdef hosobject < handle
                 warning('Filer function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
-            F =fft(fftshift(in));
+%             F =fft(fftshift(in));
+            F =fft((in));
             me.filterfft = F;
             
         end
@@ -310,9 +354,18 @@ classdef hosobject < handle
            me.waveform = fftshift(in); 
         end
         %%%%%%%%
-        function [Xfilt,FXshift] = apply_filter(me,X,varargin)
+        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,varargin)
+            if nargin<3
+                apply_window = true;
+            end
             if length(X) == me.bufferN
-                FXwin = fft(repmat(me.win,1,size(X,2)).*X);
+                if apply_window
+                    win = me.win;
+                else
+                    win =1;
+                end
+                Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
+                FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
             else
@@ -325,9 +378,11 @@ classdef hosobject < handle
             if nargout >1
                 [mx,mxi] = max(Xfilt);
 %                 FX = fft(X);
-                delt = me.radw*me.sampt(mxi);
+                samptc=(me.sampt);
+                 dt = samptc(mxi);
+                delt = me.radw*dt;
                 FXshift = exp(1i*delt).*FXwin;
-                me.delay = delt;
+                me.delay = dt;
             end
         end
        
@@ -386,19 +441,30 @@ classdef hosobject < handle
            end
         end
         %%%%%%%
-        function [out,xthresh] = ximp(me,in)
+        function out = ximp(me,in)
+           % Just get the thresholded times (for backward compatibility)
            if nargin < 2
                in = me.dat;
            end
-           xthresh = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
-           if length(me)>1
-               xthresh = [xthresh,me(2:end).ximp(in-me(1).xrec(in))];
+           out = me.xthresh(in)>0;  
+%            if length(me)>1
+%                out = [out,me(2:end).ximp(in-me(1).xrec(in))];
+%            end         
+
+        end
+        function out = xthresh(me,in)
+             % Get the thresholded data 
+           if nargin < 2
+               in = me.dat;
            end
-             out =sparse(xthresh>0);
+           out = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
+           if length(me)>1
+               out= [out,me(2:end).xthresh(in-me(1).xrec(in))];
+           end
          
 
         end
-        %%%$
+        %%%
         function out = xrec(me,in)
            if nargin < 2
                in = me.dat;
@@ -522,12 +588,12 @@ classdef hosobject < handle
             % Process input if length is >= buffer size, else add to buffer.
             nxin = numel(xin);
             
-            if nxin >= me.bufferN
-                me.bufferPos = 0; % Discard the buffer
-                if  size(xin,1) ~=me.bufferN 
-                    stepn = round(me.poverlap*me.bufferN);
-                    nget = nxin - me.bufferN+1;
-                    tindx = (0:me.bufferN-1)';
+            if nxin >= me(1).bufferN
+                me(1).bufferPos = 0; % Discard the buffer
+                if  size(xin,1) ~=me(1).bufferN 
+                    stepn = round(me(1).poverlap*me(1).bufferN);
+                    nget = nxin - me(1).bufferN+1;
+                    tindx = (0:me(1).bufferN-1)';
                     wint = (1:stepn:nget);
 
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
@@ -535,21 +601,105 @@ classdef hosobject < handle
                                 
                     snip = xin(T(end)+1:numel(xin));
                     if ~isempty(snip)
-                        me.write_buffer(snip);
+                        me(1).write_buffer(snip);
                     end
                 else
                     Xchop = xin;
                 end
-                me.do_updates(Xchop)
+                me(1).do_updates(Xchop)
         
             else
-                me.write_buffer(xin);
+                me(1).write_buffer(xin);
             end    
            
+            if length(me)>1
+               xrec = me(1).reconstruct(xin);
+               me(2:end).get_input(xin-xrec);
+            end
             
             
             
         end
+        
+        function get_block(me,xin,maxiter,makeplot,compno)
+           
+            % Fit a block of data all at once
+            % Process input if length is >= buffer size, else add to buffer.
+            if nargin < 5
+                compno = 1;
+            end
+            if nargin < 4
+                makeplot = true;
+            end
+            if nargin < 3 || isempty(maxiter)
+                maxiter = 100;
+            end
+            nxin = numel(xin);
+            
+            if nxin >= me(1).bufferN
+                me(1).bufferPos = 0; % Discard the buffer
+                if  size(xin,1) ~=me(1).bufferN 
+                    stepn = round(me(1).poverlap*me(1).bufferN);
+                    nget = nxin - me(1).bufferN+1;
+                    tindx = (0:me(1).bufferN-1)';
+                    wint = (1:stepn:nget);
+
+                    T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+                    Xchop = xin(T);
+                                
+                    snip = xin(T(end)+1:numel(xin));
+                    if ~isempty(snip)
+                        me(1).write_buffer(snip);
+                    end
+                else
+                    Xchop = xin;
+                end
+                del = Inf;
+                tol =1; % Stop when the average shift is less than 1 sample
+                k = 0;
+                olddt2 = 0;
+                Xsh = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+                fprintf('\nComponent %3i Iter %3i',compno,0)
+                while del >tol && k < maxiter                    
+                    if ishandle(makeplot)
+                        set(makeplot,'cdata',Xsh);
+                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %0.2fs',compno,k,del/me(1).sampling_rate));
+                        drawnow
+                    elseif islogical(makeplot) && makeplot
+                        figure,
+                        makeplot = imagesc([],fftshift(me(1).sampt)/me(1).sampling_rate,Xsh);
+                        title(sprintf('Component %03i, Iter. %03i, Mean shift = %0.2fs',compno,k,del/me(1).sampling_rate));
+                        drawnow
+                    end
+                    
+                    k=k+1;
+                    fprintf('\b\b\b%03i',compno,k)
+                    
+                    olddt = me(1).delay;
+                    me(1).get_input(Xsh)
+                    [~,FXsh] = me(1).apply_filter(Xsh,false);
+                    Xsh = ifftshift(ifft(FXsh),1);
+                    newdt = me(1).delay;
+                    % checks two and one step back to reduce getting
+                    % trapped at points of cyclical stability.
+                    del = min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
+                    olddt2 = olddt;
+                end
+            else
+                me(1).write_buffer(xin);
+            end    
+           
+            if length(me)>1
+               xrec = me(1).reconstruct(xin);
+               me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+            end
+            
+            
+            
+        end
+        
+        
+        
         function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh)
             
             % Apply a moment-based threshold
@@ -609,8 +759,11 @@ classdef hosobject < handle
             if nargin < 2
                 Xin = me.inputbuffer;
             end
-             [Xfilt] = me.apply_filter(X);
-           
+            Xfilt = me.apply_filter(X);
+            if length(X) == me.bufferN
+                Xfilt = ifftshift(Xfilt,1);
+            end
+            
            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             FXthresh =fft(me.filter_threshold(Xfilt));
             wf = ifftshift(me.waveform);
