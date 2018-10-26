@@ -63,9 +63,8 @@ classdef hosobject < handle
     properties (Access = private)
       bufferN = 1024;
       G = [];
-%         wintype = 'rectwin';
+
       wintype = 'hann';
-%     wintype = @(n)kaiser(n,3)
       win = hann(1024);
       BCpart = 0;
        highpassval = 0;
@@ -251,7 +250,7 @@ classdef hosobject < handle
           
         end
         function out = get.BIAS(me)        
-          bias = me.BIASnum./me.D.^2;
+          bias = me.BIASnum./(me.D.^2+eps);
           out = bias(me.freqindx.remap);
         end
         function out = get.fullmap(me)
@@ -424,6 +423,7 @@ classdef hosobject < handle
 %             out = conj(B)./me.D(me.freqindx.remap).^2;
          BC = me.B./(me.D+eps);
            bias = me.BIASnum./(me.D.^2+eps);
+           bias(isnan(bias))=0;
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           H = BC./(me.D+eps);
           H = H(me.freqindx.remap);
