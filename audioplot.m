@@ -50,18 +50,18 @@ grid on
 axis tight
 ylim([-1 1]*.5)
 
-nfr = 35;
+nfr = 200;
 %%
-%   Xs = zeros(h.SamplesPerFrame,nfr);
-Xrs = permute(Xs(:,:,ones(1,ncascade)),[1 3 2]);
+  Xs = zeros(h.SamplesPerFrame,nfr);
+ Xrs = permute(Xs(:,:,ones(1,ncascade)),[1 3 2]);
 Xfs = Xrs;
 Xresids = Xs;
 go = true;
 clear Xr
 for kkk = 1:nfr*1e6
     k = mod(kkk-1,nfr)+1
-%       Xn = step(h);
-   Xn = Xs(:,k);
+       Xn = step(h);
+%    Xn = Xs(:,k);
      Xresid = Xn;
     
     for kk = 1:ncascade

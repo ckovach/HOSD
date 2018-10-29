@@ -116,7 +116,7 @@ classdef hosobject < handle
                 me.order = order;
             end
                 
-            me.initialize(order,varargin{:});
+            me.initialize(varargin{:});
         end
         
       function initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
@@ -180,6 +180,7 @@ classdef hosobject < handle
             me.waveform = z;
             me.shiftbuffer = z;
             me.thresholdbuffer=z;
+            me.PSD = [z;0];
 %             me.G = ones(size(z));
             me.bufferPos = 0;
             me.B(:)=0;
@@ -361,7 +362,7 @@ classdef hosobject < handle
                 if apply_window
                     win = me.win;
                 else
-                    win =1;
+                    win =ones(size(X,1),1);
                 end
                 Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
                 FXwin = fft(Xwin);
@@ -632,7 +633,7 @@ classdef hosobject < handle
                 makeplot = true;
             end
             if nargin < 3 || isempty(maxiter)
-                maxiter = 100;
+                maxiter = 50;
             end
             nxin = numel(xin);
             
@@ -658,31 +659,34 @@ classdef hosobject < handle
                 tol =1; % Stop when the average shift is less than 1 sample
                 k = 0;
                 olddt2 = 0;
+                olddt =0;
                 Xsh = Xchop.*repmat(me(1).win,1,size(Xchop,2));
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 while del >tol && k < maxiter                    
                     if ishandle(makeplot)
                         set(makeplot,'cdata',Xsh);
-                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %0.2fs',compno,k,del/me(1).sampling_rate));
+                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %2.2gs',compno,k,del/me(1).sampling_rate));
                         drawnow
                     elseif islogical(makeplot) && makeplot
                         figure,
                         makeplot = imagesc([],fftshift(me(1).sampt)/me(1).sampling_rate,Xsh);
-                        title(sprintf('Component %03i, Iter. %03i, Mean shift = %0.2fs',compno,k,del/me(1).sampling_rate));
+                        title(sprintf('Component %03i, Iter. %03i, Mean shift = %2.2gs',compno,k,del/me(1).sampling_rate));
                         drawnow
                     end
                     
                     k=k+1;
                     fprintf('\b\b\b%03i',compno,k)
                     
-                    olddt = me(1).delay;
+                    if k >2
+                      olddt = me(1).delay;
+                    end
                     me(1).get_input(Xsh)
                     [~,FXsh] = me(1).apply_filter(Xsh,false);
-                    Xsh = ifftshift(ifft(FXsh),1);
+                    Xsh = real(ifftshift(ifft(FXsh),1));
                     newdt = me(1).delay;
                     % checks two and one step back to reduce getting
                     % trapped at points of cyclical stability.
-                    del = min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
+                    del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     olddt2 = olddt;
                 end
             else
@@ -714,12 +718,12 @@ classdef hosobject < handle
             if mod(me.order,2)==0
                 Xmom = Xmom - me.order*repmat(mean(Xcent.^2).^(me.order/2),size(Xmom,1),1);
             end
-            if size(Xfilt,1) == me.bufferN;
+            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold;
             elseif me.order ==3
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
-                  srt = sort(Xcent);
+                  srt = sort(Xcent(:));
                 outlier_threshold = 5;
                keepsamples = ~isnan(iterz(srt,outlier_threshold,-1)); % Suppress extreme negative outliers           
                 m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
@@ -744,7 +748,7 @@ classdef hosobject < handle
             end
             switch me.threshold_type
                 case 'hard'
-                    THR = (Xmom>=repmat(trialthresh,size(Xmom,1),1));
+                    THR = Xmom>=trialthresh;%repmat(trialthresh,size(Xmom,1),1);
                 case 'soft'
                     sigm = @(x)1./(1+exp(-x));
                     THR = sigm(me.threshtemp*(Xmom-repmat(trialthresh,size(Xmom,1),1)));
