@@ -244,14 +244,14 @@ classdef hosobject < handle
         function BC = get.bicoh(me)
             
           BC = me.B./me.D;
-           bias = me.BIASnum./(me.D.^2+eps);
+           bias = sqrt(me.BIASnum./(me.D.^2+eps));
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           BC = BC(me.freqindx.remap);
           BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
           
         end
         function out = get.BIAS(me)        
-          bias = me.BIASnum./(me.D.^2+eps);
+          bias = sqrt(me.BIASnum./(me.D.^2+eps));
           out = bias(me.freqindx.remap);
         end
         function out = get.fullmap(me)
@@ -423,7 +423,7 @@ classdef hosobject < handle
 %             B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
 %             out = conj(B)./me.D(me.freqindx.remap).^2;
          BC = me.B./(me.D+eps);
-           bias = me.BIASnum./(me.D.^2+eps);
+           bias = sqrt(me.BIASnum./(me.D.^2+eps));
            bias(isnan(bias))=0;
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           H = BC./(me.D+eps);
