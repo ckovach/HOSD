@@ -124,6 +124,7 @@ classdef hosobject < handle
             if ~isscalar(N)
                 X = N;
                 N = size(X,1);
+                me(1).do_update = true;
             else
                 X = [];
              end
@@ -158,9 +159,14 @@ classdef hosobject < handle
             end
 %             me.order = order;
             me(1).freqs = freqs;
+            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
+            k = 1;
+            while k < length(varargin)    
+                me(1).(varargin{k}) = varargin{k+1};
+                k=k+2;
+            end
             me(1).update_frequency_indexing(freqindex)
             me(1).reset();
-            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
             
             if length(me)>1
                 me(2:end).initialize(N,sampling_rate,lowpass,freqs,freqindex,varargin{:});
@@ -317,8 +323,8 @@ classdef hosobject < handle
                 warning('Filer function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
-%             F =fft(fftshift(in));
-            F =fft((in));
+            F =fft(fftshift(in));
+%             F =fft((in));
             me.filterfft = F;
             
         end
@@ -354,10 +360,14 @@ classdef hosobject < handle
            me.waveform = fftshift(in); 
         end
         %%%%%%%%
-        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,varargin)
+        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,varargin)
             if nargin<3
                 apply_window = true;
             end
+            if nargin < 4 || isempty(return_shifted)
+               return_shifted = true; 
+            end
+                
             if length(X) == me.bufferN
                 if apply_window
                     win = me.win;
@@ -368,6 +378,17 @@ classdef hosobject < handle
                 FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
+                if nargout >1 && return_shifted
+                    [mx,mxi] = max(Xfilt);
+    %                 FX = fft(X);
+                    samptc=(me.sampt);
+                     dt = samptc(mxi);
+                    delt = me.radw*dt;
+                    FXshift = exp(1i*delt).*FXwin;
+                    me.delay = dt;
+                else
+                     FXshift = FXwin;
+                end
             else
                  Xin = X;
                 Xin(end+me.bufferN,:) = 0;
@@ -375,15 +396,7 @@ classdef hosobject < handle
                 Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2));
       
             end
-            if nargout >1
-                [mx,mxi] = max(Xfilt);
-%                 FX = fft(X);
-                samptc=(me.sampt);
-                 dt = samptc(mxi);
-                delt = me.radw*dt;
-                FXshift = exp(1i*delt).*FXwin;
-                me.delay = dt;
-            end
+               
         end
        
         function out = get.B(me)
@@ -477,13 +490,18 @@ classdef hosobject < handle
            end
         end
         %%%%%%%
-        function update_bispectrum(me,FX)
+        function update_bispectrum(me,FX,initialize)
             
             %Write now this updates in chunks with temporal decay weighting
             %applied only serially. That is, a simple average is obtained
             %for each chunk, which is then 
             m = size(FX,2);
-
+            
+            if nargin < 3 || isempty(initialize)
+                initialize = false;
+            end
+                
+               
             if isempty(FX)
                 return
             end
@@ -505,22 +523,31 @@ classdef hosobject < handle
             XPSD(end+1,:) =0;
             BXpart(end+1,:) = 0;
             
-            [lradj,lr] = me.learningfunction(me.hos_learning_rate,m);
-             fflr = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
-%             fflr = (1-(1-me.filter_adaptation_rate)^m);
-            
-            %%% Adjust the learning rate according to the number of samples
-            %%% in Xin, giving the sample weight the same total as if it
-            %%% had been added serially.
-             asympedf = 2./lr-1; %Asymptotic EDF
-       
-            lrbias = 1./asympedf*(1-(1-lr).^(2*m)); % "Learning rate" for the sum of squared weights in the bias term
+            if initialize
+                lradj = 1;
+                fflr = 1;
+                lrbias = 1;
+                lr=1;
+                me.sumlr = 1;
+                me.sumlr2 = 1/size(FX,2);
+
+            else
+                [lradj,lr] = me.learningfunction(me.hos_learning_rate,m);
+                 fflr = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
+%               fflr = (1-(1-me.filter_adaptation_rate)^m);
+                %%% Adjust the learning rate according to the number of samples
+                %%% in Xin, giving the sample weight the same total as if it
+                %%% had been added serially.
+                 asympedf = 2./lr-1; %Asymptotic EDF
+
+                lrbias = 1./asympedf*(1-(1-lr).^(2*m)); % "Learning rate" for the sum of squared weights in the bias term
+                me.sumlr = me.sumlr*(1-lradj) + lradj;
+                me.sumlr2 = me.sumlr2*(1-lr).^(2*m) + lrbias;
+            end            
         
             me.B = (1-lradj)*me.B + lradj*BX;
             me.Bpart = (1-fflr)*me.Bpart + fflr*BXpart;
             me.PSD = (1-lradj)*me.PSD + lradj*XPSD;
-            me.sumlr = me.sumlr*(1-lradj) + lradj;
-            me.sumlr2 = me.sumlr2*(1-lr).^(2*m) + lrbias;
 %            me.sumlr2 = (me.sumlr2-1./asympedf)*(1-me.current_learning_rate).^(2*m) + lrbias;
             
             switch me.normalization
@@ -561,9 +588,18 @@ classdef hosobject < handle
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
         end
         
-        function update_waveform(me,Xsh)
+        function update_waveform(me,Xsh,initialize)
            m = size(Xsh,2);
-           lradj = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
+           if nargin < 3 || isempty(initialize)
+               initialize = false;
+           end
+           
+           if initialize
+               lradj=1;
+           else
+               lradj = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
+           end
+               
 %             lradj = (1-(1-me.filter_adaptation_rate)^m);
            me.waveform = me.waveform*(1-lradj) + mean(Xsh,2)*lradj; 
         end
@@ -584,11 +620,19 @@ classdef hosobject < handle
             me.bufferPos = me.bufferPos + length(snip);
         end
         
-        function get_input(me,xin)
+        function get_input(me,xin,apply_window,use_shifted,initialize)
            
             % Process input if length is >= buffer size, else add to buffer.
             nxin = numel(xin);
-            
+              if nargin < 5 || isempty(initialize)
+                 initialize=false;
+              end
+              if nargin < 4 || isempty(use_shifted)
+                 use_shifted=true;
+             end
+             if nargin < 3 || isempty(apply_window)
+                 apply_window=true;
+             end
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
                 if  size(xin,1) ~=me(1).bufferN 
@@ -607,7 +651,7 @@ classdef hosobject < handle
                 else
                     Xchop = xin;
                 end
-                me(1).do_updates(Xchop)
+                me(1).do_updates(Xchop,apply_window,use_shifted,initialize)
         
             else
                 me(1).write_buffer(xin);
@@ -615,7 +659,7 @@ classdef hosobject < handle
            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
-               me(2:end).get_input(xin-xrec);
+               me(2:end).get_input(xin-xrec,apply_window,use_shifted,initialize);
             end
             
             
@@ -661,16 +705,18 @@ classdef hosobject < handle
                 olddt2 = 0;
                 olddt =0;
                 Xsh = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+%                 Xsh = Xchop.*repmat(sqrt(me(1).win),1,size(Xchop,2));
+                Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 while del >tol && k < maxiter                    
                     if ishandle(makeplot)
                         set(makeplot,'cdata',Xsh);
-                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %2.2gs',compno,k,del/me(1).sampling_rate));
+                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
                         drawnow
                     elseif islogical(makeplot) && makeplot
                         figure,
                         makeplot = imagesc([],fftshift(me(1).sampt)/me(1).sampling_rate,Xsh);
-                        title(sprintf('Component %03i, Iter. %03i, Mean shift = %2.2gs',compno,k,del/me(1).sampling_rate));
+                        title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
                         drawnow
                     end
                     
@@ -680,14 +726,18 @@ classdef hosobject < handle
                     if k >2
                       olddt = me(1).delay;
                     end
-                    me(1).get_input(Xsh)
-                    [~,FXsh] = me(1).apply_filter(Xsh,false);
+%                      me(1).B(:)=0;
+%                     me(1).D(:) = 0;
+%                     me(1).BIASnum(:)=0;
+                    me(1).get_input(Xsh,true,false,true)
+                    [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
                     Xsh = real(ifftshift(ifft(FXsh),1));
                     newdt = me(1).delay;
                     % checks two and one step back to reduce getting
                     % trapped at points of cyclical stability.
                     del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     olddt2 = olddt;
+               
                 end
             else
                 me(1).write_buffer(xin);
@@ -784,29 +834,40 @@ classdef hosobject < handle
                 me.reconbuffer = Xrec;
             end
         end
-        function do_updates(me,X)
+        function do_updates(me,X,apply_window,use_shifted,initialize)
             
+            if nargin < 5 || isempty(initialize)
+                initialize = false;
+            end
+            if nargin < 4 || isempty(use_shifted)
+                use_shifted = true;
+            end
+            
+            if nargin < 3 || isempty(apply_window)
+                apply_window = true;
+            end
             if ~me.do_update
                warning('Updating is currently disabled. Set do_update = true to enable.') 
                return
             end
-            [Xfilt,FXsh] = me.apply_filter(X);
+            [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
             getwin = me.update_criteria(Xfilt);
+           
             if isempty(getwin)
                 return
             end
             if me.do_bsp_update
-               me.update_bispectrum(FXsh(:,getwin)); 
+               me.update_bispectrum(FXsh(:,getwin),initialize); 
             end
             if me.do_filter_update
-               me.update_filter(); 
+               me.update_filter; 
                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
                lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
                me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
             end
             if me.do_wave_update
                 Xsh = real(ifft(FXsh(:,getwin)));
-                me.update_waveform(Xsh); 
+                me.update_waveform(Xsh,initialize); 
             end
             me.window_number = me.window_number+sum(getwin);
             me.outputbuffer = mean(Xfilt,2);
