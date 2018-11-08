@@ -89,15 +89,16 @@ switch frequency_spacing
         frcent(isnan(frcent))=0;
 end
 
-  frsrti(end+1) = length(freqs{order})+1;
+%   frsrti(end+1) = length(freqs{order})+1;
 [srt,srti] = sort([(-1)^two_sided*Fsum(:);frcent(:)]);
 E = [zeros(n,1);ones(length(frcent),1)];
 E = E(srti); 
 IND = zeros(size(E));
 IND(srti) = cumsum(E);
  IND(n+1:end) = [];
-%  IND(IND==0) = length(freqs{end})+1;
-IND(IND==0) = length(frsrti);
+%  IND(IND==0) = length(freqs{end});
+IND(IND==0) = 1;
+IND(IND>length(frsrti)) = length(frsrti);
 IND =  frsrti(reshape(IND,size(Fsum)));
 
 Is{order}=IND(:) ;
@@ -108,10 +109,12 @@ freqindex = cellfun(@(x)[find(x),0],keepfreqs,'uniformoutput',false);
 Is = cellfun(@(x,fri)fri(x(:))',Is,freqindex,'uniformoutput',false);
 Is = [Is{:}];
 %Isreduced = Is(keep,:);
-W = [];
-for k = 1:order
-   W(k,:) = Ws{k};%(keep);
-end
+% W = [];
+% for k = 1:order
+%    W(k,:) = Ws{k};%(keep);
+% end
+W = [Ws{:}]';
+
 subremap = zeros(size(keep));
 subremap(keep) = find(keep);
 
@@ -138,6 +141,25 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
 %   Isreduced = IsreducedPD;
    Is = IsPD;
    subremap = PDremap;
+   
+   %%% Identify the symmetry regions for partial cross bicoherence
+   W23 = W(2:order,:);
+      [W23srt,w23srti] = sort(round(abs(W23)./tol)*tol);
+    w23srti = w23srti + (order-1)*repmat(0:size(W23,2)-1,order-1,1);
+    W23srt = W23srt.*sign(W23(w23srti));
+    SR = uint8(zeros(sum(keep(:)),1));
+    for k = order:-1:1
+        W23pd=W(setdiff(1:order,k),PD);
+        [W23pdsrt,w23pdsrti] = sort(round(abs(W23pd)./tol)*tol);
+        w23pdsrti = w23pdsrti + (order-1)*repmat(0:size(W23pdsrt,2)-1,order-1,1);
+        W23pdsrt = W23pdsrt.*sign(W23pd(w23pdsrti));
+        sri = ismember(W23srt',[W23pdsrt';-W23pdsrt'],'rows');
+        SR(sri) = k;
+    end
+ 
+    
+ 
+
 else 
 %    PDconjugate = zeros(size(remap));
 %    PDconjugate(unaliased) = sum(sign(Wsrt(1:3,:)))<0;
@@ -170,3 +192,6 @@ PDconj = false(size(Z));
 PDconj(keepregion) = PDconjugate;
 out.PDconj = PDconj;
 out.Bfreqs = cellfun(@(fr,kpfr)fr(kpfr),freqsin(1:end-1),keeplp,'uniformoutput',false);
+SymReg = uint8(zeros(size(keepall)));
+SymReg(keepall)=SR;
+out.partialSymmetryRegions=SymReg;
