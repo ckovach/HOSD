@@ -10,6 +10,8 @@ classdef hosobject < handle
     %       order - order (default = 3)
     %
     
+    % Copyright Christopher K. Kovach, University of Iowa 2018
+    
     properties
        order = 3;
        freqs       
@@ -159,7 +161,7 @@ classdef hosobject < handle
             end
 %             me.order = order;
             me(1).freqs = freqs;
-            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
+%             me(1).G = ones(sum(me(1).keepfreqs{1}),1);
             k = 1;
             while k < length(varargin)    
                 me(1).(varargin{k}) = varargin{k+1};
@@ -367,7 +369,7 @@ classdef hosobject < handle
             if nargin < 4 || isempty(return_shifted)
                return_shifted = true; 
             end
-                
+            FXshift = [];
             if length(X) == me.bufferN
                 if apply_window
                     win = me.win;
@@ -449,7 +451,8 @@ classdef hosobject < handle
            if nargin < 2
                in = me.dat;
            end
-           out = me(1).apply_filter(in);  
+            [out,~] = me(1).apply_filter(in);  
+        
            if length(me)>1
                out = [out,me(2:end).xfilt(in-me(1).xrec(in))];
            end
@@ -570,11 +573,25 @@ classdef hosobject < handle
         end
         
         function update_filter(me)
-               
+    
+               postwin = @(x) 1+cos(2*pi*x);
+%                postwin = @(x) exp(-x.^2*8);
                Bpart = me.Bpart(me.freqindx.remap);
                Bpart(me.freqindx.PDconj) = conj(Bpart(me.freqindx.PDconj));
-               G = sum(Bpart(:,:).*me.H(:,:),2);
-     
+                GG = Bpart.*me.H;
+            
+                %%% Preserve the time winwowing
+%                ng = size(GG);
+%                t1 = (fftshift((0:ng(1)-1)-ceil(ng(1)/2)))./ng(1);
+%                t2 = (fftshift((0:ng(2)-1)-ceil(ng(2)/2)))./ng(2);
+%                [T1,T2]= ndgrid(t1,t2);
+%                TMW=zeros(size(GG));
+%                TMW(:) = postwin(T1).*postwin(T2).*postwin(T1-T2);
+%                GGwin = fftn(real(ifftn(GG)).*TMW);
+%                G = sum(GGwin,2);
+
+               G = sum(GG,2);
+
 %                %%% Remove linear phase trend so the energy of the filter
 %                %%% is more-or-less centered
 %                   dph = G(2:end).*conj(G(1:end-1))./(abs(G(1:end-1))+abs(G(2:end))+eps)*2;
@@ -700,23 +717,37 @@ classdef hosobject < handle
                     Xchop = xin;
                 end
                 del = Inf;
-                tol =1; % Stop when the average shift is less than 1 sample
+%                 tol =1; % Stop when the average shift is less than 1 sample
+                tol =me(1).sampling_rate/me(1).lowpass;
                 k = 0;
                 olddt2 = 0;
                 olddt =0;
-                Xsh = Xchop.*repmat(me(1).win,1,size(Xchop,2));
-%                 Xsh = Xchop.*repmat(sqrt(me(1).win),1,size(Xchop,2));
-                Xfilt=Xsh;
+%                 Xwin = Xchop.*repmat(kaiser(me(1).bufferN,3),1,size(Xchop,2));
+                Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+                Xsh = Xwin;
+                 Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 while del >tol && k < maxiter                    
-                    if ishandle(makeplot)
-                        set(makeplot,'cdata',Xsh);
-                        title(sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
+                    if all(ishandle(makeplot))
+                        set(makeplot(1),'cdata',Xsh);
+                        set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
+%                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
+                        set(makeplot(mod(k,5)+2),'ydata',me(1).feature);
                         drawnow
                     elseif islogical(makeplot) && makeplot
                         figure,
+                        subplot(1,2,1)
                         makeplot = imagesc([],fftshift(me(1).sampt)/me(1).sampling_rate,Xsh);
-                        title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
+                        makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
+                        subplot(1,2,2)
+%                          makeplot(2:6) = plot(ifftshift(me(1).freqs{1}),ifftshift(abs(me(1).filterfft))*ones(1,5));
+                         plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
+                         cmap = hsv(length(plh));
+                         for pli = 1:length(plh)
+                             plh(pli).Color = cmap(pli,:);
+                         end
+                         makeplot(2:6)=plh;
+%                         xlim([0 me(1).lowpass])
                         drawnow
                     end
                     
@@ -729,7 +760,10 @@ classdef hosobject < handle
 %                      me(1).B(:)=0;
 %                     me(1).D(:) = 0;
 %                     me(1).BIASnum(:)=0;
-                    me(1).get_input(Xsh,true,false,true)
+                    apply_window = false;
+                    use_shifted=false;
+                    initialize = true;
+                    me(1).get_input(Xsh,apply_window,use_shifted,initialize)
                     [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
                     Xsh = real(ifftshift(ifft(FXsh),1));
                     newdt = me(1).delay;
@@ -739,6 +773,10 @@ classdef hosobject < handle
                     olddt2 = olddt;
                
                 end
+                
+                %%% Set the delays to the correct value for the original
+                %%% data set;
+                [~,~] = me(1).apply_filter(Xwin);
             else
                 me(1).write_buffer(xin);
             end    
