@@ -75,7 +75,7 @@ classdef hosobject < handle
       BIASnum = 0;
         
        Bval = 0;
-       Bpartval = 0;
+       Bpartval = {};
        Dval = 1;
     end
     properties (Dependent = true)
@@ -227,7 +227,8 @@ classdef hosobject < handle
                 
             Z =zeros(size(me.freqindx.Is,1)+1,1);
             me.B = Z; 
-            me.Bpart = Z;
+            me.Bpart = {};
+            me.Bpart(1:me.order) = {Z};
             me.D = Z;
              me.BIASnum=Z;
             me.G= ones(sum(me.keepfreqs{1}),1);
@@ -425,10 +426,12 @@ classdef hosobject < handle
             end
         end
         function  set.Bpart(me,in)
-            if min(size(in))==1
+            if isempty(in) || min(size(in{1}))<=1
                	me.Bpartval=in; 
             else
-               me.Bpartval = [in(me.freqindx.reduce);0];
+                for kk = 1:length(in)
+                    me.Bpartval{kk} = [in{kk}(me.freqindx.reduce);0];
+                end
             end
         end
         %%%%%%%
@@ -511,20 +514,32 @@ classdef hosobject < handle
 %             Xwin = Xin.*me.win;
 %             FX = fft(Xwin);
            % FFX = 1;
+%            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
             FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+            FFXpart = {};
+            FFXpart(1:2) = {FFX};
+            FFXpart{3} = ones(size(FFX));
+            
             for k = me.order-1:-1:1
-                if k == 1
-                    FFXpart = FFX;
+                FXk = FX(me.freqindx.Is(:,k),:);
+                for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
+                    FFXpart{kk} = FFXpart{kk}.*FXk;
                 end
-                FFX = FFX.*FX(me.freqindx.Is(:,k),:);
+                FFX = FFX.*FXk;
             end
             
             BX = mean(FFX,2);
             XPSD = mean(abs(FX).^2,2);
-            BXpart = mean(FFXpart,2);
+%             BXpart = mean(FFXpart,2);
+            
             BX(end+1,1) = 0;
             XPSD(end+1,:) =0;
-            BXpart(end+1,:) = 0;
+%             BXpart(end+1,:) = 0;
+            BXpart = {};
+            for kk = 1:me.order
+               BXpart{kk} = mean(FFXpart{kk},2); 
+               BXpart{kk}(end+1,:) = 0;
+            end
             
             if initialize
                 lradj = 1;
@@ -549,7 +564,11 @@ classdef hosobject < handle
             end            
         
             me.B = (1-lradj)*me.B + lradj*BX;
-            me.Bpart = (1-fflr)*me.Bpart + fflr*BXpart;
+%             me.Bpart = (1-fflr)*me.Bpart + fflr*BXpart;
+             for kk = 1:me.order
+                me.Bpart{kk} = (1-fflr)*me.Bpart{kk} + fflr*BXpart{kk};
+             end
+
             me.PSD = (1-lradj)*me.PSD + lradj*XPSD;
 %            me.sumlr2 = (me.sumlr2-1./asympedf)*(1-me.current_learning_rate).^(2*m) + lrbias;
             
@@ -563,7 +582,8 @@ classdef hosobject < handle
                     me.D = (1-lradj)*me.D + lradj*NX+eps;
                    
                 case {'bicoh','bicoherence'}
-                    XBCpart = mean(FFXpart,2);
+                    %This doesn't seem to have strictly correct symmetry
+                    XBCpart = mean(abs(FFXpart{1}).^2,2);
                     XBCpart(end+1,1) = 0;
                     me.BCpart = (1-lradj)*me.BCpart + lradj*XBCpart;                    
                     me.D = sqrt(me.BCpart.*me.PSD(me.freqindx.Is(:,1)))+eps;
@@ -576,8 +596,15 @@ classdef hosobject < handle
     
                postwin = @(x) 1+cos(2*pi*x);
 %                postwin = @(x) exp(-x.^2*8);
-               Bpart = me.Bpart(me.freqindx.remap);
-               Bpart(me.freqindx.PDconj) = conj(Bpart(me.freqindx.PDconj));
+
+%                Bpart = me.Bpart(me.freqindx.remap);
+
+                Bpart = zeros(size(me.freqindx.remap));
+                for k = 1:length(me.Bpart)                    
+                    Bpart = Bpart + me.Bpart{k}(me.freqindx.remap).*(me.freqindx.partialSymmetryRegions==k);
+                end
+                Bpart(me.freqindx.PDconj) = conj(Bpart(me.freqindx.PDconj));
+
                 GG = Bpart.*me.H;
             
                 %%% Preserve the time winwowing
@@ -723,16 +750,20 @@ classdef hosobject < handle
                 olddt2 = 0;
                 olddt =0;
 %                 Xwin = Xchop.*repmat(kaiser(me(1).bufferN,3),1,size(Xchop,2));
-                Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+                  Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
                 Xsh = Xwin;
                  Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
+                color_cycle = 10;
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
                         set(makeplot(1),'cdata',Xsh);
                         set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
 %                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
-                        set(makeplot(mod(k,5)+2),'ydata',me(1).feature);
+%                         for pli = 1:length(makeplot)
+%                             set(plh(pli),'ydata',get(makeplot(pli),'ydata')+std(me(1).feature)*.5);
+%                          end
+                        set(makeplot(mod(k,5)+2),'ydata',me(1).feature,'Color',hsv2rgb([mod(k,color_cycle)/color_cycle 1 .8]));
                         drawnow
                     elseif islogical(makeplot) && makeplot
                         figure,
@@ -742,9 +773,10 @@ classdef hosobject < handle
                         subplot(1,2,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs{1}),ifftshift(abs(me(1).filterfft))*ones(1,5));
                          plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
-                         cmap = hsv(length(plh));
+%                          cmap = hsv(length(plh));
                          for pli = 1:length(plh)
-                             plh(pli).Color = cmap(pli,:);
+                         
+                             plh(pli).Color = hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]);
                          end
                          makeplot(2:6)=plh;
 %                         xlim([0 me(1).lowpass])
@@ -760,6 +792,8 @@ classdef hosobject < handle
 %                      me(1).B(:)=0;
 %                     me(1).D(:) = 0;
 %                     me(1).BIASnum(:)=0;
+
+             
                     apply_window = false;
                     use_shifted=false;
                     initialize = true;
