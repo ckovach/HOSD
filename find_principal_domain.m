@@ -5,8 +5,8 @@ function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass)
 % The principal domain represents a set of non-redundant regions in the
 % higher order spectrum. Redundancy has two sources: (1)
 % permutation of axes and (2) conjugate symmetry. By (1) we can include
-% only regions such that W1<W2<...<Wk<0 and by (2) we 
-% can exclude regions with signature given by a sign reversal of included region. 
+% only regions such that 0<s1*W1<s2*W2<...<sk*Wk, where sj is a sign and by (2) we 
+% can exclude regions with signature given by a sign reversal of an included region. 
 % We can therefore proceed by including regions on the basis of (1) for each 
 % non-redundant signature under sign reversal. In the case of the bispectrum, 
 % there is only one non-redundant signature (+,+,-), hence (1) applies
@@ -105,4 +105,14 @@ for k = 1:nsig
     PD = PD | PD0;
   
 end
+
+
+
+
+
+
+
+
+
+
  
