@@ -386,6 +386,10 @@ classdef hosobject < handle
     %                 FX = fft(X);
                     samptc=(me.sampt);
                      dt = samptc(mxi);
+                     %%% Center the delays
+                     mph = mean(exp(1i*2*pi*dt./me.bufferN));
+                     mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
+                     dt = dt-mdt;
                     delt = me.radw*dt;
                     FXshift = exp(1i*delt).*FXwin;
                     me.delay = dt;
@@ -749,15 +753,19 @@ classdef hosobject < handle
                 k = 0;
                 olddt2 = 0;
                 olddt =0;
-%                 Xwin = Xchop.*repmat(kaiser(me(1).bufferN,3),1,size(Xchop,2));
-                  Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
+                  Xwin = Xchop.*repmat(kaiser(me(1).bufferN,5),1,size(Xchop,2));
+%                 Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+%                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
                 Xsh = Xwin;
                  Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 color_cycle = 10;
+                    if all(ishandle(makeplot))
+                        set(makeplot(1:end-1),'ydata',zeros(me(1).bufferN,1));
+                    end
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
-                        set(makeplot(1),'cdata',Xsh);
+                        set(makeplot(1),'cdata',Xsh');
                         set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
 %                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
 %                         for pli = 1:length(makeplot)
@@ -767,10 +775,10 @@ classdef hosobject < handle
                         drawnow
                     elseif islogical(makeplot) && makeplot
                         figure,
-                        subplot(1,2,1)
-                        makeplot = imagesc([],fftshift(me(1).sampt)/me(1).sampling_rate,Xsh);
+                        subplot(2,1,1)
+                        makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
                         makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
-                        subplot(1,2,2)
+                        subplot(2,1,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs{1}),ifftshift(abs(me(1).filterfft))*ones(1,5));
                          plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
 %                          cmap = hsv(length(plh));
@@ -794,7 +802,7 @@ classdef hosobject < handle
 %                     me(1).BIASnum(:)=0;
 
              
-                    apply_window = false;
+                    apply_window = true;
                     use_shifted=false;
                     initialize = true;
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize)
