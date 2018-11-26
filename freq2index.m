@@ -115,7 +115,12 @@ Is = [Is{:}];
 % end
 W = [Ws{:}]';
 
-subremap = zeros(size(keep));
+% Use the most economical integer type for indexing
+intTypes = {'uint8','uint16','uint32','uint64'};
+maxInts = cellfun(@(x)double(intmax(x)),intTypes);
+useInt = intTypes{logical(diff([false,size(Is,1)<maxInts]))};
+
+subremap = zeros(size(keep),useInt);
 subremap(keep) = find(keep);
 
 tol = min(abs(diff([freqs{:}])))/2;
@@ -175,7 +180,7 @@ keepregion = false(dims);
 keepregion(keeplp2{:})=true;
 keepall = false(dims);
 keepall(keepregion) = keep;
-Z = zeros(dims);
+Z = zeros(dims,useInt);
 PDall=Z;
 PDall(keepall)=PD;
 remap = Z;
