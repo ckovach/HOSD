@@ -41,7 +41,7 @@ classdef hosobject < handle
        keepfreqs
        pdonly = true;
        dat = [];
-      
+       avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -161,7 +161,7 @@ classdef hosobject < handle
             end
 %             me.order = order;
             me(1).freqs = freqs;
-%             me(1).G = ones(sum(me(1).keepfreqs{1}),1);
+%            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
             k = 1;
             while k < length(varargin)    
                 me(1).(varargin{k}) = varargin{k+1};
@@ -194,6 +194,7 @@ classdef hosobject < handle
             me.B(:)=0;
             me.G(:)=1;
             me.window_number=0;
+            me.avg_delay = 1;
         end
         function update_frequency_indexing(me,freqindex)
             lowpass = me.lowpassval;
@@ -363,15 +364,18 @@ classdef hosobject < handle
            me.waveform = fftshift(in); 
         end
         %%%%%%%%
-        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,varargin)
+        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,center_delays,varargin)
             if nargin<3
                 apply_window = true;
             end
             if nargin < 4 || isempty(return_shifted)
                return_shifted = true; 
             end
+            if nargin < 5 || isempty(center_delays)
+               center_delays = true; 
+            end
             FXshift = [];
-            if length(X) == me.bufferN
+            if size(X,1) == me.bufferN
                 if apply_window
                     win = me.win;
                 else
@@ -387,9 +391,13 @@ classdef hosobject < handle
                     samptc=(me.sampt);
                      dt = samptc(mxi);
                      %%% Center the delays
-                     mph = mean(exp(1i*2*pi*dt./me.bufferN));
-                     mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
-                     dt = dt-mdt;
+                    
+                     if center_delays
+                         
+                         mph = me.avg_delay;
+                         mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
+                         dt = dt-mdt;
+                     end
                     delt = me.radw*dt;
                     FXshift = exp(1i*delt).*FXwin;
                     me.delay = dt;
@@ -397,7 +405,7 @@ classdef hosobject < handle
                      FXshift = FXwin;
                 end
             else
-                 Xin = X;
+                 Xin = X(:);
                 Xin(end+me.bufferN,:) = 0;
                 Xfilt = filter(me.filterfun,1,Xin);
                 Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2));
@@ -476,12 +484,14 @@ classdef hosobject < handle
 %            end         
 
         end
-        function out = xthresh(me,in)
+        function [out,trialthresh] = xthresh(me,in)
              % Get the thresholded data 
            if nargin < 2
                in = me.dat;
            end
-           out = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
+           [Xthresh,~,trialthresh] = filter_threshold(me(1).apply_filter(in));
+%            out = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
+           out = sparse(Xthresh);
            if length(me)>1
                out= [out,me(2:end).xthresh(in-me(1).xrec(in))];
            end
@@ -850,6 +860,7 @@ classdef hosobject < handle
             end
             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold;
+                 Xcs = [];
             elseif me.order ==3
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
@@ -866,6 +877,7 @@ classdef hosobject < handle
                 detect = any(keepsrt);
                 trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.order;
                 trialthresh(~detect) = Inf;
+                Xcs=[];
             else
                 % For now, apply a simple threshold on the moment for
                 % orders > 3. This should be improved to use the proper
@@ -944,6 +956,16 @@ classdef hosobject < handle
                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
                lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
                me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
+
+               mph = mean(exp(1i*2*pi*me.delay./me.bufferN));
+%                mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
+%                  lr2=me.hos_learning_rate;
+%                  lr2 = me.learningfunction(lr2,sum(getwin),1/lr2);
+%                  lr2=sum(getwin)./(sum(getwin)+100);
+               lr2=lradj;
+                %lr2=0;
+          %     me.avg_delay = me.avg_delay*(1-lradj2) + lradj2*mph;
+               me.avg_delay =  lr2*mph + (1-lr2);
             end
             if me.do_wave_update
                 Xsh = real(ifft(FXsh(:,getwin)));
