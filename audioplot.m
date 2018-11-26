@@ -1,14 +1,15 @@
 
 ncascade = 4;
 
+
 h = dsp.AudioRecorder;
 h.SampleRate = 8000;
 h.SamplesPerFrame = 1200;
 h.NumChannels=1;
 Fs = h.SampleRate;
-
+clear hoss
 for k = 1:ncascade
-hos = hosobject(3,600,h.SampleRate,h.SampleRate/2);
+hos = hosobject(3,400,h.SampleRate,h.SampleRate/2);
 %hos.window= @(x)kaiser(x,3);
 
 hos.glowpass = h.SampleRate/2*.99;
@@ -31,6 +32,8 @@ kpw = false(size(w));
 kpw(hos.keepfreqs{1}) = true;
 w = w(fftshift(kpw));
 im(1) = imagesc(w,w,fftshift(abs(hos.Bfull(:,:)))); 
+axis([min(abs(w)) max(abs(w)) min(abs(w)) max(abs(w))])
+axis xy
 %caxis([0 1])
 colorbar
 axis image
@@ -57,20 +60,23 @@ nfr = 200;
 Xfs = Xrs;
 Xresids = Xs;
 go = true;
-clear Xr
+clear Xr Xfs
 for kkk = 1:nfr*1e6
     k = mod(kkk-1,nfr)+1
        Xn = step(h);
 %    Xn = Xs(:,k);
-     Xresid = Xn;
-    
-    for kk = 1:ncascade
-        hoss(kk).get_input(Xresid);
-        Xr(:,kk) = hoss(kk).reconstruct(Xn);
-        Xf(:,kk) = hoss(kk).apply_filter(Xn);
-        Xresid = Xresid-Xr(:,kk);
-    end
-    
+%      Xresid = Xn;
+%     
+%     for kk = 1:ncascade
+%         hoss(kk).get_input(Xresid);
+%         Xr(:,kk) = hoss(kk).reconstruct(Xn);
+%         Xf(:,kk) = hoss(kk).apply_filter(Xn);
+%         Xresid = Xresid-Xr(:,kk);
+%     end
+    hoss.get_input(Xn);
+    Xf = hoss.xfilt(Xn);
+    Xr = hoss.xrec(Xn);
+    Xresid = Xn-sum(Xr,2);
     set(im(1),'CData',fftshift(abs(hoss(1).bicoh(:,:)))), 
    % set(im(2), 'Ydata',fftshift(hoss(1).shiftbuffer)*0), 
 %    set(im(3), 'Ydata',fftshift([hoss.waveform]));
@@ -91,6 +97,6 @@ for kkk = 1:nfr*1e6
     Xfs(:,:,k) = Xf;
     %Xfs(:,k)= hos.apply_filter(Xn);
 end
-
+delete(h)
 xrs = reshape(permute(Xrs,[1 3 2]),size(Xrs,1)*size(Xrs,3),size(Xrs,2));
 
