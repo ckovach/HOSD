@@ -179,22 +179,26 @@ classdef hosobject < handle
             end
         end
         function reset(me)
-            me.window_number = 0;
-            me.sumlr =0;
-            me.sumlr2 = 0;
-            z=zeros(me.bufferN,1);
-            me.inputbuffer = z;
-            me.outputbuffer = z;
-            me.waveform = z;
-            me.shiftbuffer = z;
-            me.thresholdbuffer=z;
-            me.PSD = [z;0];
-%             me.G = ones(size(z));
-            me.bufferPos = 0;
-            me.B(:)=0;
-            me.G(:)=1;
-            me.window_number=0;
-            me.avg_delay = 1;
+            
+            me(1).window_number = 0;
+            me(1).sumlr =0;
+            me(1).sumlr2 = 0;
+            z=zeros(me(1).bufferN,1);
+            me(1).inputbuffer = z;
+            me(1).outputbuffer = z;
+            me(1).waveform = z;
+            me(1).shiftbuffer = z;
+            me(1).thresholdbuffer=z;
+            me(1).PSD = [z;0];
+%             me(1).G = ones(size(z));
+            me(1).bufferPos = 0;
+            me(1).B(:)=0;
+            me(1).G(:)=1;
+            me(1).window_number=0;
+            me(1).avg_delay = 1;
+            if length(me)>1
+                me(2:end).reset();
+            end
         end
         function update_frequency_indexing(me,freqindex)
             lowpass = me.lowpassval;
@@ -608,7 +612,7 @@ classdef hosobject < handle
         
         function update_filter(me)
     
-               postwin = @(x) 1+cos(2*pi*x);
+%               postwin = @(x) 1+cos(2*pi*x);
 %                postwin = @(x) exp(-x.^2*8);
 
 %                Bpart = me.Bpart(me.freqindx.remap);
