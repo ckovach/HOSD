@@ -3,13 +3,40 @@ classdef hosobject < handle
     % Class implementing higher-order spectral filtering based on Kovach
     % 2018.
     %
-    % Usage:
-    %        hos = hosobject(order,N,sampling_rate,lowpass,freqs,varargin)
+    % Usage: 
+    %   To create a hos object
+    %        hos = hosobject(order,N,sampling_rate,lowpass)
     %
+    %   To fit the object to a block of data (offline mode)
+    %        hos.get_block(data)
+    %
+    %   To add a short segment of data in computing a running average (online mode):
+    %        hos.get_input(data)
+    %   
+    %   To initialize an M component decomposition:
+    %        hos(M) = hosobject;
+    %        hos.initialize(N,sampling_rate,lowpass)
+    %   
     % Inputs: 
-    %       order - order (default = 3)
+    %       HOS order - order (default = 3)
+    %       N - buffer length in samples used to compute HOS
+    %       sampling_rate - sample rate
+    %       lowpass - lowpass cutoff
+    %       data  -  input data in the form of samples x segments. If data
+    %               is a single column vector it will be segmented into
+    %               overlapping N point segments.
     %
-    
+    % Outputs: 
+    %       hos.waveform - Recovered feature waveform
+    %       hos.filterfun - Feature detection filter
+    %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
+    %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
+    %       ximp = hos.ximp(data) - Samples at which the feature is detected.
+    %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
+    %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
+    %                  
+    %
+    %
     % Copyright Christopher K. Kovach, University of Iowa 2018
     
     properties
@@ -22,14 +49,14 @@ classdef hosobject < handle
       
        
        
-       sampling_rate = 1;
-       normalization = 'awplv';
-       hos_learning_rate = .01;
-       filter_adaptation_rate = .02;
+       sampling_rate = 1; % Sampling rate of the input data
+       normalization = 'awplv'; % Normalization used in computing bi-(or poly-)coherence
+       hos_learning_rate = .01; % Learning rate for online mode
+       filter_adaptation_rate = .02; % Filter adaptation rate for online mode
 %        learningrate = .02; % Asymptotic learning rate
        burnin = 20;
-       window_number = 0;
-       poverlap = .5;
+       window_number = 0;  % Nunmber of window processed
+       poverlap = .5;      % Default overlap between adjacent windows
       
        do_update = true;
        do_bsp_update = true;
@@ -68,9 +95,9 @@ classdef hosobject < handle
     
     properties (Access = private)
       bufferN = 1024;
-      G = [];
+      G = []; 
 
-      wintype = 'hann';
+      wintype = 'hann'; % Default window type
       win = hann(1024);
       BCpart = 0;
        highpassval = 0;
@@ -547,14 +574,13 @@ classdef hosobject < handle
 %            end         
 
         end
-        function [out,trialthresh] = xthresh(me,in)
+        function out = xthresh(me,in)
              % Get the thresholded data 
            if nargin < 2
                in = me.dat;
            end
-           [Xthresh,~,trialthresh] = filter_threshold(me(1).apply_filter(in));
-%            out = sparse(me(1).filter_threshold(me(1).apply_filter(in)));  
-           out = sparse(Xthresh);
+           out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
+
            if length(me)>1
                out= [out,me(2:end).xthresh(in-me(1).xrec(in))];
            end
