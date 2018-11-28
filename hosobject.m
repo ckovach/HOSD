@@ -35,6 +35,8 @@ classdef hosobject < handle
        do_bsp_update = true;
        do_wave_update = true;
        do_filter_update = true;
+       adjust_lag = true; % Automatically apply a circular shift to the filter and waveforms to center the energy in both
+       lag = 1; % A phasor representing the amount of circularshift added to the filter estimate (1 = no shift, +/-1i = max shift)
        thresh = 0;
        threshtemp = 1;
        threshold_type = 'hard';
@@ -53,13 +55,15 @@ classdef hosobject < handle
         shiftbuffer = [];
         thresholdbuffer=[];
         freqindx = [];
-        waveform = [];
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
         radw = [];
         sampt = [];
         delay = 0;
+        waveftlag = [];
+      
+
     end
     
     properties (Access = private)
@@ -84,10 +88,13 @@ classdef hosobject < handle
 %         inputfiltered  
 %         input_shifted
         buffersize
-        filterfun
-        filterfft
+        waveform; %% The feature waveform
+        wavefft;
+        filterfun %% The ifftshifted filter function 
+        filterfft %% FFT of the filterfunction
 %         current_learning_rate;
-        window 
+        filterftlag;
+        window %% Window used prior to calculating estimates
         bicoh
         H
         EDF
@@ -196,6 +203,7 @@ classdef hosobject < handle
             me(1).G(:)=1;
             me(1).window_number=0;
             me(1).avg_delay = 1;
+            me(1).lag=1;
             if length(me)>1
                 me(2:end).reset();
             end
@@ -309,26 +317,79 @@ classdef hosobject < handle
            me.wintype=win;
             me.win = window(win,me.bufferN); %#ok<*CPROPLC>
         end
-        function out = get.filterfft(me)
-           
+        function out = get.filterftlag(me)
+           %%% Filter FT without circular shift adjustment
             out = zeros(me.bufferN,1);
             out(me.keepfreqs{1}) = me.G;
+        end
+        function out = get.filterfft(me)
+           
+            %%% Filter with lag adjustment
+            out =me.filterftlag;
+           
+            %Adjust centering.
+           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+           delt = me.radw*dt;
+           out= exp(-1i*delt).*out;
+
+        end
+        function set.filterfft(me,in)
+           
+           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+           delt = me.radw*dt;
+           F= exp(1i*delt).*in;
+           
+            me.G = F(me.keepfreqs{1}) ;
             
         end
         function out = get.filterfun(me)
-           
+           %%% Filter function with lag adjustment
             F = me.filterfft;
             out = ifftshift(real(ifft(F)));
 %             out = real(ifft(F));
             
         end
+         function out = get.wavefft(me)
+           
+            F = me.waveftlag;
+            
+               %Adjust centering.
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            delt = me.radw*dt;
+            out = exp(1i*delt).*F;
+         
+%             out = real(ifft(F));
+            
+        end
+         function set.wavefft(me,in)
+           
+             F = in;
+            
+            %Adjust centering.
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            delt = me.radw*dt;
+            me.waveftlag = exp(-1i*delt).*F;
+            
+        end
+        function out = get.waveform(me)
+           
+            out = real(ifft(me.wavefft));
+                                 
+        end
+        function set.waveform(me,in)
+                      
+           F = fft(in);
+           me.wavefft = F;
+            
+        end
+        
         function set.filterfun(me,in)
            
             if length(in)>me.bufferN
-                warning('Filer function size does not match current buffer. Filter will be truncated.')
+                warning('Filter function size does not match current buffer. Filter will be truncated.')
                in(me.bufferN+1:end)=[];
             elseif length(in)<me.bufferN;
-                warning('Filer function size does not match current buffer. Filter will be padded.')
+                warning('Filter function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
             F =fft(fftshift(in));
@@ -336,11 +397,7 @@ classdef hosobject < handle
             me.filterfft = F;
             
         end
-        function set.filterfft(me,in)
-           
-            me.G = in(me.keepfreqs{1}) ;
-            
-        end
+     
 %         %%%%%%%
 %         function out = get.current_learning_rate(me)
 %             out = me.learningfunction;
@@ -361,23 +418,24 @@ classdef hosobject < handle
         end
         %%%%%%%
         function out = get.feature(me)
-           out = ifftshift(me.waveform); 
+            out = ifftshift(me.waveform); 
+%             out = me.waveform;
         end
          %%%%%%%
         function set.feature(me,in)
            me.waveform = fftshift(in); 
         end
         %%%%%%%%
-        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,center_delays,varargin)
+        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,varargin)
             if nargin<3
                 apply_window = true;
             end
             if nargin < 4 || isempty(return_shifted)
                return_shifted = true; 
             end
-            if nargin < 5 || isempty(center_delays)
-               center_delays = true; 
-            end
+%             if nargin < 5 || isempty(center_delays)
+%                center_delays = false; 
+%             end
             FXshift = [];
             if size(X,1) == me.bufferN
                 if apply_window
@@ -394,17 +452,18 @@ classdef hosobject < handle
     %                 FX = fft(X);
                     samptc=(me.sampt);
                      dt = samptc(mxi);
-                     %%% Center the delays
-                    
-                     if center_delays
-                         
-                         mph = me.avg_delay;
-                         mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
-                         dt = dt-mdt;
-                     end
+        
+                     me.delay = dt;             
+%                      %%% Center the delays
+%                      if center_delays
+%                          
+%                          mph = me.avg_delay;
+%                          mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
+%                          dt = dt-mdt;
+%                      end
                     delt = me.radw*dt;
                     FXshift = exp(1i*delt).*FXwin;
-                    me.delay = dt;
+       
                 else
                      FXshift = FXwin;
                 end
@@ -529,6 +588,12 @@ classdef hosobject < handle
             if isempty(FX)
                 return
             end
+            
+            %%% Adjust for lag
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            delt = me.radw*dt;
+            FX = repmat(exp(-1i*delt),1,size(FX,2)).*FX;
+
 %             Xwin = Xin.*me.win;
 %             FX = fft(Xwin);
            % FFX = 1;
@@ -648,10 +713,19 @@ classdef hosobject < handle
               
           %    me.G = Gshift(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
+               
+                if me.adjust_lag
+                   ffun = real(ifft(me.filterftlag));
+                   mph = sum(exp(-1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
+                   me.lag = mph; % Circularshift to keep filter energy centered on the window
+%                    dt = atan2(imag(mph),real(mph))/(2*pi)*me.bufferN;
+%                    delt = me.radw*dt;
+%                     me.filterfft= exp(1i*delt).*me.filterfft;
+                end
         end
         
-        function update_waveform(me,Xsh,initialize)
-           m = size(Xsh,2);
+        function update_waveform(me,FXsh,initialize)
+           m = size(FXsh,2);
            if nargin < 3 || isempty(initialize)
                initialize = false;
            end
@@ -663,7 +737,9 @@ classdef hosobject < handle
            end
                
 %             lradj = (1-(1-me.filter_adaptation_rate)^m);
-           me.waveform = me.waveform*(1-lradj) + mean(Xsh,2)*lradj; 
+           %me.waveform = me.waveform*(1-lradj) + mean(Xsh,2)*lradj; 
+           me.wavefft = me.wavefft*(1-lradj) + mean(FXsh,2)*lradj; 
+           
         end
         
         function write_buffer(me,snip)
@@ -767,8 +843,8 @@ classdef hosobject < handle
                 k = 0;
                 olddt2 = 0;
                 olddt =0;
-                  Xwin = Xchop.*repmat(kaiser(me(1).bufferN,5),1,size(Xchop,2));
-%                 Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+%                  Xwin = Xchop.*repmat(kaiser(me(1).bufferN,5),1,size(Xchop,2));
+                 Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
 %                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
                 Xsh = Xwin;
                  Xfilt=Xsh;
@@ -816,8 +892,8 @@ classdef hosobject < handle
 %                     me(1).BIASnum(:)=0;
 
              
-                    apply_window = true;
-                    use_shifted=false;
+                    apply_window = false;
+                    use_shifted=true;
                     initialize = true;
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize)
                     [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
@@ -936,7 +1012,7 @@ classdef hosobject < handle
                 initialize = false;
             end
             if nargin < 4 || isempty(use_shifted)
-                use_shifted = true;
+                use_shifted = false;
             end
             
             if nargin < 3 || isempty(apply_window)
@@ -960,20 +1036,25 @@ classdef hosobject < handle
                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
                lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
                me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
-
-               mph = mean(exp(1i*2*pi*me.delay./me.bufferN));
-%                mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
-%                  lr2=me.hos_learning_rate;
-%                  lr2 = me.learningfunction(lr2,sum(getwin),1/lr2);
-%                  lr2=sum(getwin)./(sum(getwin)+100);
-               lr2=lradj;
-                %lr2=0;
-          %     me.avg_delay = me.avg_delay*(1-lradj2) + lradj2*mph;
-               me.avg_delay =  lr2*mph + (1-lr2);
+% 
+% %                mph = mean(exp(1i*2*pi*me.delay./me.bufferN));
+% %                mph = mph./abs(mph);
+%                ffun = real(ifft(me.filterfft));
+%                mph = sum(exp(1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sqrt(me.bufferN*sum(abs(ffun).^2));
+%                mph = mph./abs(mph);
+% %                mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
+% %                  lr2=me.hos_learning_rate;
+% %                  lr2 = me.learningfunction(lr2,sum(getwin),1/lr2);
+% %                  lr2=sum(getwin)./(sum(getwin)+100);
+%                lr2=lradj;
+%                lr2=0;
+% %             me.avg_delay = me.avg_delay*(1-lr2) + lr2*mph;
+% %                lr2=.01;
+%                 me.avg_delay =  lr2*mph + (1-lr2);
             end
             if me.do_wave_update
-                Xsh = real(ifft(FXsh(:,getwin)));
-                me.update_waveform(Xsh,initialize); 
+              %  Xsh = real(ifft(FXsh(:,getwin)));
+                me.update_waveform(FXsh(:,getwin),initialize); 
             end
             me.window_number = me.window_number+sum(getwin);
             me.outputbuffer = mean(Xfilt,2);
