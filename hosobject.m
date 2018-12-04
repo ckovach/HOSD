@@ -173,12 +173,16 @@ classdef hosobject < handle
             me(1).highpassval = 2/N;
             if nargin > 2 && ~isempty(sampling_rate)
                 me(1).sampling_rate=sampling_rate;
-                me(1).lowpassval = me(1).lowpassval*sampling_rate;
-                me(1).glowpassval = me(1).glowpassval*sampling_rate;
-                me(1).highpassval = me(1).highpassval*sampling_rate;
+%                 me(1).lowpassval = me(1).lowpassval*sampling_rate;
+%                 me(1).glowpassval = me(1).glowpassval*sampling_rate;
+%                 me(1).highpassval = me(1).highpassval*sampling_rate;
+            else
+                sampling_rate = me(1).sampling_rate;
             end
             if nargin > 3 && ~isempty(lowpass)
-                me(1).lowpassval=lowpass;
+                me(1).lowpassval=lowpass./me(1).sampling_rate;
+            else
+                lowpass = me(1).lowpass;
             end
              if nargin < 5 || isempty(freqs)
                 freqs = fftfreq(me(1).bufferN)*me(1).sampling_rate;
@@ -236,17 +240,17 @@ classdef hosobject < handle
             end
         end
         function update_frequency_indexing(me,freqindex)
-            lowpass = me.lowpassval;
+            lowpass = me.lowpassval*me.sampling_rate;
             order = me.order;
             freqs=me.freqs;
             if length(lowpass)< order-1
                 lowpass(end+1:order-1) = lowpass(end);
             end
             if length(lowpass)< order
-                lowpass(order) = me.glowpassval;
+                lowpass(order) = me.glowpassval*me.sampling_rate;
             end
             
-            highpass = me.highpassval;
+            highpass = me.highpassval*me.sampling_rate;
             if length(highpass)< order
                 highpass(end+1:order) = highpass;
             end
@@ -307,25 +311,25 @@ classdef hosobject < handle
            out = me.freqindx.remap; 
         end
         function set.lowpass(me,a)
-           me.lowpassval = a;
+           me.lowpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
         function set.glowpass(me,a)
-           me.glowpassval = a;
+           me.glowpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
         function set.highpass(me,a)
-           me.highpassval = a;
+           me.highpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
         function out = get.lowpass(me)
-          out = me.lowpassval ;
+          out = me.lowpassval*me.sampling_rate ;
         end
         function out = get.glowpass(me)
-           out = me.glowpassval;
+           out = me.glowpassval*me.sampling_rate;
         end
         function out = get.highpass(me)
-          out =  me.highpassval;
+          out =  me.highpassval*me.sampling_rate;
         end
         function out = get.buffersize(me)
             out = me.bufferN;
