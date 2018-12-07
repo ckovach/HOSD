@@ -834,7 +834,7 @@ classdef hosobject < handle
             
         end
         
-        function get_block(me,xin,maxiter,makeplot,compno)
+        function [Xsh,Xwin] = get_block(me,xin,maxiter,makeplot,compno)
            
             % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
@@ -945,7 +945,13 @@ classdef hosobject < handle
            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
-               me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+               if nargout > 0
+                   [Xsh2,Xwin2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+                   Xsh = cat(3,Xsh,Xsh2);
+                   Xwin = cat(3,Xwin,Xwin2);
+               else
+                    me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+               end
             end
             
             
