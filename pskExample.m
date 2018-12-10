@@ -9,17 +9,20 @@
 
 n = 2e5;
 m = 1000; 
+
+
 fs = 1e3; 
 
-nsymb = 3;
+
+nsymb =3;
 
 tm = ((0:m-1)'-floor(m/2))/fs;
 
 t = ((0:n-1)'-floor(n/2))/fs;
 tn = ((0:n-1)'-floor(n/2));
 
-carrierbw = [5 10]*9;
-trbw = [10 20]*9    ;
+carrierbw = [5 10]*8;
+trbw = [10 20]*8    ;
 % trbw2 = [36 48];
 
 carrier = zscore(bpfilt(hann(m).*randn(m,1),[fs carrierbw]));
@@ -37,9 +40,17 @@ trans = [];
 tr = bpfilt(randn(m,1).*hann(m),[fs trbw]);
 for k = 1:nsymb
 %    trans(:,k) = zscore(bpfilt(tm==round(1000.*peakw*(1-2*(k-1)/(nsymb-1)))/1000,[fs trbw]));
-    trans(:,k) = zscore(convn(tr,tm==round(1000.*peakw*(1-2*(k-1)/(nsymb-1)))/1000,'same'));
+%     trans(:,k) = zscore(convn(tr,tm==round(1000.*peakw*(1-2*(k-1)/(nsymb-1)))/1000,'same'));
+    trans(:,k) = zscore(convn(tr,tm==0,'same'));
 end
-% trans0 = zscore(bpfilt(tm==-round(1000.*peakw)/1000,[fs trbw]));
+
+cph = linspace(-pi/2,pi/2,nsymb);
+carr=[];
+carrfft = fft(carrier);
+for k = 1:nsymb
+    carr(:,k) =real(ifft(carrfft.*exp(sign(fftshift(tm))*1i*cph(k))));
+end
+    % trans0 = zscore(bpfilt(tm==-round(1000.*peakw)/1000,[fs trbw]));
 %  trans1 = -trans0;
 % trans1 = zscore(bpfilt(subwin.*randn(m,1),[fs trbw]))/sqrt(m./subn);
 % trans0 = zscore(bpfilt(subwin.*randn(m,1),[fs trbw]))/sqrt(m./subn);
@@ -47,9 +58,20 @@ end
 % B0 = carrier + trans0;
 % B1 = carrier + trans1;
 
-B = repmat(carrier,1,nsymb)+trans;
+% B = repmat(carrier,1,nsymb)+trans;
+B = carr+trans;
 
-N = rand(n,nsymb)<1/(1*m);
+TRt = zeros(n,1);
+dtrt = ones(2*n/m,1)*m/2;
+dtrt = dtrt+round(randn(length(dtrt),1)*m/8);
+trt = round(cumsum(dtrt));
+trt(trt>n)=[];
+TRt(trt)=1;
+TRt(end+1:n)=0;
+trsym = TRt.*ceil(rand(n,1)*nsymb);
+N = zeros(n,nsymb);
+N(find(TRt) + n*(trsym(find(TRt))-1))=1;
+% N = rand(n,nsymb)<2/(1*m)/nsymb;
 Ssep = convn(N,B,'same');
 
  % N0 = rand(n,1)<1/m;
@@ -63,7 +85,7 @@ S = zscore(sum(Ssep,2));
 
 arg = @(x)atan2(imag(x),real(x))
 
-GN =1.5*randn(n,1);
+GN =1*randn(n,1);
 
 X = zscore(S)+GN;
 
@@ -129,7 +151,7 @@ subplot(2,2,1)
 % plot(tm,B)
 plot(tm,B + 10*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)))
 hold on
-plot(tm,repmat(carrier,1,nsymb) + 10*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)),'k')
+plot(tm,carr + 10*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)),'k')
 title('Transmission Signals')
 legend([arrayfun(@(k)sprintf('Symbol %i',k),1:nsymb,'uniformoutput',false),{'Carrier'}])
 
@@ -140,7 +162,7 @@ title('Bicoherence')
 
 subplot(2,2,3)
 % imagesc(tm,[],xfilt(T(:,srti))')
-imagesc(tm,[],real(hxff(T(:,srti)))')
+ imagesc(tm,[],real(hxff(T(:,srti)))')
 title('Filtered vs Symbol')
 set(gca,'ytick',1:4:length(srt),'yticklabel',srt(1:4:end))
 hold on
