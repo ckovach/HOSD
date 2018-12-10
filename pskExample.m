@@ -72,8 +72,11 @@ trsym = TRt.*ceil(rand(n,1)*nsymb);
 N = zeros(n,nsymb);
 N(find(TRt) + n*(trsym(find(TRt))-1))=1;
 % N = rand(n,nsymb)<2/(1*m)/nsymb;
-Ssep = convn(N,B,'same');
-
+% Ssep = convn(N,B,'same');
+Ssep = [];
+for k = 1:nsymb
+    Ssep(:,k) = convn(N(:,k),B(:,k),'same');
+end
  % N0 = rand(n,1)<1/m;
 % N1 = rand(n,1)<1/m;
 
