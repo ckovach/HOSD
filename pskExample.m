@@ -7,7 +7,7 @@
 %%% Bispectral pattern recovery is used to obtain a filter for recovering
 %%% the transmission with an unknown random carrier. 
 
-n = 2e5;
+n = 1.5e5;
 m = 1000; 
 
 
@@ -76,7 +76,8 @@ end
 B = zscore(carr+trans);
 
 TRt = zeros(n,1);
-dtrt = ones(round(n/m),1)*m;
+rate = 2;
+dtrt = ones(round(rate*n/m),1)*m./rate;
 dtrt = dtrt+round(randn(length(dtrt),1)*m/8);
 trt = round(cumsum(dtrt));
 trt(trt>n)=[];
@@ -96,7 +97,8 @@ end
 % S0 = convn(N0,B0,'same');
 % S1 = convn(N1,B1,'same');
 % S = S0+S1;
-S = zscore(sum(Ssep,2));
+% S = zscore(sum(Ssep,2));
+S =sum(Ssep,2);
 
 %%% Multipath fading
 % S = S+.5*circshift(S,round(m*.25));
@@ -107,7 +109,7 @@ arg = @(x)atan2(imag(x),real(x))
 noiseamp = -6; %Signal to noise ratio in dB
 GN =10^(-noiseamp/20)*zscore(lpfilt(randn(n,1),[fs 1.25*max([trbw(:);carrierbw(:)])*2]));
 
-X = zscore(S)+GN;
+X = S+GN;
 
 ncomp =1;
 clear hos
