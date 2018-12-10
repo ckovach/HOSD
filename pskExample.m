@@ -14,22 +14,26 @@ m = 1000;
 fs = 1e3; 
 
 
-nsymb =3;
-
+nsymb =2;
 tm = ((0:m-1)'-floor(m/2))/fs;
 
 t = ((0:n-1)'-floor(n/2))/fs;
 tn = ((0:n-1)'-floor(n/2));
 
-carrierbw = [5 10]*8;
-trbw = [10 20]*8    ;
+carrierbw = [10 20; 30 40]*2; %Lower and upper carrier bands
+trbw = carrierbw([3 2]);      % Middle transmission band
+% trbw = [10 20]*8    ;
 % trbw2 = [36 48];
 
-carrier = zscore(bpfilt(hann(m).*randn(m,1),[fs carrierbw]));
+carrier = 0;
+for k = 1:size(carrierbw,1)
+    carrier = carrier+bpfilt(hann(m).*randn(m,1),[fs carrierbw(k,:)]);
+end
+% carrier = zscore(carrier); %Carrier signal
 %  carrier = zscore(bpfilt(fftshift((0:m-1)'==0),[fs carrierbw]));
 % carrier = zscore(bpfilt(tm==0,[fs carrierbw]));
-subn = round(1000./mean(carrierbw)/2);
-subwin = convn(tm==0,hann(subn),'same');
+% subn = round(1000./mean(carrierbw)/2);
+% subwin = convn(tm==0,hann(subn),'same');
 
 % trans0 = zscore(bpfilt(randn(m,1).*hann(m).^4,[fs trbw]));
 % trans1 = zscore(bpfilt(randn(m,1).*hann(m).^4,[fs trbw]));
@@ -37,18 +41,28 @@ subwin = convn(tm==0,hann(subn),'same');
 carrier_center_frequency = mean(carrierbw);
 peakw = 1./carrier_center_frequency/8;
 trans = [];
+% tr = zscore(bpfilt(randn(m,1).*hann(m),[fs trbw]));
 tr = bpfilt(randn(m,1).*hann(m),[fs trbw]);
+% tr = zscore(bpfilt((tm==0).*hann(m),[fs trbw]));
+
+%%% Create the phase-shifte transmission symbols
+trph = linspace(-pi/2,pi/2,nsymb+1); % Use the half-range
+trans=[];
+transfft = fft(tr);
 for k = 1:nsymb
 %    trans(:,k) = zscore(bpfilt(tm==round(1000.*peakw*(1-2*(k-1)/(nsymb-1)))/1000,[fs trbw]));
 %     trans(:,k) = zscore(convn(tr,tm==round(1000.*peakw*(1-2*(k-1)/(nsymb-1)))/1000,'same'));
-    trans(:,k) = zscore(convn(tr,tm==0,'same'));
+%     trans(:,k) = zscore(convn(tr,tm==0,'same'));
+     trans(:,k)= real(ifft(transfft.*exp(sign(fftshift(tm))*1i*trph(k+1))));
 end
+% 
+% cph = linspace(-pi/2,pi/2,nsymb);
+ carr=[];
+% carrfft = fft(carrier);
 
-cph = linspace(-pi/2,pi/2,nsymb);
-carr=[];
-carrfft = fft(carrier);
 for k = 1:nsymb
-    carr(:,k) =real(ifft(carrfft.*exp(sign(fftshift(tm))*1i*cph(k))));
+%     carr(:,k) =real(ifft(carrfft.*exp(sign(fftshift(tm))*1i*cph(k))));
+    carr(:,k) = carrier;
 end
     % trans0 = zscore(bpfilt(tm==-round(1000.*peakw)/1000,[fs trbw]));
 %  trans1 = -trans0;
@@ -59,10 +73,10 @@ end
 % B1 = carrier + trans1;
 
 % B = repmat(carrier,1,nsymb)+trans;
-B = carr+trans;
+B = zscore(carr+trans);
 
 TRt = zeros(n,1);
-dtrt = ones(2*n/m,1)*m/2;
+dtrt = ones(round(n/m),1)*m;
 dtrt = dtrt+round(randn(length(dtrt),1)*m/8);
 trt = round(cumsum(dtrt));
 trt(trt>n)=[];
@@ -72,7 +86,6 @@ trsym = TRt.*ceil(rand(n,1)*nsymb);
 N = zeros(n,nsymb);
 N(find(TRt) + n*(trsym(find(TRt))-1))=1;
 % N = rand(n,nsymb)<2/(1*m)/nsymb;
-% Ssep = convn(N,B,'same');
 Ssep = [];
 for k = 1:nsymb
     Ssep(:,k) = convn(N(:,k),B(:,k),'same');
@@ -85,17 +98,21 @@ end
 % S = S0+S1;
 S = zscore(sum(Ssep,2));
 
+%%% Multipath fading
+% S = S+.5*circshift(S,round(m*.25));
+
 
 arg = @(x)atan2(imag(x),real(x))
 
-GN =1*randn(n,1);
+noiseamp = -6; %Signal to noise ratio in dB
+GN =10^(-noiseamp/20)*zscore(lpfilt(randn(n,1),[fs 1.25*max([trbw(:);carrierbw(:)])*2]));
 
 X = zscore(S)+GN;
 
-ncomp = 1;
+ncomp =1;
 clear hos
 hos(ncomp) = hosobject;
-hos.initialize(m,fs,trbw(2)*1.25);
+hos.initialize(m,fs,max([trbw(:);carrierbw(:)])*1.25);
 [Xsh,Xwin] = hos.get_block(X);
 
 
@@ -136,8 +153,8 @@ type(mx==0)=0;
 % h0 = hist(arg(hxff(ximp0(:,1))),-pi:.1:pi);
 % h1 = hist(arg(hxff(ximp1(:,1))),-pi:.1:pi);
 
-hxff = hilbert(bpfilt(xfilt(:,1),[fs carrierbw]));
-% hxhff = hilbert(bpfilt(xfilt(:,1),[fs trbw]));
+% hxff = hilbert(bpfilt(xfilt(:,1),[fs carrierbw]));
+hxff = hilbert(bpfilt(xfilt(:,1),[fs trbw]));
 
 h=[];
 ph={};
@@ -152,9 +169,9 @@ wb = fftshift(hos(1).freqindx.Bfreqs{1});
 figure
 subplot(2,2,1)
 % plot(tm,B)
-plot(tm,B + 10*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)))
+plot(tm,trans + carr - 10*std(trans(:)+carr(:))*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)))
 hold on
-plot(tm,carr + 10*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)),'k')
+plot(tm,carr - 10*std(trans(:)+carr(:))*ones(size(tm))*(-ceil(nsymb/2)+1:floor(nsymb/2)),'k')
 title('Transmission Signals')
 legend([arrayfun(@(k)sprintf('Symbol %i',k),1:nsymb,'uniformoutput',false),{'Carrier'}])
 
@@ -166,7 +183,7 @@ title('Bicoherence')
 subplot(2,2,3)
 % imagesc(tm,[],xfilt(T(:,srti))')
  imagesc(tm,[],real(hxff(T(:,srti)))')
-title('Filtered vs Symbol')
+title(sprintf('Filtered vs Symbol, SNR: %0.0f dB',noiseamp))
 set(gca,'ytick',1:4:length(srt),'yticklabel',srt(1:4:end))
 hold on
 plot([0 0],[0 size(T,2)],'k')
@@ -187,7 +204,7 @@ for k = 1:nsymb
 end
 % xlim([-pi pi]/2)
 % xlabel 'Phase (rad)'
-title('Distribution of Phase in the Carrier band')
+title('Distribution of Phase in the Transmission band')
 % legend({'Symbol 1','Symbol 2'})
 legend(arrayfun(@(k)sprintf('Symbol %i',k),1:nsymb,'uniformoutput',false))
 
