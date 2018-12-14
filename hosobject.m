@@ -1022,8 +1022,15 @@ classdef hosobject < handle
                 Xin = me.inputbuffer;
             end
             Xfilt = me.apply_filter(X);
-            if length(X) == me.bufferN
+            if size(X,1) == me.bufferN
                 Xfilt = ifftshift(Xfilt,1);
+             
+                win = me.win;
+              
+                Xwin = repmat(win,1,size(X,2)).*X;
+
+            else
+                Xwin = X;
             end
             
            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
@@ -1036,7 +1043,7 @@ classdef hosobject < handle
 %             Xrec = Xrec(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
            a= sum(abs(Xrec(:)).^2);
            if a > 0
-             Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
+             Xrec = Xrec*(Xwin(:)'*Xrec(:))./a; % Scale to minimize total mse.
            end
            if nargin < 2
                 me.reconbuffer = Xrec;
