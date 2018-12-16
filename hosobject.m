@@ -95,6 +95,7 @@ classdef hosobject < handle
     
     properties (Access = private)
       bufferN = 1024;
+
       G = []; 
 
       wintype = 'hann'; % Default window type
@@ -142,6 +143,9 @@ classdef hosobject < handle
        
         function me = hosobject(order,varargin)
             
+            if nargin ==0
+                return
+            end
             warning('THIS SCRIPT IS UNDER DEVELOPMENT AND PROBABLY DOESN''T WORK RIGHT NOW')
             if nargin < 1 
                 return
@@ -1043,7 +1047,7 @@ classdef hosobject < handle
 %             Xrec = Xrec(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
            a= sum(abs(Xrec(:)).^2);
            if a > 0
-             Xrec = Xrec*(Xwin(:)'*Xrec(:))./a; % Scale to minimize total mse.
+             Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
            end
            if nargin < 2
                 me.reconbuffer = Xrec;
