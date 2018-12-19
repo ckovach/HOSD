@@ -627,6 +627,7 @@ classdef hosobject < handle
             %%% Adjust for lag
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
             delt = me.radw*dt;
+            delt(isnan(delt))=0;
             FX = repmat(exp(-1i*delt),1,size(FX,2)).*FX;
 
 %             Xwin = Xin.*me.win;
@@ -635,8 +636,8 @@ classdef hosobject < handle
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
             FFX = conj(FX(me.freqindx.Is(:,me.order),:));
             FFXpart = {};
-            FFXpart(1:2) = {FFX};
-            FFXpart{3} = ones(size(FFX));
+            FFXpart(1:me.order-1) = {FFX};
+            FFXpart{me.order} = ones(size(FFX));
             
             for k = me.order-1:-1:1
                 FXk = FX(me.freqindx.Is(:,k),:);
@@ -735,7 +736,7 @@ classdef hosobject < handle
 %                GGwin = fftn(real(ifftn(GG)).*TMW);
 %                G = sum(GGwin,2);
 
-               G = sum(GG,2);
+               G = sum(GG(:,:),2);
 
 %                %%% Remove linear phase trend so the energy of the filter
 %                %%% is more-or-less centered
