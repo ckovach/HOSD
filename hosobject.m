@@ -236,6 +236,7 @@ classdef hosobject < handle
             me(1).bufferPos = 0;
             me(1).B(:)=0;
             me(1).G(:)=1;
+            me(1).D(:)=1;
             me(1).window_number=0;
             me(1).avg_delay = 1;
             me(1).lag=1;
@@ -927,7 +928,7 @@ classdef hosobject < handle
 
              
                     apply_window = false;
-                    use_shifted=true;
+                    use_shifted=false;
                     initialize = true;
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize)
                     [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
@@ -935,14 +936,15 @@ classdef hosobject < handle
                     newdt = me(1).delay;
                     % checks two and one step back to reduce getting
                     % trapped at points of cyclical stability.
-                    del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
+%                     del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
+                    del = std(olddt2-newdt);%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     olddt2 = olddt;
                
                 end
                 
                 %%% Set the delays to the correct value for the original
                 %%% data set;
-                [~,~] = me(1).apply_filter(Xwin);
+                [~,~] = me(1).apply_filter(Xwin,apply_window);
             else
                 me(1).write_buffer(xin);
             end    
@@ -1044,7 +1046,7 @@ classdef hosobject < handle
             wf = circshift(wf,-floor(me.bufferN/2));
             featfft = fft(wf);
             Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
-%             Xrec = Xrec(floor(me.bufferN/2)+1:end-ceil(me.bufferN/2));
+
            a= sum(abs(Xrec(:)).^2);
            if a > 0
              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
