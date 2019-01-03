@@ -130,10 +130,11 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
     wsrti = wsrti + order*repmat(0:size(W,2)-1,order,1);
     Wsrt = Wsrt.*sign(W(wsrti));
    
-     [~,ismi] = ismember(Wsrt',Wsrt(:,PD)','rows');
+     [ism,ismi] = ismember(Wsrt',Wsrt(:,PD)','rows');
    [ismconj,ismiconj] = ismember(-Wsrt',Wsrt(:,PD)','rows');
    ismiconj(1) = 0;
    ismconj(1)=false;
+   ismiconj(ism & ismconj)=0; %Ignore if both are in the principal domain.
 %   IsreducedPD = Isreduced(PD(keep),:);
    IsPD = Is(PD,:);
    PDremap = zeros(size(subremap));
@@ -189,8 +190,8 @@ remap(keepregion) = subremap;
 remap(remap==0) = size(Is,1)+1;
 out.Is = Is;%Isreduced;
 out.freqs = freqs(1:end-1);
-out.keep = keep;
-out.principal_domain = PD;
+out.keep = keepall;
+out.principal_domain = PDall;
 out.remap = remap;
 out.reduce = find(PDall);
 PDconj = false(size(Z));
