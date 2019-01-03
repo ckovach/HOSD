@@ -98,7 +98,7 @@ end
 PD = false;
 for k = 1:nsig
     PD0 = Ws{1}>=0 & Ws{order}<=0; %First signature is always + and last always -.  ;
-    for kk = 2:order-1
+    for kk = 2:order
 %           PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
         if signatures(k,kk)==signatures(k,kk-1) 
            PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
