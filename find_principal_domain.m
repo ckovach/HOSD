@@ -112,7 +112,30 @@ for k = 1:nsig
 end
 
 
-
+if max(highpass) > 0 && order > 3
+    %%% Now we need to account for regions within the principal for which some
+    %%% subset of the frequencies falls within the highcut range. This is
+    %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to
+    %%% frequency pairs, thereby excluding any component of HOS that
+    %%% weights by the power spectrum. The resultant windowing is not strictly
+    %%% quasicumulant for orders > 5, but it removes a dominant
+    %%% contribution from the power spectrum.
+    discard = false(size(PD));
+    WPD = [Ws{:}];
+    WPD = WPD(PD,:);
+    for k = 1:order-1
+        discard(PD) = discard(PD) | any(abs(repmat(WPD(:,k),1,order-k)+WPD(:,k+1:order)) <= max(highpass),2);           
+    end
+    
+    PD(discard) = [];
+    for k = 1:length(Ws)
+        Ws{k} = Ws{k}(~discard);
+        if k<=length(Is)
+            Is{k} = Is{k}(~discard);
+        end
+    end
+    keep(keep) = keep(keep) & ~discard;
+end
 
 
 
