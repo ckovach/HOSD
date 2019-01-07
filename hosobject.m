@@ -147,6 +147,29 @@ classdef hosobject < handle
             if nargin ==0
                 return
             end
+            if isa(order,mfilename)
+               obj = order;
+               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','highpass','lowpass','glowpass','buffersize','filterftlag','fullmap'});
+               
+               if length(obj)==1
+                   obj(2:length(me)) = obj;
+               elseif length(obj)>length(me)
+                   me(length(obj)) = hosobject;
+               end
+               
+               
+               me(1).order = obj(1).order;               
+               me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
+               
+               for k = 1:length(fns)                  
+                   me(1).(fns{k}) = obj(1).(fns{k});
+               end
+                
+               if length(me)>1
+                   me(2:end) = hosobject(obj(2:end));
+               end
+               return
+            end
             warning('THIS SCRIPT IS UNDER DEVELOPMENT AND PROBABLY DOESN''T WORK RIGHT NOW')
             if nargin < 1 
                 return
@@ -162,6 +185,7 @@ classdef hosobject < handle
         
       function initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
       
+          
             if ~isscalar(N)
                 X = N;
                 N = size(X,1);
@@ -245,7 +269,7 @@ classdef hosobject < handle
                 me(2:end).reset();
             end
         end
-        function update_frequency_indexing(me,freqindex)
+        function update_frequency_indexing(me,freqindx)
             lowpass = me.lowpassval*me.sampling_rate;
             order = me.order;
             freqs=me.freqs;
@@ -269,7 +293,7 @@ classdef hosobject < handle
             end    
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
-            if nargin < 2 || isempty(freqindex)
+            if nargin < 2 || isempty(freqindx)
                 freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly); %#ok<*PROPLC,*PROP>
             end
             
