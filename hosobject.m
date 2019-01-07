@@ -98,8 +98,9 @@ classdef hosobject < handle
 
       G = []; 
 
-      wintype = 'hann'; % Default window type
-      win = hann(1024);
+%      wintype = 'hann'; % Default window type
+      wintype = 'sasaki'; % Default window type
+      win = sasaki(1024);
       BCpart = 0;
        highpassval = 0;
        lowpassval = .5; %%% Lowpass on the edges (max freq)
@@ -462,17 +463,18 @@ classdef hosobject < handle
            me.waveform = fftshift(in); 
         end
         %%%%%%%%
-        function [Xfilt,FXshift] = apply_filter(me,X,apply_window,return_shifted,varargin)
+        function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
             if nargin<3
                 apply_window = true;
             end
             if nargin < 4 || isempty(return_shifted)
                return_shifted = true; 
-            end
+            end           
 %             if nargin < 5 || isempty(center_delays)
 %                center_delays = false; 
 %             end
             FXshift = [];
+            sgn = 1;
             if size(X,1) == me.bufferN
                 if apply_window
                     win = me.win;
@@ -483,8 +485,12 @@ classdef hosobject < handle
                 FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
+                [~,mxi] = max(Xfilt.^me.order);
+                if mod(me.order,2)==0 
+                   sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1))); 
+                end
                 if nargout >1 && return_shifted
-                    [mx,mxi] = max(Xfilt);
+                 
     %                 FX = fft(X);
                     samptc=(me.sampt);
                      dt = samptc(mxi);
@@ -503,6 +509,7 @@ classdef hosobject < handle
                 else
                      FXshift = FXwin;
                 end
+                FXshift = FXshift*diag(sgn);
             else
                  Xin = X(:);
                 Xin(end+me.bufferN,:) = 0;
@@ -886,14 +893,24 @@ classdef hosobject < handle
                  Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 color_cycle = 10;
-                    if all(ishandle(makeplot))
-                        set(makeplot(1:end-1),'ydata',zeros(me(1).bufferN,1));
-                    end
+                if all(ishandle(makeplot))
+                    set(makeplot(1:end-1),'ydata',zeros(me(1).bufferN,1));
+                end
+                std_moment = @(x)mean(nanmean(x.^me(1).order)./(nanmean(x.^2)).^(me(1).order/2));
+                 switch me(1).order
+                    case 3
+                        moment_type = 'skewness';
+                    case 4
+                        moment_type = 'kurtosis';
+                    otherwise
+                        moment_type = 'standardized moment';
+                end
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
                         set(makeplot(1),'cdata',Xsh');
-                        set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
-%                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
+                       
+                        set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
+                        %                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
 %                         for pli = 1:length(makeplot)
 %                             set(plh(pli),'ydata',get(makeplot(pli),'ydata')+std(me(1).feature)*.5);
 %                          end
@@ -903,7 +920,7 @@ classdef hosobject < handle
                         figure,
                         subplot(2,1,1)
                         makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
-                        makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, skewness=%2.2f',compno,k,del/me(1).sampling_rate,mean(skewness(Xfilt(:)))));
+                        makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                         subplot(2,1,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs{1}),ifftshift(abs(me(1).filterfft))*ones(1,5));
                          plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
@@ -978,9 +995,7 @@ classdef hosobject < handle
             %Xcent = Xfilt;
             Xmom = Xcent.^me.order;
             
-            if mod(me.order,2)==0
-                Xmom = Xmom - me.order*repmat(mean(Xcent.^2).^(me.order/2),size(Xmom,1),1);
-            end
+           
             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold;
                  Xcs = [];
@@ -1002,13 +1017,28 @@ classdef hosobject < handle
                 trialthresh(~detect) = Inf;
                 Xcs=[];
             else
-                % For now, apply a simple threshold on the moment for
+                % For now, apply a simple threshold on the standardized moment for
                 % orders > 3. This should be improved to use the proper
                 % cumulant.
-                Xsrt = sort(Xmom);
-                Xcs = cumsum(Xsrt)>thresh;
-                detect =any(Xcs);
-                trialthresh = sum(Xsrt(2:end,:).*diff(Xcs));
+                [Xsrt,srti] = sort(Xmom);
+                Xpow = Xcent(srti).^2;
+                keepsamples = ones(size(Xsrt));
+                Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
+                Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
+                if mod(me.order,2)==0
+                    %%% Correction for power spectral component with even
+                    %%% orders
+                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)';
+                else
+                    Xbaseline = me.thresh;
+                end
+                Mstd = Mcs./Powcs.^(me.order/2) - Xbaseline;
+                Xthr = Mstd>me.thresh;
+                Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
+                threshold_crossing = diff(Xthr)>0;
+                detect =any(threshold_crossing);
+                
+                trialthresh = Xsrt(threshold_crossing);
                 trialthresh(~detect) = Inf;
             end
             switch me.threshold_type
@@ -1104,6 +1134,7 @@ classdef hosobject < handle
             end
             if me.do_wave_update
               %  Xsh = real(ifft(FXsh(:,getwin)));
+              
                 me.update_waveform(FXsh(:,getwin),initialize); 
             end
             me.window_number = me.window_number+sum(getwin);
