@@ -135,6 +135,7 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
    ismiconj(1) = 0;
    ismconj(1)=false;
    ismiconj(ism & ismconj)=0; %Ignore if both are in the principal domain.
+   ismconj(ism & ismconj) = 0;
 %   IsreducedPD = Isreduced(PD(keep),:);
    IsPD = Is(PD,:);
    PDremap = zeros(size(subremap));
@@ -172,6 +173,8 @@ else
    
     PDconjugate = false;
 end
+
+
 
 keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
 keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
