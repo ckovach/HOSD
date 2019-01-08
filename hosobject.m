@@ -32,7 +32,7 @@ classdef hosobject < handle
     %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
     %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
     %       ximp = hos.ximp(data) - Samples at which the feature is detected.
-    %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
+    %       get_block(x,25) = hos.xthresh(data) - Thresholded signal used in the reconstruction.
     %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
     %                  
     %
@@ -628,14 +628,14 @@ classdef hosobject < handle
 
         end
         %%%
-        function out = xrec(me,in)
+        function out = xrec(me,in,varargin)
            if nargin < 2
                in = me.dat;
            end
            
-           out = me(1).reconstruct(in); 
+           out = me(1).reconstruct(in,varargin{:}); 
            if length(me)>1
-               out = [out,me(2:end).xrec(in-out(:,1))];
+               out = [out,me(2:end).xrec(in-out(:,1),varargin{:})];
            end
         end
         %%%%%%%
@@ -871,7 +871,7 @@ classdef hosobject < handle
             
         end
         
-        function [Xsh,Xwin] = get_block(me,xin,maxiter,makeplot,compno)
+        function [Xsh,Xwin,T,wint] = get_block(me,xin,maxiter,makeplot,compno)
            
             % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
@@ -1035,7 +1035,7 @@ classdef hosobject < handle
                 %  Third cumulant
                 c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
           
-                keepsrt = srt>0 & c3> me.thresh ;
+                keepsrt = srt>0 & c3>  thresh;
                 detect = any(keepsrt);
                 trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.order;
                 trialthresh(~detect) = Inf;
@@ -1052,12 +1052,12 @@ classdef hosobject < handle
                 if mod(me.order,2)==0
                     %%% Correction for power spectral component with even
                     %%% orders
-                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)';
+                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)'+thresh;
                 else
-                    Xbaseline = me.thresh;
+                    Xbaseline =thresh;
                 end
                 Mstd = Mcs./Powcs.^(me.order/2) - Xbaseline;
-                Xthr = Mstd>me.thresh;
+                Xthr = Mstd>thresh;
                 Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
                 threshold_crossing = diff(Xthr)>0;
                 detect =any(threshold_crossing);
@@ -1077,10 +1077,13 @@ classdef hosobject < handle
             Xthresh = Xfilt.*THR;
             
         end
-        function [Xrec,Xfilt] = reconstruct(me,X)
+        function [Xrec,Xfilt] = reconstruct(me,X,threshold)
             
             if nargin < 2
                 Xin = me.inputbuffer;
+            end
+            if nargin < 3
+                threshold = me.thresh;
             end
             Xfilt = me.apply_filter(X);
             if size(X,1) == me.bufferN
@@ -1095,7 +1098,7 @@ classdef hosobject < handle
             end
             
            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
-            FXthresh =fft(me.filter_threshold(Xfilt));
+            FXthresh =fft(me.filter_threshold(Xfilt,threshold));
             wf = ifftshift(me.waveform);
             wf(size(FXthresh,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
