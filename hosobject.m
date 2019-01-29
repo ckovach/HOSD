@@ -8,9 +8,9 @@ classdef hosobject < handle
     %        hos = hosobject(order,N,sampling_rate,lowpass)
     %
     %   To fit the object to a block of data (offline mode)
-    %        hos.get_block(data)
+    %        hos.get_block(data, [maxiter=50])
     %
-    %   To add a short segment of data in computing a running average (online mode):
+    %   To add a segment of data in computing a running average (online mode):
     %        hos.get_input(data)
     %   
     %   To initialize an M component decomposition:
@@ -25,6 +25,7 @@ classdef hosobject < handle
     %       data  -  input data in the form of samples x segments. If data
     %               is a single column vector it will be segmented into
     %               overlapping N point segments.
+    %       maxiter - maximum iterations (default - 50)
     %
     % Outputs: 
     %       hos.waveform - Recovered feature waveform
@@ -32,7 +33,7 @@ classdef hosobject < handle
     %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
     %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
     %       ximp = hos.ximp(data) - Samples at which the feature is detected.
-    %       get_block(x,25) = hos.xthresh(data) - Thresholded signal used in the reconstruction.
+    %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
     %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
     %                  
     %
