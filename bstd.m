@@ -2,6 +2,8 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,PDIndx,pdmap,Bideal] = bstd(X,lowpass,Fr
 
 % Bispectral time delay estimation.
 %
+% This implements one iteration of the realignment and filter estimation step of the HOSD.
+%
 % [dt,Xadj,B,BFILT] = bstd(X,lowpass)
 %
 %  Inputs:
@@ -15,7 +17,9 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,PDIndx,pdmap,Bideal] = bstd(X,lowpass,Fr
 %       B : Signal bispectum
 %       BFILT: Optimal filter function for feature extraction
 %
-% Copyright Christopher Kovach, University of Iowa 2017
+% See also BSIDENT and HOSOBJECT
+%
+% Copyright University of Iowa 2017-2019
 
 
 post_projection=false; % Refine the filter estimate by reprojecting it into the bispectrum (experimental)
