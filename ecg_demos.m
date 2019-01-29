@@ -1,7 +1,7 @@
 
 
 % This script demonstrates HOSD3 on records retrieved from the PhysionetDB
-% database. It requires the WFDB Toolbox for Matlab and Octave, available at
+% database. It expects the WFDB Toolbox for Matlab and Octave, available at
 %    https://www.physionet.org/physiotools/matlab/wfdb-app-matlab/
 %
 % Examples are based on those in Kovach and Howard 2019
