@@ -4,12 +4,8 @@ This is a software implementation of the Higher Order Spectral Decomposition alg
 
 Copyright University of Iowa 2018 - 2019
 
-For licensing information please contact The University of Iowa Research Foundation 
+This software is provided for evaluation only. No rights are granted to copy, modify, publish, use, compile, sell or distribute this software either in source code form or executable form, for any purpose, commercial or non-commercial. 
 
-email:  uirf@uiowa.edu
-
-Phone: 319.335.4546
-
-Fax: 319.335.4486
+For a license, please contact The University of Iowa Research Foundation at uirf@uiowa.edu. Phone 319.335.4546
 
 
