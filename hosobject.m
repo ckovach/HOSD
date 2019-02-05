@@ -1,7 +1,7 @@
 classdef hosobject < handle
    
     % Class implementing higher-order spectral filtering based on Kovach
-    % 2018.
+    % and Howard 2019.
     %
     % Usage: 
     %   To create a hos object
