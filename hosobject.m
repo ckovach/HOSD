@@ -171,7 +171,6 @@ classdef hosobject < handle
                end
                return
             end
-            warning('THIS SCRIPT IS UNDER DEVELOPMENT AND PROBABLY DOESN''T WORK RIGHT NOW')
             if nargin < 1 
                 return
             elseif nargin == 1
