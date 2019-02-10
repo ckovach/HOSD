@@ -392,6 +392,9 @@ classdef hosobject < handle
             %Adjust centering.
            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
            delt = me.radw*dt;
+           if isempty(me.radw)
+               delt = 0;
+           end
            out= exp(-1i*delt).*out;
 
         end
@@ -414,9 +417,10 @@ classdef hosobject < handle
          function out = get.wavefft(me)
            
             F = me.waveftlag;
+            [~,mxi] = max(ifft(F.*me.filterftlag));
             
                %Adjust centering.
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN + me.sampt(mxi);
             delt = me.radw*dt;
             out = exp(1i*delt).*F;
          
@@ -430,6 +434,9 @@ classdef hosobject < handle
             %Adjust centering.
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
             delt = me.radw*dt;
+            if isempty(delt)
+                delt = 0;
+            end
             me.waveftlag = exp(-1i*delt).*F;
             
         end
@@ -783,9 +790,11 @@ classdef hosobject < handle
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
                
                 if me.adjust_lag
-                   ffun = real(ifft(me.filterftlag));
+                   ffun = real(ifft(me.filterftlag));                   
                    mph = sum(exp(-1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
+                   mph = mph./(abs(mph)+eps);
                    me.lag = mph; % Circularshift to keep filter energy centered on the window
+                   
 %                    dt = atan2(imag(mph),real(mph))/(2*pi)*me.bufferN;
 %                    delt = me.radw*dt;
 %                     me.filterfft= exp(1i*delt).*me.filterfft;
@@ -883,7 +892,7 @@ classdef hosobject < handle
                 makeplot = true;
             end
             if nargin < 3 || isempty(maxiter)
-                maxiter = 50;
+                maxiter = 25;
             end
             nxin = numel(xin);
             
@@ -1066,6 +1075,7 @@ classdef hosobject < handle
                 trialthresh = Xsrt(threshold_crossing);
                 trialthresh(~detect) = Inf;
             end
+
             switch me.threshold_type
                 case 'hard'
                     THR = Xmom>=trialthresh;%repmat(trialthresh,size(Xmom,1),1);
