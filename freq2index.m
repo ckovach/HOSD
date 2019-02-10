@@ -149,11 +149,14 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
    Is = IsPD;
    subremap = PDremap;
    
-   %%% Identify the symmetry regions for partial cross bicoherence
+   %%% Identify the symmetry type for each region. At least one region
+   %%% from each group must be estimated for the partial delay estimator.
+   %%% Symmtery types correspond to permutations of position of the first
+   %%% term in the average cross-polyspectral product.
    W23 = W(2:order,:);
-      [W23srt,w23srti] = sort(round(abs(W23)./tol)*tol);
-    w23srti = w23srti + (order-1)*repmat(0:size(W23,2)-1,order-1,1);
-    W23srt = W23srt.*sign(W23(w23srti));
+   [W23srt,w23srti] = sort(round(abs(W23)./tol)*tol);
+   w23srti = w23srti + (order-1)*repmat(0:size(W23,2)-1,order-1,1);
+   W23srt = W23srt.*sign(W23(w23srti));
     SR = uint8(zeros(sum(keep(:)),1));
     for k = order:-1:1
         W23pd=W(setdiff(1:order,k),PD);
