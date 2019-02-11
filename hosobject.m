@@ -25,7 +25,7 @@ classdef hosobject < handle
     %       data  -  input data in the form of samples x segments. If data
     %               is a single column vector it will be segmented into
     %               overlapping N point segments.
-    %       maxiter - maximum iterations (default - 50)
+    %       maxiter - maximum iterations (default - 25)
     %
     % Outputs: 
     %       hos.waveform - Recovered feature waveform
