@@ -130,7 +130,7 @@ switch db
         emits=[];
         for k = 1:n_components_in
             feature = real(ifft(fft(randn(size(w)).*exp(-(w.*totalN).^2/(2*(.1*N)^2))).*InBandFilter));
-            emission = rand(size(ecgz))<1/N;
+            emission = rand(size(ecgz))<1/(2*N*n_components_in);
             component = zscore(real(ifft(fft(feature).*fft(emission))));
             ecgz = ecgz+component;
             components(:,k) = component;
