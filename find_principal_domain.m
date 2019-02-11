@@ -113,7 +113,7 @@ end
 
 
 if max(highpass) > 0 && order > 3
-    %%% Now we need to account for regions within the principal for which some
+    %%% Now we need to account for regions within the principal domain for which some
     %%% subset of the frequencies falls within the highcut range. This is
     %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to
     %%% frequency pairs, thereby excluding any component of HOS that
