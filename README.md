@@ -1,5 +1,6 @@
 
-This is a software implementation of the Higher Order Spectral Decomposition algorithm described in Kovach and Howard 2019
+This is a software implementation of the Higher Order Spectral Decomposition algorithm described in Kovach and Howard 2019.
+See https://arxiv.org/abs/1901.11395
 
 Copyright University of Iowa 2018 - 2019
 
