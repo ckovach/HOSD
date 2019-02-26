@@ -72,6 +72,7 @@ classdef hosobject < handle
        pdonly = true;
        dat = [];
        avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
+       outlier_threshold = 5;
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -606,7 +607,7 @@ classdef hosobject < handle
             [out,~] = me(1).apply_filter(in);  
         
            if length(me)>1
-               out = [out,me(2:end).xfilt(in-me(1).xrec(in))];
+               out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in)));
            end
         end
         %%%%%%%
@@ -629,7 +630,7 @@ classdef hosobject < handle
            out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
 
            if length(me)>1
-               out= [out,me(2:end).xthresh(in-me(1).xrec(in))];
+               out= cat(sum(size(in)>1)+1,me(2:end).xthresh(in-me(1).xrec(in)));
            end
          
 
@@ -642,7 +643,7 @@ classdef hosobject < handle
            
            out = me(1).reconstruct(in,varargin{:}); 
            if length(me)>1
-               out = [out,me(2:end).xrec(in-out(:,1),varargin{:})];
+               out =  cat(sum(size(in)>1)+1,me(2:end).xrec(in-out(:,1),varargin{:}));
            end
         end
         %%%%%%%
@@ -1036,8 +1037,12 @@ classdef hosobject < handle
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
                   srt = sort(Xcent(:));
-                outlier_threshold = 5;
-               keepsamples = ~isnan(iterz(srt,outlier_threshold,-1)); % Suppress extreme negative outliers           
+%                 outlier_threshold = 5;
+                if me.outlier_threshold~=0
+                   keepsamples = ~isnan(iterz(srt,me.outlier_threshold,-1)); % Suppress extreme negative outliers           
+                else
+                    keepsamples = ones(size(srt));
+                end
                 m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
                 m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
                 m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
