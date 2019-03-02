@@ -611,26 +611,41 @@ classdef hosobject < handle
            end
         end
         %%%%%%%
-        function out = ximp(me,in)
+        function out = ximp(me,in,return_sparse)
            % Just get the thresholded times (for backward compatibility)
            if nargin < 2
                in = me.dat;
            end
-           out = me.xthresh(in)>0;  
+           if nargin < 3 
+               %Cannot do sparse output if it requires more than 2
+               %dimensions
+               return_sparse = size(in,2) < 2 || length(me) < 2;
+           end
+           out = me.xthresh(in,return_sparse)>0;  
 %            if length(me)>1
 %                out = [out,me(2:end).ximp(in-me(1).xrec(in))];
 %            end         
 
         end
-        function out = xthresh(me,in)
+        function out = xthresh(me,in,return_sparse)
              % Get the thresholded data 
-           if nargin < 2
+           if nargin < 2 || isempty(in)
                in = me.dat;
            end
-           out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
-
+           if nargin < 3 
+               %Cannot do sparse output if it requires more than 2
+               %dimensions
+               return_sparse = size(in,2) < 2 || length(me) < 2;
+           end
+           
+           if return_sparse
+               out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
+           else         
+               out = double(me(1).filter_threshold(me(1).apply_filter(in)));       
+           end
+           
            if length(me)>1
-               out= cat(sum(size(in)>1)+1,me(2:end).xthresh(in-me(1).xrec(in)));
+               out= cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in),return_sparse));
            end
          
 
@@ -643,7 +658,7 @@ classdef hosobject < handle
            
            out = me(1).reconstruct(in,varargin{:}); 
            if length(me)>1
-               out =  cat(sum(size(in)>1)+1,me(2:end).xrec(in-out(:,1),varargin{:}));
+               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),varargin{:}));
            end
         end
         %%%%%%%
