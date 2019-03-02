@@ -604,8 +604,12 @@ classdef hosobject < handle
            if nargin < 2
                in = me.dat;
            end
-            [out,~] = me(1).apply_filter(in);  
+            [out,~] = me(1).apply_filter(in,false,false);  
         
+            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
+                out = ifftshift(out,1);
+            end
+            
            if length(me)>1
                out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in)));
            end
@@ -632,22 +636,30 @@ classdef hosobject < handle
            if nargin < 2 || isempty(in)
                in = me.dat;
            end
+           
            if nargin < 3 
                %Cannot do sparse output if it requires more than 2
                %dimensions
                return_sparse = size(in,2) < 2 || length(me) < 2;
            end
            
+           xf = me(1).apply_filter(in,false,false);
+           if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
+               xf = ifftshift(xf,1);
+           end
+
+           
            if return_sparse
-               out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
+               out = sparse(double(me(1).filter_threshold(xf)));  
            else         
-               out = double(me(1).filter_threshold(me(1).apply_filter(in)));       
+               out = double(me(1).filter_threshold(xf));       
            end
            
+            
            if length(me)>1
                out= cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in),return_sparse));
            end
-         
+
 
         end
         %%%
@@ -1033,11 +1045,14 @@ classdef hosobject < handle
         
         
         
-        function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh)
+        function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
             
             % Apply a moment-based threshold
-            if nargin < 3
+            if nargin < 3 || isempty(thresh)
                 thresh= me.thresh;
+            end
+            if nargin < 4 || isempty(use_adaptive_threshold)
+                use_adaptive_threshold = true;
             end
             
              Xcent = zscore(Xfilt);
@@ -1045,7 +1060,7 @@ classdef hosobject < handle
             Xmom = Xcent.^me.order;
             
            
-            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
+            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
                  trialthresh = me.current_threshold;
                  Xcs = [];
             elseif me.order ==3
