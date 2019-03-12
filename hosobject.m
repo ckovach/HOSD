@@ -496,7 +496,7 @@ classdef hosobject < handle
         end
         %%%%%%%%
         function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
-            if nargin<3
+            if nargin<3 || isempty(apply_window)
                 apply_window = true;
             end
             if nargin < 4 || isempty(return_shifted)
@@ -600,50 +600,58 @@ classdef hosobject < handle
           out = conj(H);
         end
         %%%%%%%
-        function out = xfilt(me,in)
+        function out = xfilt(me,in,apply_window)
            if nargin < 2
                in = me.dat;
            end
-            [out,~] = me(1).apply_filter(in,false,false);  
+           if nargin < 3 || isempty(apply_window)
+              apply_window = false; 
+           end
+            [out,~] = me(1).apply_filter(in,apply_window,false);  
         
             if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
                 out = ifftshift(out,1);
             end
             
            if length(me)>1
-               out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in)));
+               out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window));
            end
         end
         %%%%%%%
-        function out = ximp(me,in,return_sparse)
+        function out = ximp(me,in,return_sparse,apply_window)
            % Just get the thresholded times (for backward compatibility)
            if nargin < 2
                in = me.dat;
            end
-           if nargin < 3 
+           if nargin < 3  || isempty(return_sparse)
                %Cannot do sparse output if it requires more than 2
                %dimensions
                return_sparse = size(in,2) < 2 || length(me) < 2;
            end
-           out = me.xthresh(in,return_sparse)>0;  
+           if nargin < 4 || isempty(apply_window)
+              apply_window = false; 
+           end
+           out = me.xthresh(in,return_sparse,apply_window)>0;  
 %            if length(me)>1
 %                out = [out,me(2:end).ximp(in-me(1).xrec(in))];
 %            end         
 
         end
-        function out = xthresh(me,in,return_sparse)
+        function out = xthresh(me,in,return_sparse,apply_window)
              % Get the thresholded data 
            if nargin < 2 || isempty(in)
                in = me.dat;
            end
-           
-           if nargin < 3 
+           if nargin < 4 || isempty(apply_window)
+              apply_window = false; 
+           end
+           if nargin < 3 || isempty(return_sparse)
                %Cannot do sparse output if it requires more than 2
                %dimensions
                return_sparse = size(in,2) < 2 || length(me) < 2;
            end
            
-           xf = me(1).apply_filter(in,false,false);
+           xf = me(1).apply_filter(in,apply_window,false);
            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
                xf = ifftshift(xf,1);
            end
@@ -657,20 +665,25 @@ classdef hosobject < handle
            
             
            if length(me)>1
-               out= cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in),return_sparse));
+               out= cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in,[],apply_window),return_sparse,apply_window));
            end
 
 
         end
         %%%
-        function out = xrec(me,in,varargin)
+        function out = xrec(me,in,thresh,apply_window,varargin)
            if nargin < 2
                in = me.dat;
            end
-           
-           out = me(1).reconstruct(in,varargin{:}); 
+           if nargin < 3
+               thresh = [];
+           end
+           if nargin < 4
+               apply_window = false;
+           end
+           out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            if length(me)>1
-               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),varargin{:}));
+               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
            end
         end
         %%%%%%%
@@ -940,6 +953,7 @@ classdef hosobject < handle
                     end
                 else
                     Xchop = xin;
+                    T=0;
                 end
                 del = Inf;
 %                 tol =1; % Stop when the average shift is less than 1 sample
@@ -1024,16 +1038,21 @@ classdef hosobject < handle
                 %%% Set the delays to the correct value for the original
                 %%% data set;
                 [~,~] = me(1).apply_filter(Xwin,apply_window);
+                T = T+ repmat(me(1).delay,size(T,1),1);
+                T(T<1)=1;
+                T(T>length(xin))=length(xin);
             else
                 me(1).write_buffer(xin);
+                T=[];
             end    
            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
-                   [Xsh2,Xwin2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
                    Xsh = cat(3,Xsh,Xsh2);
                    Xwin = cat(3,Xwin,Xwin2);
+                   T = cat(3,T,T2);
                else
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
                end
@@ -1122,15 +1141,18 @@ classdef hosobject < handle
             Xthresh = Xfilt.*THR;
             
         end
-        function [Xrec,Xfilt] = reconstruct(me,X,threshold)
+        function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
             
             if nargin < 2
                 Xin = me.inputbuffer;
             end
-            if nargin < 3
+            if nargin < 3 || isempty(threshold)
                 threshold = me.thresh;
             end
-            Xfilt = me.apply_filter(X);
+            if nargin < 4 
+                apply_window = [];
+            end
+            Xfilt = me.apply_filter(X,apply_window);
             if size(X,1) == me.bufferN
                 Xfilt = ifftshift(Xfilt,1);
              
@@ -1227,6 +1249,24 @@ classdef hosobject < handle
            end
            out = xsrt(threshi);
         end
+        
+        %%%%
+%         function [T,Taligned] = chopmat(me,n)
+%             
+%             % Original and aligned, according to me.delay, chop matrices for a signal of length(n)
+%             
+%             if ~isscalar(n)
+%                 n = length(n);
+%             end
+%             stepn = round(me(1).poverlap*me(1).bufferN);
+%             nget = n - me(1).bufferN+1;
+%             tindx = (0:me(1).bufferN-1)';
+%             wint = (1:stepn:nget);
+%             wintadj = wint + me.delay;
+%             T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+%             
+%             
+%         end
     end
     
 end
