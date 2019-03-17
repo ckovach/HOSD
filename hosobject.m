@@ -543,11 +543,12 @@ classdef hosobject < handle
                 end
                 FXshift = FXshift*diag(sgn);
             else
-                 Xin = X(:);
+%                  Xin = X(:);
+                Xin = X;
                 Xin(end+me.bufferN,:) = 0;
                 Xfilt = filter(me.filterfun,1,Xin);
-                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2));
-      
+                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2),:);
+       
             end
                
         end
@@ -935,6 +936,7 @@ classdef hosobject < handle
                 maxiter = 25;
             end
             nxin = numel(xin);
+            xisnan = isnan(xin);
             
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
@@ -946,9 +948,14 @@ classdef hosobject < handle
 
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
                     Xchop = xin(T);
-                                
+                    hasnans = any(xisnan(T));
+                    if any(hasnans)
+                        fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
+                        T = T(:,~hasnans);
+                        Xchop = xin(T);
+                    end
                     snip = xin(T(end)+1:numel(xin));
-                    if ~isempty(snip)
+                    if ~isempty(snip) && ~any(isnan(snip))                        
                         me(1).write_buffer(snip);
                     end
                 else
@@ -1002,7 +1009,7 @@ classdef hosobject < handle
 %                          cmap = hsv(length(plh));
                          for pli = 1:length(plh)
                          
-                             plh(pli).Color = hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]);
+                             set(plh(pli),'Color',hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]));
                          end
                          makeplot(2:6)=plh;
 %                         xlim([0 me(1).lowpass])
@@ -1074,7 +1081,12 @@ classdef hosobject < handle
                 use_adaptive_threshold = true;
             end
             
-             Xcent = zscore(Xfilt);
+%             if size(Xfilt,2)==1
+%                 Xcent = zscore(Xfilt(~isnan(Xfilt)));
+%             else
+                 zsc = @(x)(x-nanmean(x))./nanstd(x);
+                 Xcent = zsc(Xfilt);
+%             end
             %Xcent = Xfilt;
             Xmom = Xcent.^me.order;
             
@@ -1090,8 +1102,9 @@ classdef hosobject < handle
                 if me.outlier_threshold~=0
                    keepsamples = ~isnan(iterz(srt,me.outlier_threshold,-1)); % Suppress extreme negative outliers           
                 else
-                    keepsamples = ones(size(srt));
+                    keepsamples = ~isnan(srt);
                 end
+                srt(isnan(srt))=0;
                 m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
                 m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
                 m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
@@ -1139,7 +1152,7 @@ classdef hosobject < handle
                     error('Unrecognized threshold type')
             end
             Xthresh = Xfilt.*THR;
-            
+            Xthresh(isnan(Xthresh))=0;
         end
         function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
             
@@ -1152,6 +1165,8 @@ classdef hosobject < handle
             if nargin < 4 
                 apply_window = [];
             end
+            xisnan = isnan(X);
+%             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
             if size(X,1) == me.bufferN
                 Xfilt = ifftshift(Xfilt,1);
@@ -1163,20 +1178,26 @@ classdef hosobject < handle
             else
                 Xwin = X;
             end
+
+            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
+            Xthr=me.filter_threshold(Xfilt,threshold);
             
-           % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
-            FXthresh =fft(me.filter_threshold(Xfilt,threshold));
             wf = ifftshift(me.waveform);
-            wf(size(FXthresh,1)) = 0;
+            wf(end+1:size(Xthr,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
+            Xthr(end+1:length(wf),:)=0;
+            FXthresh =fft(Xthr);
             featfft = fft(wf);
             Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
-
-           a= sum(abs(Xrec(:)).^2);
-           if a > 0
+            Xrec(size(X,1)+1:length(wf),:) = [];
+            X(xisnan)=0;
+            Xrec(xisnan)=0;
+            a= sum(abs(Xrec(:)).^2);
+            if a > 0
              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
-           end
-           if nargin < 2
+            end
+            Xrec(xisnan) = nan;
+            if nargin < 2
                 me.reconbuffer = Xrec;
             end
         end
@@ -1273,4 +1294,4 @@ end
 
 function out = fftfreq(N)
     out = ifftshift((0:N-1)-floor(N/2))/N;
-end
+end 
