@@ -1195,7 +1195,7 @@ classdef hosobject < handle
             %%% Apply the filter to the reconstructed data for LMSE fitting
             %%% so that the frequencies are appropriately weighted.
             Xrecfilt = me.xfilt(Xrec,apply_window);
-            beta = Xrecfilt(:)'*Xfilt./sum(Xrecfilt(:).^2);
+            beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
             Xrec = beta*Xrec; 
 %             a= sum(abs(Xrec(:)).^2);
 %             if a > 0
