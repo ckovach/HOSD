@@ -1192,10 +1192,15 @@ classdef hosobject < handle
             Xrec(size(X,1)+1:length(wf),:) = [];
             X(xisnan)=0;
             Xrec(xisnan)=0;
-            a= sum(abs(Xrec(:)).^2);
-            if a > 0
-             Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
-            end
+            %%% Apply the filter to the reconstructed data for LMSE fitting
+            %%% so that the frequencies are appropriately weighted.
+            Xrecfilt = me.xfilt(Xrec,apply_window);
+            beta = Xrecfilt(:)'*Xfilt./sum(Xrecfilt(:).^2);
+            Xrec = beta*Xrec; 
+%             a= sum(abs(Xrec(:)).^2);
+%             if a > 0
+%              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
+%             end
             Xrec(xisnan) = nan;
             if nargin < 2
                 me.reconbuffer = Xrec;
