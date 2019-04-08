@@ -1,4 +1,4 @@
-function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,PDIndx,pdmap,Bideal] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
+function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,Bideal] = bstd(X,lowpass,Fremove,prewin,win_weight,postwin,highpass,normalization)
 
 % Bispectral time delay estimation.
 %
@@ -15,11 +15,9 @@ function [dt,Xadj,Bout,Bfilt,w,NRM,BIAS,PDIndx,pdmap,Bideal] = bstd(X,lowpass,Fr
 %       B : Signal bispectum
 %       BFILT: Optimal filter function for feature extraction
 %
-% Copyright Christopher Kovach, University of Iowa 2017
+% C. Kovach 2017
 
-
-post_projection=false; % Refine the filter estimate by reprojecting it into the bispectrum (experimental)
-if nargin < 8 || isempty(normalization)
+if nargin < 8 || ~isempty(normalization)
     normalization  = 'awplv';
 end
 snr_weighting = false;
@@ -43,18 +41,16 @@ end
 if nargin < 2
     lowpass = .25;
 end
-if nargin < 5 || isempty(win_weight) || isscalar(win_weight)
+if nargin < 6 || isempty(win_weight) || isscalar(win_weight)
    win_weight = ones(size(X,2),1); 
 else
     win_weight = win_weight(:);
 end
-win_weight=win_weight./sum(win_weight);
-
 wfull = ifftshift((0:n-1) - floor(n/2))/n;
 w = wfull(abs(wfull)<=lowpass);
 nb = length(w);
 %twin = fftshift(hann(nb));
-if nargin <7 || isempty(highpass)
+if nargin <7
     highpass=w(4);
 end
 
@@ -109,14 +105,9 @@ switch normalization
 %        nrm= sum(abs(BB),2);
 %        BIAS(PDIndx) = sqrt(sum(abs(BB).^2,2)./(nrm.^2+eps));
         nrm = abs(BB)*win_weight(:);
-        BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight.^2)./(nrm.^2+eps));
+        BIAS(PDIndx) = sqrt((abs(BB).^2*win_weight)./(nrm.^2+eps));
         BIAS(:) = BIAS(pdmap);
-    case 'rms'
-%        Similar to awplv but using rms estimate
-        nrm = sqrt((abs(FXwin(I1,:)).^2.*abs(FXwin(I2,:)).^2.*abs(FXwin(I3,:)).^2)*win_weight(:)); 
-        BIAS=0;
-
-    case 'pop' %%% Product of average power. 
+    case 'pop' %%% Averge the product of power. Similar to awplv but using rms estimate
         
         nrm = sqrt((abs(FXwin(I1,:)).^2*win_weight(:)).*(abs(FXwin(I2,:)).^2*win_weight(:)).*(abs(FXwin(I3,:)).^2*win_weight(:))); 
         BIAS=0;
@@ -197,7 +188,6 @@ else
     
 end
 
-
 B23 = zeros(size(B));
 % B23(PDIndx) = sum(FXwin(I2(:),:).*FXwin(I3(:),:),2);
 B23(PDIndx) = (FXwin(I2(:),:).*FXwin(I3(:),:)*win_weight);
@@ -207,23 +197,8 @@ B23(PDConj) = conj(B23(PDConj));
 %%% The optimal filter
 Bfilt = sum(nrmfun(B23.*conj(B)),2);
 Bfilt(isnan(Bfilt))=0;
-if post_projection
-    Bfilt2 = Bfilt./sqrt(sum(abs(Bfilt).^2));
-    W3pd = mod(-W1pd-W2pd+.5,1)-.5;
-    I3pd = round(mod(W3pd*n,nb)+1);
-    BFB = zeros(size(B));
-    
-    for k = 1:10
-        BFB(:) = Bfilt2(I2pd(:)).*Bfilt2(I3pd(:)).*NRM(:);
-        BFB(PDConj) = conj(BFB(PDConj));
-        Bfilt2 = conj(sum(BFB.*(B),2));
-        Bfilt2 = Bfilt2./sqrt(sum(abs(Bfilt2).^2));
-%         Q(:,end+1) = Bfilt2;
-    end
-    Bfilt=Bfilt2;
-end
 
-if nargout>9
+if nargout>7
 %%% Approximate ideal filter when records are already aligned
     S1S2 = zeros(size(B));
     S1S2(PDIndx) = abs(FXwin(I2(:),:).*FXwin(I3(:),:)).^2*win_weight;

@@ -1,16 +1,16 @@
 classdef hosobject < handle
    
     % Class implementing higher-order spectral filtering based on Kovach
-    % and Howard 2019.
+    % 2018.
     %
     % Usage: 
     %   To create a hos object
     %        hos = hosobject(order,N,sampling_rate,lowpass)
     %
     %   To fit the object to a block of data (offline mode)
-    %        hos.get_block(data, [maxiter=50])
+    %        hos.get_block(data)
     %
-    %   To add a segment of data in computing a running average (online mode):
+    %   To add a short segment of data in computing a running average (online mode):
     %        hos.get_input(data)
     %   
     %   To initialize an M component decomposition:
@@ -25,15 +25,14 @@ classdef hosobject < handle
     %       data  -  input data in the form of samples x segments. If data
     %               is a single column vector it will be segmented into
     %               overlapping N point segments.
-    %       maxiter - maximum iterations (default - 25)
     %
     % Outputs: 
-    %       hos.waveform - Recovered feature waveform(s)
-    %       hos.filterfun - Feature detection filter(s)
+    %       hos.waveform - Recovered feature waveform
+    %       hos.filterfun - Feature detection filter
     %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
     %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
-    %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
-    %       ximp = hos.ximp(data) - Suprathreshold samples (samples at which the feature is detected).
+    %       ximp = hos.ximp(data) - Samples at which the feature is detected.
+    %       get_block(x,25) = hos.xthresh(data) - Thresholded signal used in the reconstruction.
     %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
     %                  
     %
@@ -72,13 +71,12 @@ classdef hosobject < handle
        pdonly = true;
        dat = [];
        avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
-       outlier_threshold = 5;
      end
   
     properties (GetAccess = public, SetAccess=protected)
        
-        inputbuffer = []; % Current input buffer
-        outputbuffer = []; % Current outputbuffer
+        inputbuffer = [];
+        outputbuffer = [];
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
@@ -87,8 +85,8 @@ classdef hosobject < handle
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
-        radw = [];  % Vector of sample frequencies in radian units
-        sampt = []; % Vector of sample indices
+        radw = [];
+        sampt = [];
         delay = 0;
         waveftlag = [];
       
@@ -172,6 +170,7 @@ classdef hosobject < handle
                end
                return
             end
+            warning('THIS SCRIPT IS UNDER DEVELOPMENT AND PROBABLY DOESN''T WORK RIGHT NOW')
             if nargin < 1 
                 return
             elseif nargin == 1
@@ -392,9 +391,6 @@ classdef hosobject < handle
             %Adjust centering.
            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
            delt = me.radw*dt;
-           if isempty(me.radw)
-               delt = 0;
-           end
            out= exp(-1i*delt).*out;
 
         end
@@ -417,10 +413,9 @@ classdef hosobject < handle
          function out = get.wavefft(me)
            
             F = me.waveftlag;
-            [~,mxi] = max(ifft(F.*me.filterftlag));
             
                %Adjust centering.
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN + me.sampt(mxi);
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
             delt = me.radw*dt;
             out = exp(1i*delt).*F;
          
@@ -434,9 +429,6 @@ classdef hosobject < handle
             %Adjust centering.
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
             delt = me.radw*dt;
-            if isempty(delt)
-                delt = 0;
-            end
             me.waveftlag = exp(-1i*delt).*F;
             
         end
@@ -496,7 +488,7 @@ classdef hosobject < handle
         end
         %%%%%%%%
         function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
-            if nargin<3 || isempty(apply_window)
+            if nargin<3
                 apply_window = true;
             end
             if nargin < 4 || isempty(return_shifted)
@@ -543,12 +535,11 @@ classdef hosobject < handle
                 end
                 FXshift = FXshift*diag(sgn);
             else
-%                  Xin = X(:);
-                Xin = X;
+                 Xin = X(:);
                 Xin(end+me.bufferN,:) = 0;
                 Xfilt = filter(me.filterfun,1,Xin);
-                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2),:);
-       
+                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2));
+      
             end
                
         end
@@ -601,90 +592,50 @@ classdef hosobject < handle
           out = conj(H);
         end
         %%%%%%%
-        function out = xfilt(me,in,apply_window)
+        function out = xfilt(me,in)
            if nargin < 2
                in = me.dat;
            end
-           if nargin < 3 || isempty(apply_window)
-              apply_window = false; 
-           end
-            [out,~] = me(1).apply_filter(in,apply_window,false);  
+            [out,~] = me(1).apply_filter(in);  
         
-            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
-                out = ifftshift(out,1);
-            end
-            
            if length(me)>1
-               out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window));
+               out = [out,me(2:end).xfilt(in-me(1).xrec(in))];
            end
         end
         %%%%%%%
-        function out = ximp(me,in,return_sparse,apply_window)
+        function out = ximp(me,in)
            % Just get the thresholded times (for backward compatibility)
            if nargin < 2
                in = me.dat;
            end
-           if nargin < 3  || isempty(return_sparse)
-               %Cannot do sparse output if it requires more than 2
-               %dimensions
-               return_sparse = size(in,2) < 2 || length(me) < 2;
-           end
-           if nargin < 4 || isempty(apply_window)
-              apply_window = false; 
-           end
-           out = me.xthresh(in,return_sparse,apply_window)>0;  
+           out = me.xthresh(in)>0;  
 %            if length(me)>1
 %                out = [out,me(2:end).ximp(in-me(1).xrec(in))];
 %            end         
 
         end
-        function out = xthresh(me,in,return_sparse,apply_window)
+        function out = xthresh(me,in)
              % Get the thresholded data 
-           if nargin < 2 || isempty(in)
-               in = me.dat;
-           end
-           if nargin < 4 || isempty(apply_window)
-              apply_window = false; 
-           end
-           if nargin < 3 || isempty(return_sparse)
-               %Cannot do sparse output if it requires more than 2
-               %dimensions
-               return_sparse = size(in,2) < 2 || length(me) < 2;
-           end
-           
-           xf = me(1).apply_filter(in,apply_window,false);
-           if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
-               xf = ifftshift(xf,1);
-           end
-
-           
-           if return_sparse
-               out = sparse(double(me(1).filter_threshold(xf)));  
-           else         
-               out = double(me(1).filter_threshold(xf));       
-           end
-           
-            
-           if length(me)>1
-               out= cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in,[],apply_window),return_sparse,apply_window));
-           end
-
-
-        end
-        %%%
-        function out = xrec(me,in,thresh,apply_window,varargin)
            if nargin < 2
                in = me.dat;
            end
-           if nargin < 3
-               thresh = [];
-           end
-           if nargin < 4
-               apply_window = false;
-           end
-           out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+           out = sparse(double(me(1).filter_threshold(me(1).apply_filter(in))));  
+
            if length(me)>1
-               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
+               out= [out,me(2:end).xthresh(in-me(1).xrec(in))];
+           end
+         
+
+        end
+        %%%
+        function out = xrec(me,in,varargin)
+           if nargin < 2
+               in = me.dat;
+           end
+           
+           out = me(1).reconstruct(in,varargin{:}); 
+           if length(me)>1
+               out = [out,me(2:end).xrec(in-out(:,1),varargin{:})];
            end
         end
         %%%%%%%
@@ -831,11 +782,9 @@ classdef hosobject < handle
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
                
                 if me.adjust_lag
-                   ffun = real(ifft(me.filterftlag));                   
+                   ffun = real(ifft(me.filterftlag));
                    mph = sum(exp(-1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
-                   mph = mph./(abs(mph)+eps);
                    me.lag = mph; % Circularshift to keep filter energy centered on the window
-                   
 %                    dt = atan2(imag(mph),real(mph))/(2*pi)*me.bufferN;
 %                    delt = me.radw*dt;
 %                     me.filterfft= exp(1i*delt).*me.filterfft;
@@ -933,10 +882,9 @@ classdef hosobject < handle
                 makeplot = true;
             end
             if nargin < 3 || isempty(maxiter)
-                maxiter = 25;
+                maxiter = 50;
             end
             nxin = numel(xin);
-            xisnan = isnan(xin);
             
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
@@ -948,19 +896,13 @@ classdef hosobject < handle
 
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
                     Xchop = xin(T);
-                    hasnans = any(xisnan(T));
-                    if any(hasnans)
-                        fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
-                        T = T(:,~hasnans);
-                        Xchop = xin(T);
-                    end
+                                
                     snip = xin(T(end)+1:numel(xin));
-                    if ~isempty(snip) && ~any(isnan(snip))                        
+                    if ~isempty(snip)
                         me(1).write_buffer(snip);
                     end
                 else
                     Xchop = xin;
-                    T=0;
                 end
                 del = Inf;
 %                 tol =1; % Stop when the average shift is less than 1 sample
@@ -1009,7 +951,7 @@ classdef hosobject < handle
 %                          cmap = hsv(length(plh));
                          for pli = 1:length(plh)
                          
-                             set(plh(pli),'Color',hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]));
+                             plh(pli).Color = hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]);
                          end
                          makeplot(2:6)=plh;
 %                         xlim([0 me(1).lowpass])
@@ -1045,21 +987,16 @@ classdef hosobject < handle
                 %%% Set the delays to the correct value for the original
                 %%% data set;
                 [~,~] = me(1).apply_filter(Xwin,apply_window);
-                T = T+ repmat(me(1).delay,size(T,1),1);
-                T(T<1)=1;
-                T(T>length(xin))=length(xin);
             else
                 me(1).write_buffer(xin);
-                T=[];
             end    
            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
-                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+                   [Xsh2,Xwin2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
                    Xsh = cat(3,Xsh,Xsh2);
                    Xwin = cat(3,Xwin,Xwin2);
-                   T = cat(3,T,T2);
                else
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
                end
@@ -1071,40 +1008,27 @@ classdef hosobject < handle
         
         
         
-        function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
+        function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh)
             
             % Apply a moment-based threshold
-            if nargin < 3 || isempty(thresh)
+            if nargin < 3
                 thresh= me.thresh;
             end
-            if nargin < 4 || isempty(use_adaptive_threshold)
-                use_adaptive_threshold = true;
-            end
             
-%             if size(Xfilt,2)==1
-%                 Xcent = zscore(Xfilt(~isnan(Xfilt)));
-%             else
-                 zsc = @(x)(x-nanmean(x))./nanstd(x);
-                 Xcent = zsc(Xfilt);
-%             end
+             Xcent = zscore(Xfilt);
             %Xcent = Xfilt;
             Xmom = Xcent.^me.order;
             
            
-            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
+            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold;
                  Xcs = [];
             elseif me.order ==3
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
                   srt = sort(Xcent(:));
-%                 outlier_threshold = 5;
-                if me.outlier_threshold~=0
-                   keepsamples = ~isnan(iterz(srt,me.outlier_threshold,-1)); % Suppress extreme negative outliers           
-                else
-                    keepsamples = ~isnan(srt);
-                end
-                srt(isnan(srt))=0;
+                outlier_threshold = 5;
+               keepsamples = ~isnan(iterz(srt,outlier_threshold,-1)); % Suppress extreme negative outliers           
                 m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
                 m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
                 m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
@@ -1141,7 +1065,6 @@ classdef hosobject < handle
                 trialthresh = Xsrt(threshold_crossing);
                 trialthresh(~detect) = Inf;
             end
-
             switch me.threshold_type
                 case 'hard'
                     THR = Xmom>=trialthresh;%repmat(trialthresh,size(Xmom,1),1);
@@ -1152,22 +1075,17 @@ classdef hosobject < handle
                     error('Unrecognized threshold type')
             end
             Xthresh = Xfilt.*THR;
-            Xthresh(isnan(Xthresh))=0;
+            
         end
-        function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
+        function [Xrec,Xfilt] = reconstruct(me,X,threshold)
             
             if nargin < 2
                 Xin = me.inputbuffer;
             end
-            if nargin < 3 || isempty(threshold)
+            if nargin < 3
                 threshold = me.thresh;
             end
-            if nargin < 4 
-                apply_window = [];
-            end
-            xisnan = isnan(X);
-%             X(xisnan)=0; 
-            Xfilt = me.apply_filter(X,apply_window);
+            Xfilt = me.apply_filter(X);
             if size(X,1) == me.bufferN
                 Xfilt = ifftshift(Xfilt,1);
              
@@ -1178,26 +1096,20 @@ classdef hosobject < handle
             else
                 Xwin = X;
             end
-
-            % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
-            Xthr=me.filter_threshold(Xfilt,threshold);
             
+           % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
+            FXthresh =fft(me.filter_threshold(Xfilt,threshold));
             wf = ifftshift(me.waveform);
-            wf(end+1:size(Xthr,1)) = 0;
+            wf(size(FXthresh,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
-            Xthr(end+1:length(wf),:)=0;
-            FXthresh =fft(Xthr);
             featfft = fft(wf);
             Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
-            Xrec(size(X,1)+1:length(wf),:) = [];
-            X(xisnan)=0;
-            Xrec(xisnan)=0;
-            a= sum(abs(Xrec(:)).^2);
-            if a > 0
+
+           a= sum(abs(Xrec(:)).^2);
+           if a > 0
              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
-            end
-            Xrec(xisnan) = nan;
-            if nargin < 2
+           end
+           if nargin < 2
                 me.reconbuffer = Xrec;
             end
         end
@@ -1270,28 +1182,10 @@ classdef hosobject < handle
            end
            out = xsrt(threshi);
         end
-        
-        %%%%
-%         function [T,Taligned] = chopmat(me,n)
-%             
-%             % Original and aligned, according to me.delay, chop matrices for a signal of length(n)
-%             
-%             if ~isscalar(n)
-%                 n = length(n);
-%             end
-%             stepn = round(me(1).poverlap*me(1).bufferN);
-%             nget = n - me(1).bufferN+1;
-%             tindx = (0:me(1).bufferN-1)';
-%             wint = (1:stepn:nget);
-%             wintadj = wint + me.delay;
-%             T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
-%             
-%             
-%         end
     end
     
 end
 
 function out = fftfreq(N)
     out = ifftshift((0:N-1)-floor(N/2))/N;
-end 
+end
