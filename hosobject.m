@@ -1182,7 +1182,7 @@ classdef hosobject < handle
             % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             Xthr=me.filter_threshold(Xfilt,threshold);
             
-            wf = ifftshift(me.waveform);
+            wf = fftshift(me.waveform);
             wf(end+1:size(Xthr,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
             Xthr(end+1:length(wf),:)=0;
