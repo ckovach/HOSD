@@ -4,8 +4,8 @@ function [out,Xadj,X,dt,PDIndx,pdmap]=bsident(x,segment,lpfilt,ncomp,opts,vararg
 %
 % Signal identification based on bispectral statistics. 
 % The signal is first divided into overlapping windows and the delay
-% correction implemented in BSTD is applied. The average of the
-% delay-corrected result is used to identify the salient feature. 
+% correction implemented in BSTD is applied over a fixed number of ierations
+% (default = 10).  
 %
 % Input arguments:
 %
@@ -42,10 +42,10 @@ function [out,Xadj,X,dt,PDIndx,pdmap]=bsident(x,segment,lpfilt,ncomp,opts,vararg
 %                      .tt: window-relative time, i.e. Trange(1):1/fs:Trange(2)
 %                      .wintadj: delay-adjusted window times.
 %
-% See also BSTD, CHOPPER
+% See also BSTD, CHOPPER, HOSOBJECT
 %
 %
-% Copyright Christopher Kovach, University of Iowa 2017
+% Copyright Christopher Kovach, University of Iowa 2017-2019
 
 
 default_opts = struct('niter',10,...

@@ -1,5 +1,5 @@
 
-ncascade = 4;
+ncascade = 6;
 
 
 h = dsp.AudioRecorder;
@@ -99,4 +99,5 @@ for kkk = 1:nfr*1e6
 end
 delete(h)
 xrs = reshape(permute(Xrs,[1 3 2]),size(Xrs,1)*size(Xrs,3),size(Xrs,2));
+xfs = reshape(permute(Xfs,[1 3 2]),size(Xfs,1)*size(Xfs,3),size(Xfs,2));
 
