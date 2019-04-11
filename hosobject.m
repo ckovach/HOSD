@@ -28,12 +28,12 @@ classdef hosobject < handle
     %       maxiter - maximum iterations (default - 25)
     %
     % Outputs: 
-    %       hos.waveform - Recovered feature waveform
-    %       hos.filterfun - Feature detection filter
+    %       hos.waveform - Recovered feature waveform(s)
+    %       hos.filterfun - Feature detection filter(s)
     %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
     %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
-    %       ximp = hos.ximp(data) - Samples at which the feature is detected.
     %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
+    %       ximp = hos.ximp(data) - Suprathreshold samples (samples at which the feature is detected).
     %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
     %                  
     %
@@ -77,8 +77,8 @@ classdef hosobject < handle
   
     properties (GetAccess = public, SetAccess=protected)
        
-        inputbuffer = [];
-        outputbuffer = [];
+        inputbuffer = []; % Current input buffer
+        outputbuffer = []; % Current outputbuffer
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
@@ -87,8 +87,8 @@ classdef hosobject < handle
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
-        radw = [];
-        sampt = [];
+        radw = [];  % Vector of sample frequencies in radian units
+        sampt = []; % Vector of sample indices
         delay = 0;
         waveftlag = [];
       
