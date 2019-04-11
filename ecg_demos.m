@@ -12,7 +12,7 @@ if ~exist('d_default','var')
     d_default =1;
 end
 
-d = input(sprintf('Which demo to run?\n1) Normal sinus rhythm in Gaussian noise.\n2) Normal sinus rhythm in non-Gaussian noise.\n3) Abnormal rhythm.\n4) Artificial test signal (does not require WFDB)\n[%i]:',d_default));
+d = input(sprintf('Which demo to run?\n1) Normal sinus rhythm in Gaussian noise.\n2) Normal sinus rhythm in non-Gaussian noise (Performance depends on random similarity of noise and signal phase spectra).\n3) Abnormal rhythm.\n4) Artificial test signal (does not require WFDB)\n[%i]:',d_default));
 
 if isempty(d), d=d_default;end
 d_default = d;
@@ -211,7 +211,7 @@ plh2=[];
 switch example
     case {'nsr_ecg_noise','nsr_ecg_chi2_noise','artificial_signal'}
         plh(end+1)= plot(t,ecgz_noise,'color',[1 1 1]*.5);
-        title(sprintf('ECG + %idB in-band noise + %idB out-band noise',InbandNoise,OutbandNoise))
+        title(sprintf('ECG + %0.1fdB in-band noise + %0.1fdB out-band noise',InbandNoise,OutbandNoise))
         legend({'Signal + Noise'})
          ylim(yl)
         pause(2)
