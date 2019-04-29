@@ -266,6 +266,9 @@ classdef hosobject < handle
             me(1).window_number=0;
             me(1).avg_delay = 1;
             me(1).lag=1;
+            for k = 1:length(me(1).Bpart)
+                me(1).Bpart{k}(:) = 0;
+            end
             if length(me)>1
                 me(2:end).reset();
             end
@@ -576,7 +579,7 @@ classdef hosobject < handle
                 me.Dval  = [in(me.freqindx.reduce);0];
             end
         end
-        function  set.Bpart(me,in)
+        function  set.Bpart(me,in)          
             if isempty(in) || min(size(in{1}))<=1
                	me.Bpartval=in; 
             else
@@ -1194,9 +1197,11 @@ classdef hosobject < handle
             Xrec(xisnan)=0;
             %%% Apply the filter to the reconstructed data for LMSE fitting
             %%% so that the frequencies are appropriately weighted.
-            Xrecfilt = me.xfilt(Xrec,apply_window);
-            beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
-            Xrec = beta*Xrec; 
+            if any(Xrec(:)~=0)
+                Xrecfilt = me.xfilt(Xrec,apply_window);
+                beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
+                Xrec = beta*Xrec; 
+            end
 %             a= sum(abs(Xrec(:)).^2);
 %             if a > 0
 %              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
