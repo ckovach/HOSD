@@ -1,5 +1,5 @@
 
-ncascade = 3;
+ncascade = 6;
 
 
 h = dsp.AudioRecorder;
@@ -15,7 +15,7 @@ hos = hosobject(3,400,h.SampleRate,h.SampleRate/2);
 hos.glowpass = h.SampleRate/2*.99;
 hos.hos_learning_rate = .001;
 hos.burnin = 1./hos.hos_learning_rate;
-hos.filter_adaptation_rate = .01;
+hos.filter_adaptation_rate = .001;
 % Xn = ecgfn(T);
 hos.reset
 hos.update_frequency_indexing
@@ -46,12 +46,12 @@ axis tight
 grid on
 subplot(2,1,2), 
 im(4:5) = plot(tt,X(:,[1 1 ])); 
-set(im(4),'color',[1 1 1]*0)
+set(im(4),'color',[1 1 1]*.75)
 % set(im(5),'color',[1 1 1]*0,'linewidth',2)
 set(im(5),'linewidth',2,'color','r')
 grid on
 axis tight
-ylim([-1 1]*.25)
+ylim([-1 1]*.5)
 
 nfr = 200;
 %%
@@ -73,11 +73,7 @@ for kkk = 1:nfr*1e6
 %         Xf(:,kk) = hoss(kk).apply_filter(Xn);
 %         Xresid = Xresid-Xr(:,kk);
 %     end
-    
     hoss.get_input(Xn);
-    if any(isnan(hoss(2).D(:)))
-       0
-    end
     Xf = hoss.xfilt(Xn);
     Xr = hoss.xrec(Xn);
     Xresid = Xn-sum(Xr,2);
