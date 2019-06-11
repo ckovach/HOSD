@@ -127,6 +127,7 @@ classdef hosobject < handle
         filterftlag;
         window %% Window used prior to calculating estimates
         bicoh
+        partialbicoh
         H
         EDF
         highpass  ;
@@ -151,7 +152,7 @@ classdef hosobject < handle
             end
             if isa(order,mfilename)
                obj = order;
-               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','highpass','lowpass','glowpass','buffersize','filterftlag','fullmap'});
+               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','highpass','lowpass','glowpass','buffersize','filterftlag','fullmap','partialbicoh'});
                
                if length(obj)==1
                    obj(2:length(me)) = obj;
@@ -335,6 +336,17 @@ classdef hosobject < handle
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           BC = BC(me.freqindx.remap);
           BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
+          
+        end
+         function pBC = get.partialbicoh(me)
+           %Component of bicoherence attributed to the feature
+          FF = me.wavefft(me.freqindx.Is);
+          FF(:,me.order) = conj(FF(:,me.order));
+          FF = prod(FF,2);
+          FF(end+1) =0;
+          pBC = FF./me.D;
+          pBC = pBC(me.freqindx.remap);
+          pBC(me.freqindx.PDconj) = conj(pBC(me.freqindx.PDconj));
           
         end
         function out = get.BIAS(me)        
@@ -1195,17 +1207,25 @@ classdef hosobject < handle
             Xrec(size(X,1)+1:length(wf),:) = [];
             X(xisnan)=0;
             Xrec(xisnan)=0;
-            %%% Apply the filter to the reconstructed data for LMSE fitting
-            %%% so that the frequencies are appropriately weighted.
-            if any(Xrec(:)~=0)
+
+            use_filtered_lmse = true;
+            if use_filtered_lmse
+                %%% Apply the filter to the reconstructed data for LMSE fitting
+                %%% so that the frequencies are appropriately weighted.
                 Xrecfilt = me.xfilt(Xrec,apply_window);
+                
+                Xrecfilt(isnan(Xfilt))=0;
+                Xfilt(isnan(Xfilt)) = 0;
+                
                 beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
                 Xrec = beta*Xrec; 
+            else
+                a= sum(abs(Xrec(:)).^2);
+                if a > 0
+                 Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
+                end
             end
-%             a= sum(abs(Xrec(:)).^2);
-%             if a > 0
-%              Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
-%             end
+
             Xrec(xisnan) = nan;
             if nargin < 2
                 me.reconbuffer = Xrec;
