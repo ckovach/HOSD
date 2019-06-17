@@ -1,3 +1,4 @@
+
 classdef hosobject < handle
    
     % Class implementing higher-order spectral filtering based on Kovach
@@ -91,7 +92,7 @@ classdef hosobject < handle
         sampt = []; % Vector of sample indices
         delay = 0;
         waveftlag = [];
-      
+        win = sasaki(1024);
 
     end
     
@@ -102,7 +103,7 @@ classdef hosobject < handle
 
 %      wintype = 'hann'; % Default window type
       wintype = 'sasaki'; % Default window type
-      win = sasaki(1024);
+ 
       BCpart = 0;
        highpassval = 0;
        lowpassval = .5; %%% Lowpass on the edges (max freq)
@@ -112,6 +113,8 @@ classdef hosobject < handle
        Bval = 0;
        Bpartval = {};
        Dval = 1;
+       
+       regval=[];
     end
     properties (Dependent = true)
         
@@ -141,6 +144,7 @@ classdef hosobject < handle
         B ;
         Bpart ;
         D ;
+        regressor;
     end
     
     methods
@@ -263,7 +267,7 @@ classdef hosobject < handle
             me(1).bufferPos = 0;
             me(1).B(:)=0;
             me(1).G(:)=1;
-            me(1).D(:)=1;
+            me(1).D(:)=1;          
             me(1).window_number=0;
             me(1).avg_delay = 1;
             me(1).lag=1;
@@ -274,7 +278,7 @@ classdef hosobject < handle
                 me(2:end).reset();
             end
         end
-        function update_frequency_indexing(me,freqindx)
+        function update_frequency_indexing(me,freqindx,mask)
             lowpass = me.lowpassval*me.sampling_rate;
             order = me.order;
             freqs=me.freqs;
@@ -284,7 +288,9 @@ classdef hosobject < handle
             if length(lowpass)< order
                 lowpass(order) = me.glowpassval*me.sampling_rate;
             end
-            
+            if nargin < 3 || isempty(mask)
+                mask = true;
+            end
             highpass = me.highpassval*me.sampling_rate;
             if length(highpass)< order
                 highpass(end+1:order) = highpass;
@@ -299,7 +305,7 @@ classdef hosobject < handle
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
             if nargin < 2 || isempty(freqindx)
-                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly); %#ok<*PROPLC,*PROP>
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask); %#ok<*PROPLC,*PROP>
             end
             
             me.freqindx  = freqindx;
@@ -606,14 +612,56 @@ classdef hosobject < handle
 %             B = me.B(me.freqindx.remap); %#ok<*PROP>
 %             B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
 %             out = conj(B)./me.D(me.freqindx.remap).^2;
-         BC = me.B./(me.D+eps);
+           BC = me.B./(me.D+eps);
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
            bias(isnan(bias))=0;
-          BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
-          H = BC./(me.D+eps);
-          H = H(me.freqindx.remap);
-          H(me.freqindx.PDconj) = conj(H(me.freqindx.PDconj));
-          out = conj(H);
+           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+           H = BC./(me.D+eps);
+           H = H(me.freqindx.remap);
+           H(me.freqindx.PDconj) = conj(H(me.freqindx.PDconj));
+           out = conj(H);
+        end
+        
+        %%%%%%%
+        function set.regressor(me,xin)
+            if isa(xin,'regressor')
+                R = xin;
+                xin = R.value;
+            else
+                R = [];
+            end
+            if size(xin,1)> me(1).buffersize
+                for k = 1:size(xin,2)
+                    X(:,k) = sum(me(1).chop_input(xin(:,k)),1);
+                end
+            elseif size(xin,1)==me(1).buffersize
+                for k = 1:size(xin,3)
+                    X(:,k) = sum(xin(:,:,k));
+                end
+            else
+                X = xin;
+            end
+            if isempty(R)
+                R = regressor(X);
+            else
+                R2 = regressor(X);
+                R.value = R2.value;
+                R.m=[];
+%                 R.m = R2.m;
+            end
+            for k = 1:length(me)
+                me(k).regval = R;
+            end
+        end
+        function out = get.regressor(me)
+            out = me.regval;
+        end
+        
+        function factreg(me,Fin,varargin)
+            
+            R = fact2reg(Fin,'ignore',Fin==0,varargin{:});
+                      
+            me.regressor = R;
         end
         %%%%%%%
         function out = xfilt(me,in,apply_window)
@@ -705,7 +753,7 @@ classdef hosobject < handle
         %%%%%%%
         function update_bispectrum(me,FX,initialize)
             
-            %Write now this updates in chunks with temporal decay weighting
+            %Right now this updates in chunks with temporal decay weighting
             %applied only serially. That is, a simple average is obtained
             %for each chunk, which is then 
             m = size(FX,2);
@@ -891,7 +939,7 @@ classdef hosobject < handle
             me.bufferPos = me.bufferPos + length(snip);
         end
         
-        function get_input(me,xin,apply_window,use_shifted,initialize)
+        function out = get_input(me,xin,apply_window,use_shifted,initialize)
            
             % Process input if length is >= buffer size, else add to buffer.
             nxin = numel(xin);
@@ -907,14 +955,15 @@ classdef hosobject < handle
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
                 if  size(xin,1) ~=me(1).bufferN 
-                    stepn = round(me(1).poverlap*me(1).bufferN);
-                    nget = nxin - me(1).bufferN+1;
-                    tindx = (0:me(1).bufferN-1)';
-                    wint = (1:stepn:nget);
-
-                    T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
-                    Xchop = xin(T);
-                                
+%                     stepn = round(me(1).poverlap*me(1).bufferN);
+%                     nget = nxin - me(1).bufferN+1;
+%                     tindx = (0:me(1).bufferN-1)';
+%                     wint = (1:stepn:nget);
+% 
+%                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+%                     Xchop = xin(T);
+                    [Xchop,T] = me(1).chop_input(xin,false);
+                    
                     snip = xin(T(end)+1:numel(xin));
                     if ~isempty(snip)
                         me(1).write_buffer(snip);
@@ -927,16 +976,32 @@ classdef hosobject < handle
             else
                 me(1).write_buffer(xin);
             end    
-           
+            out{1} = Xchop;
             if length(me)>1
                xrec = me(1).reconstruct(xin);
-               me(2:end).get_input(xin-xrec,apply_window,use_shifted,initialize);
+               out = [out,me(2:end).get_input(xin-xrec,apply_window,use_shifted,initialize)];
             end
             
             
             
         end
-        
+        function [Xchop,T] = chop_input(me,xin,apply_window)
+            if nargin < 3 || isempty(apply_window)
+                apply_window = true;
+            end
+            nxin = length(xin);
+            stepn = round(me(1).poverlap*me(1).bufferN);
+            nget = nxin - me(1).bufferN+1;
+            tindx = (0:me(1).bufferN-1)';
+            wint = (1:stepn:nget);
+
+            T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+            Xchop = xin(T);
+            if apply_window
+               Xchop = fftshift(repmat(me(1).win,1,size(T,2)).*Xchop,1);
+            end
+             
+        end
         function [Xsh,Xwin,T,wint] = get_block(me,xin,maxiter,makeplot,compno)
            
             % Fit a block of data all at once
@@ -1045,7 +1110,7 @@ classdef hosobject < handle
                     apply_window = false;
                     use_shifted=false;
                     initialize = true;
-                    me(1).get_input(Xsh,apply_window,use_shifted,initialize)
+                    me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                     [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
                     Xsh = real(ifftshift(ifft(FXsh),1));
                     newdt = me(1).delay;
@@ -1079,11 +1144,41 @@ classdef hosobject < handle
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
                end
             end
-            
-            
-            
         end
         
+        function out = hos_regress(me,yin,xin,varargin)
+            
+            % out = hos_regress(me,Y,X)
+            % Linear regression on each element of the bicoherence matrix
+            % computed for Y with regressors in X.
+            %
+            % see COMPLEXGLM
+            
+            if size(yin,2)==1
+                Ychop = me(1).chop_input(yin,true);
+                for k = 1:size(xin,2)
+                    Xchop = me(1).chop_input(xin(:,k),true);
+                    x(:,k) = sum(Xchop)/sum(me(1).win);                
+                end
+                FY = fft(Ychop);
+            else
+                FY = fft(yin);
+            end
+            FFY = conj(FY(me(1).freqindx.Is(:,me(1).order),:));          
+            for k = me(1).order-1:-1:1
+                FYk = FY(me(1).freqindx.Is(:,k),:);
+                FFY = FFY.*FYk;
+            end
+%             [~,out.dev0] = complexglm(FFX',ones(size(x,1),1),'diagonly',false,'intercept',false);
+            [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY',x,'diagonly',false);
+            out.beta(:,end+1) = nan;
+            out.dev(end+1) = nan;
+            out.pval(end+1)=nan;
+            
+            out.sigma(end+1)=nan;
+  %          out.tsq = sum((inv(out.iXX)*out.beta).*conj(out.beta))./out.sigma; 
+        end
+            
         
         
         function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)

@@ -1,4 +1,4 @@
-function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing)
+function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask)
 
 % [Is,remap] = freq2index(freqs,order)
 %
@@ -12,6 +12,9 @@ function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,freq
 
 % Copyright Christohpher Kovach, University of Iowa 2018.
 
+if nargin < 8 || isempty(mask)
+    mask = true;
+end
 if nargin < 7 || isempty(frequency_spacing)
     frequency_spacing = 'linear';
 end
@@ -53,12 +56,20 @@ elseif length(keepfreqs)<order
     keepfreqs(end+1:order) = keepfreqs(end);
 end
 
-%%
+
+
 %%% For cross-polyspectra involving fewer signals than the specified order,
 %%% assume that the last signal is repeated.
 if length(freqsin) < order
     freqsin(end+1:order) = freqsin(end);
 end
+
+
+keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
+dims = cellfun(@(x)sum(x),keeplp);
+keepregion = false(dims);
+keepregion(keeplp2{:})=true;
 
 %%% Check if negative frequencies are explicitly represented
 %%% Will index into the negative frequencies if so.
@@ -68,7 +79,11 @@ nneg = sum(freqs{end}<0);
 npos = sum(freqs{end}>0);
 two_sided = nneg>npos/2; %%% Assume that negative frequencies are just padding if there aren't at least as many negative frequencies as half the number of positive frequencies.
 
-[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass);
+if ~isscalar(mask)
+    mask = mask(keepregion);
+end
+
+[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask);
 Fsum = Ws{end};
 
 %%% Efficiently map the nearest elements of Fsum to elements of frinds{end} with
@@ -179,12 +194,12 @@ end
 
 
 
-keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
-keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
-dims = cellfun(@(x)sum(x),keeplp);
+% keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+% keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
+% dims = cellfun(@(x)sum(x),keeplp);
 
-keepregion = false(dims);
-keepregion(keeplp2{:})=true;
+% keepregion = false(dims);
+% keepregion(keeplp2{:})=true;
 keepall = false(dims);
 keepall(keepregion) = keep;
 Z = zeros(dims,useInt);

@@ -1,4 +1,4 @@
-function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass)
+function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask)
 
 % Find the principal domain in a higher-order spectrum
 %
@@ -26,6 +26,10 @@ function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass)
 %    Is: Cell array of indices.
 
 % Copyright Christopher Kovach, University of Iowa, 2018
+
+if nargin < 5 || isempty(mask)
+    mask = true;
+end
 
 if nargin < 2 || isempty(order)
     if iscell(freqs)
@@ -88,6 +92,10 @@ for k = 1:length(Ws)
         keep = keep & abs(Ws{k})>highpass(k);
     end
 end
+if ~isscalar(mask)
+    keep(:) = keep(:)&mask(:);
+end
+
 for k = 1:length(Ws)
     Ws{k} = Ws{k}(keep);
     if k<=length(Is)
