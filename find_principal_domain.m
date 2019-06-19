@@ -103,15 +103,17 @@ for k = 1:length(Ws)
     end
 end
 
+[~,srti] = sort(lowpass(1:end-1)); %This ensures the principal domain includes the complete range of frequencies
+srti(end+1) = order;
 PD = false;
 for k = 1:nsig
-    PD0 = Ws{1}>=0 & Ws{order}<=0; %First signature is always + and last always -.  ;
+    PD0 = Ws{srti(1)}>=0 & Ws{order}<=0; %First signature is always + and last always -.  ;
     for kk = 2:order
 %           PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
-        if signatures(k,kk)==signatures(k,kk-1) 
-           PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
+        if signatures(k,srti(kk))==signatures(k,srti(kk-1)) 
+           PD0 = PD0 & signatures(k,srti(kk))*Ws{srti(kk)}>=signatures(k,srti(kk-1))*Ws{srti(kk-1)};
         else            
-           PD0 = PD0 & signatures(k,kk)*Ws{kk}>=0;
+           PD0 = PD0 & signatures(k,srti(kk))*Ws{srti(kk)}>=0;
         end
     end
 
