@@ -1,4 +1,4 @@
-function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask)
+function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass)
 
 % [Is,remap] = freq2index(freqs,order)
 %
@@ -11,6 +11,13 @@ function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,freq
 %
 
 % Copyright Christohpher Kovach, University of Iowa 2018.
+
+if nargin < 10 || isempty(xhighpass)
+    xhighpass = 0;
+end
+if nargin < 9 || isempty(xlowpass)
+    xlowpass = Inf;
+end
 
 if nargin < 8 || isempty(mask)
     mask = true;
@@ -35,10 +42,17 @@ end
 if isscalar(lowpass)
     lowpass = ones(1,order)*lowpass;
 end
+if isscalar(xlowpass)
+    xlowpass = ones(1,order)*xlowpass;
+end
 
 if isscalar(highpass)
     highpass= ones(1,order)*highpass;
 end
+if isscalar(xhighpass)
+    xhighpass = ones(1,order)*xhighpass;
+end
+
 %%
 if isnumeric(freqsin)
     freqsin = repmat({freqsin},1,order);
@@ -66,6 +80,7 @@ end
 
 
 keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+
 keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
 dims = cellfun(@(x)sum(x),keeplp);
 keepregion = false(dims);
@@ -83,7 +98,7 @@ if ~isscalar(mask)
     mask = mask(keepregion);
 end
 
-[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask);
+[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass);
 Fsum = Ws{end};
 
 %%% Efficiently map the nearest elements of Fsum to elements of frinds{end} with

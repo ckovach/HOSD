@@ -1,5 +1,5 @@
 
-classdef hosobject < handle
+classdef hosobjectHEAD < handle
    
     % Class implementing higher-order spectral filtering based on Kovach
     % and Howard 2019.
@@ -74,9 +74,6 @@ classdef hosobject < handle
        dat = [];
        avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
        outlier_threshold = 5;
-       regstat = [];
-       regweight=[];
-       sampweight = [];
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -111,8 +108,6 @@ classdef hosobject < handle
        highpassval = 0;
        lowpassval = .5; %%% Lowpass on the edges (max freq)
        glowpassval = .5; %%% Global lowpass
-       xlowpassval = .5; %%% OR lowpass
-       xhighpassval = 0; %%% OR lowpass
       BIASnum = 0;
         
        Bval = 0;
@@ -141,10 +136,6 @@ classdef hosobject < handle
         highpass  ;
         lowpass ; %%% Lowpass on the edges (max freq)
         glowpass ; %%% Global lowpass
-        
-        xlowpass ; %%% "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion 
-        xhighpass ;%%% This is useful to design filters selective for the interior or exterior regions of
-                   %%% the bispectrum.
         Bfull
         BIAS
         fullmap
@@ -158,7 +149,7 @@ classdef hosobject < handle
     
     methods
        
-        function me = hosobject(order,varargin)
+        function me = hosobjectHEAD(order,varargin)
             
             if nargin ==0
                 return
@@ -288,31 +279,21 @@ classdef hosobject < handle
             end
         end
         function update_frequency_indexing(me,freqindx,mask)
-           
+            lowpass = me.lowpassval*me.sampling_rate;
             order = me.order;
             freqs=me.freqs;
-            
-            lowpass = me.lowpassval*me.sampling_rate;
             if length(lowpass)< order-1
                 lowpass(end+1:order-1) = lowpass(end);
             end
             if length(lowpass)< order
                 lowpass(order) = me.glowpassval*me.sampling_rate;
             end
-            xlowpass = me.xlowpassval*me.sampling_rate;
-            if length(xlowpass)< order
-                xlowpass(end+1:order) = xlowpass(end);
-            end
-            xhighpass = me.xhighpassval*me.sampling_rate;
-            if length(xhighpass)< order
-                xhighpass(end+1:order) = xhighpass(end);
-            end
             if nargin < 3 || isempty(mask)
                 mask = true;
             end
             highpass = me.highpassval*me.sampling_rate;
             if length(highpass)< order
-                highpass(end+1:order) = highpass(1);
+                highpass(end+1:order) = highpass;
             end
             
             keepfreqs={};
@@ -324,7 +305,7 @@ classdef hosobject < handle
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
             if nargin < 2 || isempty(freqindx)
-                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass); %#ok<*PROPLC,*PROP>
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask); %#ok<*PROPLC,*PROP>
             end
             
             me.freqindx  = freqindx;
@@ -389,32 +370,18 @@ classdef hosobject < handle
            me.glowpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
-        function set.xlowpass(me,a)
-           me.xlowpassval = a./me.sampling_rate;
-            me.update_frequency_indexing;
-        end
         function set.highpass(me,a)
            me.highpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
-        function set.xhighpass(me,a)
-           me.xhighpassval = a./me.sampling_rate;
-            me.update_frequency_indexing;
-        end
         function out = get.lowpass(me)
           out = me.lowpassval*me.sampling_rate ;
-        end
-        function out = get.xlowpass(me)
-           out = me.xlowpassval*me.sampling_rate;
         end
         function out = get.glowpass(me)
            out = me.glowpassval*me.sampling_rate;
         end
         function out = get.highpass(me)
           out =  me.highpassval*me.sampling_rate;
-        end
-        function out = get.xhighpass(me)
-           out = me.xhighpassval*me.sampling_rate;
         end
         function out = get.buffersize(me)
             out = me.bufferN;
@@ -561,11 +528,6 @@ classdef hosobject < handle
 %             end
             FXshift = [];
             sgn = 1;
-            if isempty(me.sampweight)
-               smpw =1 ;
-            else
-                smpw = me.sampweight;
-            end
             if size(X,1) == me.bufferN
                 if apply_window
                     win = me.win;
@@ -576,13 +538,9 @@ classdef hosobject < handle
                 FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
-                if isscalar(smpw)
-                    [~,mxi] = max(Xfilt.^me.order);
-                else
-                    [~,mxi] = max(Xfilt.^me.order.*repmat(smpw',size(Xfilt,1),1));
-                end
+                [~,mxi] = max(Xfilt.^me.order);
                 if mod(me.order,2)==0 
-                   sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1)).*smpw'); 
+                   sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1))); 
                 end
                 if nargout >1 && return_shifted
                  
@@ -688,9 +646,7 @@ classdef hosobject < handle
             else
                 R2 = regressor(X);
                 R.value = R2.value;
-                if isfield(R,'m')
-                    R.m=[];
-                end
+                R.m=[];
 %                 R.m = R2.m;
             end
             for k = 1:length(me)
@@ -795,44 +751,28 @@ classdef hosobject < handle
            end
         end
         %%%%%%%
-        function update_bispectrum(me,FXs,initialize)
+        function update_bispectrum(me,FX,initialize)
             
             %Right now this updates in chunks with temporal decay weighting
             %applied only serially. That is, a simple average is obtained
             %for each chunk, which is then 
-            
-            if ~iscell(FXs)
-                FXs  = {FXs};
-            end
-            
-            m = size(FXs{1},2);
+            m = size(FX,2);
             
             if nargin < 3 || isempty(initialize)
                 initialize = false;
             end
                 
                
-            if isempty(FXs{1})
+            if isempty(FX)
                 return
             end
             
-               %%% Adjust for lag
+            %%% Adjust for lag
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
             delt = me.radw*dt;
             delt(isnan(delt))=0;
-            for k = 1:length(FXs)
-                FXs{k} = repmat(exp(-1i*delt),1,size(FXs{k},2)).*FXs{k};
-            end
-            
-            if length(FXs) == me.order
-                FX = FXs{me.order};                
-            elseif length(FXs)>1 && length(FXs)<me.order
-                FXs = [FXs(ones(1,me.order-length(FXs)-1)),FXs,FXs(1)]; 
-                FX = FXs{1};
-            else
-                FX = FXs{1};
-            end
-         
+            FX = repmat(exp(-1i*delt),1,size(FX,2)).*FX;
+
 %             Xwin = Xin.*me.win;
 %             FX = fft(Xwin);
            % FFX = 1;
@@ -843,11 +783,6 @@ classdef hosobject < handle
             FFXpart{me.order} = ones(size(FFX));
             
             for k = me.order-1:-1:1
-                if k>length(FXs)
-                    FX = FXs{1};
-                else
-                    FX = FXs{k};
-                end
                 FXk = FX(me.freqindx.Is(:,k),:);
                 for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
                     FFXpart{kk} = FFXpart{kk}.*FXk;
@@ -855,14 +790,7 @@ classdef hosobject < handle
                 FFX = FFX.*FXk;
             end
             
-            if isempty(me.sampweight)
-                wgt = ones(size(FFX,2),1)/size(FFX,2);
-            else
-                wgt = me.sampweight;
-            end
-            
-%             BX = mean(FFX,2);
-            BX = FFX*wgt;
+            BX = mean(FFX,2);
             XPSD = mean(abs(FX).^2,2);
 %             BXpart = mean(FFXpart,2);
             
@@ -871,8 +799,7 @@ classdef hosobject < handle
 %             BXpart(end+1,:) = 0;
             BXpart = {};
             for kk = 1:me.order
-%                BXpart{kk} = mean(FFXpart{kk},2); 
-               BXpart{kk} = FFXpart{kk}*wgt; 
+               BXpart{kk} = mean(FFXpart{kk},2); 
                BXpart{kk}(end+1,:) = 0;
             end
             
@@ -909,11 +836,9 @@ classdef hosobject < handle
             
             switch me.normalization
                 case 'awplv'
-%                     NX = mean(abs(FFX),2);
-                    NX = abs(FFX)*abs(wgt);
+                    NX = mean(abs(FFX),2);
                     NX(end+1,1) = 0;
-%                     XbiasNum = sum(abs(FFX).^2,2)./m^2;
-                    XbiasNum = abs(FFX).^2*abs(wgt).^2;
+                    XbiasNum = sum(abs(FFX).^2,2)./m^2;
                     XbiasNum(end+1,1) = 0;
                     me.BIASnum = me.BIASnum.*(1-lr).^(2*m) + lrbias*XbiasNum;
                     me.D = (1-lradj)*me.D + lradj*NX+eps;
@@ -993,14 +918,8 @@ classdef hosobject < handle
            end
                
 %             lradj = (1-(1-me.filter_adaptation_rate)^m);
-
-%            me.wavefft = me.wavefft*(1-lradj) + mean(FXsh,2)*lradj; 
-           if isempty(me.sampweight)
-               smpw = ones(size(FXsh,2),1)/size(FXsh,2);
-           else
-               smpw = me.sampweight;
-           end
-           me.wavefft = me.wavefft*(1-lradj) + (FXsh*smpw)*lradj; 
+           %me.waveform = me.waveform*(1-lradj) + mean(Xsh,2)*lradj; 
+           me.wavefft = me.wavefft*(1-lradj) + mean(FXsh,2)*lradj; 
            
         end
         
@@ -1057,7 +976,7 @@ classdef hosobject < handle
             else
                 me(1).write_buffer(xin);
             end    
-            out = Xchop;
+            out{1} = Xchop;
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                out = [out,me(2:end).get_input(xin-xrec,apply_window,use_shifted,initialize)];
@@ -1096,9 +1015,6 @@ classdef hosobject < handle
             if nargin < 3 || isempty(maxiter)
                 maxiter = 25;
             end
-%             if ~iscell(xin)
-%                 xin = {xin};
-%             end
             nxin = numel(xin);
             xisnan = isnan(xin);
             
@@ -1111,21 +1027,16 @@ classdef hosobject < handle
                     wint = (1:stepn:nget);
 
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
-%                     for k = 1:length(xin)
+                    Xchop = xin(T);
+                    hasnans = any(xisnan(T));
+                    if any(hasnans)
+                        fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
+                        T = T(:,~hasnans);
                         Xchop = xin(T);
-                    
-                        hasnans = any(xisnan(T));
-                        if any(hasnans)
-                            fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
-                            T = T(:,~hasnans);
-                            Xchop = xin(T);
-                        end
-%                     end
-                    if length(xin)==1  %%% Streaming is only implemented for single-channel input
-                        snip = xin(T(end)+1:numel(xin));
-                        if ~isempty(snip) && ~any(isnan(snip))                        
-                            me(1).write_buffer(snip);
-                        end
+                    end
+                    snip = xin(T(end)+1:numel(xin));
+                    if ~isempty(snip) && ~any(isnan(snip))                        
+                        me(1).write_buffer(snip);
                     end
                 else
                     Xchop = xin;
@@ -1133,37 +1044,28 @@ classdef hosobject < handle
                 end
                 del = Inf;
 %                 tol =1; % Stop when the average shift is less than 1 sample
-                tol =me(1).sampling_rate/me(1).lowpass(1);
+                tol =me(1).sampling_rate/me(1).lowpass;
                 k = 0;
                 olddt2 = 0;
                 olddt =0;
 %                  Xwin = Xchop.*repmat(kaiser(me(1).bufferN,5),1,size(Xchop,2));
-%                 for k = 1:length(Xchop)
-                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+                 Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
 %                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
-                    Xsh = Xwin;
-                     Xfilt=Xsh;
-%                 end
+                Xsh = Xwin;
+                 Xfilt=Xsh;
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 color_cycle = 10;
                 if all(ishandle(makeplot))
                     set(makeplot(1:end-1),'ydata',zeros(me(1).bufferN,1));
                 end
-%                 std_moment = @(x)mean(nanmean(x.^me(1).order)./(nanmean(x.^2)).^(me(1).order/2));
-                if isempty(me(1).sampweight)
-                    smpw = 1;
-                else
-                    smpw = me(1).sampweight;
-                end
-%                 std_moment = @(x)mean(cumulant(x,me(1).order,1,smpw')./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
-                std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+                std_moment = @(x)mean(nanmean(x.^me(1).order)./(nanmean(x.^2)).^(me(1).order/2));
                  switch me(1).order
                     case 3
                         moment_type = 'skewness';
                     case 4
                         moment_type = 'kurtosis';
                     otherwise
-                        moment_type = 'standardized cumulant';
+                        moment_type = 'standardized moment';
                 end
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
@@ -1182,7 +1084,7 @@ classdef hosobject < handle
                         makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
                         makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                         subplot(2,1,2)
-%                          makeplot(2:6) = plot(ifftshift(me(1).freqs),ifftshift(abs(me(1).filterfft))*ones(1,5));
+%                          makeplot(2:6) = plot(ifftshift(me(1).freqs{1}),ifftshift(abs(me(1).filterfft))*ones(1,5));
                          plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
 %                          cmap = hsv(length(plh));
                          for pli = 1:length(plh)
@@ -1218,17 +1120,6 @@ classdef hosobject < handle
                     del = std(olddt2-newdt);%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     olddt2 = olddt;
                
-                    
-                    if ~isempty(me(1).regval)
-                    %%% Now update the regressor weights, if there are any
-                    %%% regresors
-                    
-                        cumXfilt = cumulant(Xfilt,me(1).order);
-                        nrm = @(x)x./sqrt(sum(abs(x).^2));
-%                         me(1).regweight = nrm(me(1).regval.value\cumXfilt');
-%                         me(1).sampweight=nrm(me(1).regval.value*me(1).regweight);
-                    end
-                    
                 end
                 
                 %%% Set the delays to the correct value for the original
@@ -1263,12 +1154,6 @@ classdef hosobject < handle
             %
             % see COMPLEXGLM
             
-            do_permtest = true; %Do a permutation test to verify significant results
-            maxpermn = 5e5;
-            
-            
-            me(1).regressor = xin;
-            
             if size(yin,2)==1
                 Ychop = me(1).chop_input(yin,true);
                 for k = 1:size(xin,2)
@@ -1291,42 +1176,6 @@ classdef hosobject < handle
             out.pval(end+1)=nan;
             
             out.sigma(end+1)=nan;
-            me(1).regstat=out;
-            
-            if do_permtest
-               permi = 1;
-               den = zeros(size(out.pval(1:end-1)));
-               num = den;
-               num_threshold = [5 5 4 2 1]; % Number of super-threshold permutations at which to stop at ceil(log10(permutation_index)
-               fp = fprintf('\nPermutation %i, Nsig: %i',0,0);
-               %%% Permutation test with number of permutations adjusted
-               %%% to nominal p-value. 
-               reseed;
-               geti=1;
-               while any(out.pval<=1/(permi*2)) && permi<maxpermn && sum(geti)>0
-                   rp = randperm(size(FFY,2));
-                   if mod(permi,10.^floor(log10(permi)-2))==0
-                      geti = num < num_threshold(min(end,ceil(log10(permi+1))));
-                       fp = fprintf([repmat('\b',1,fp),'Permutation %i, Nsig: %i'],permi,sum(geti))-fp;
-                   end
-                   [~,dev] = complexglm(FFY(geti,rp)',x,'diagonly',false);
-                   den(geti) = den(geti)+1;
-                   num(geti) =  num(geti)+(out.dev(geti)<dev);
-                   permi=permi+1;
-               end
-               out.permp = num./den;
-               out.permp(end+1) = nan;
-%                out.nperms = den;
-                
-            end
-         
-%             if length(me)>1
-%                out = [out,me(2:end).hos_regress(yin-me(1).xrec(yin),xin)];
-%             end
-         %             C = out.beta(:,1:end-1)*out.beta(:,1:end-1)';
-%             [u,l] = svd(C);
-%             me(1).regweight = u(:,1);
-            
   %          out.tsq = sum((inv(out.iXX)*out.beta).*conj(out.beta))./out.sigma; 
         end
             
@@ -1355,7 +1204,7 @@ classdef hosobject < handle
             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
                  trialthresh = me.current_threshold;
                  Xcs = [];
-            elseif me.order == 3
+            elseif me.order ==3
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
                   srt = sort(Xcent(:));
