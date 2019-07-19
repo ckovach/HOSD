@@ -1,16 +1,27 @@
 function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass)
 
-% [Is,remap] = freq2index(freqs,order)
+% out = freq2index(freqs,order,lowpass,highpass)
 %
 % Function to generate indexing for polyspectra of a given order.
 %
 % INPUT:
 %
-% freqs - vector or 1 x order cell array of vectors containing frequencies.
+%   freqs - vector or 1 x order cell array of vectors containing frequencies.
+%   lowpass - lowpass frequency
+%   highpass - highpass frequency
 %
+% OUTPUT:
 %
+%   out - struct with fields:
+%       .Is : indices into the signal spectrum to produce a non-redundant
+%             set of coefficients in the HOS of given order.
+%       .remap : mapping from the non-redundant vector to the full HOS
+%                array.
+%       .principal_domain: Indicates the principal domain. 
+%       .PDconj: Indicates regions related to the principal domain by
+%                complex conjugate.
 
-% Copyright Christohpher Kovach, University of Iowa 2018.
+% Copyright Christopher Kovach, University of Iowa 2018.
 
 if nargin < 10 || isempty(xhighpass)
     xhighpass = 0;

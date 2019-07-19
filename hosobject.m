@@ -522,7 +522,7 @@ classdef hosobject < handle
             if length(in)>me.bufferN
                 warning('Filter function size does not match current buffer. Filter will be truncated.')
                in(me.bufferN+1:end)=[];
-            elseif length(in)<me.bufferN;
+            elseif length(in)<me.bufferN
                 warning('Filter function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
@@ -942,6 +942,92 @@ classdef hosobject < handle
          
         end
         
+         %%%%%%%
+        function Gout = partial_delay_filt(me,Xs,returnfull)
+            
+            
+            if nargin < 3 || isempty(returnfull)
+                returnfull = true;
+            end
+            if ~iscell(Xs)
+                Xs  = {Xs};
+            end
+            
+            %m = size(Xs{1},2);
+            
+                               
+            if isempty(Xs{1})
+                return
+            end
+            
+               %%% Adjust for lag
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
+            delt = me.radw*dt;
+            delt(isnan(delt))=0;
+            for k = 1:length(Xs)
+                FXs{k} = repmat(exp(-1i*delt),1,size(Xs{k},2)).*fft(Xs{k});
+            end
+            
+            if length(FXs) == me.order
+                FX = FXs{me.order};                
+            elseif length(FXs)>1 && length(FXs)<me.order
+                FXs = [FXs(ones(1,me.order-length(FXs)-1)),FXs,FXs(1)]; 
+                FX = FXs{1};
+            else
+                FX = FXs{1};
+            end
+         
+%             Xwin = Xin.*me.win;
+%             FX = fft(Xwin);
+           % FFX = 1;
+%            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
+            FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+            FFXpart = {};
+            FFXpart(1:me.order-1) = {FFX};
+            FFXpart{me.order} = ones(size(FFX));
+            
+            for k = me.order-1:-1:1
+                if k>length(FXs)
+                    FX = FXs{1};
+                else
+                    FX = FXs{k};
+                end
+                FXk = FX(me.freqindx.Is(:,k),:);
+                for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
+                    FFXpart{kk} = FFXpart{kk}.*FXk;
+                end
+                FFX = FFX.*FXk;
+            end
+            
+            
+            BC = me.B./(me.D+eps);
+            bias = sqrt(me.BIASnum./(me.D.^2+eps));
+            bias(isnan(bias))=0;
+            BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+            H = conj(BC./(me.D+eps));
+           
+            Gpart = 0;
+%             Bcheck = 0;
+%              HFcheck =  H(1:end-1).*FFX; %Sanity check to make sure the integration is correct.
+            len = length(me.B)-1;
+            for k = 1:length(FFXpart)
+                
+                Iconj = integrator(me.freqindx.remap.*cast(me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+                I = integrator(me.freqindx.remap.*cast(~me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+                HF = H(1:end-1).*FFXpart{k};
+               
+                Gpart = Gpart + I*HF + Iconj*conj(HF);
+%                 Bcheck = Bcheck + I*HFcheck + Iconj*conj(HFcheck);
+            end
+            if returnfull
+                Gout = zeros(size(Xs{1}));
+                Gout(me.keepfreqs{1},:) = Gpart(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)),:);
+            else
+                Gout = Gpart(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)),:);
+            end
+        end
+        
+        %%%%%
         function update_filter(me)
     
 %               postwin = @(x) 1+cos(2*pi*x);
@@ -1027,7 +1113,7 @@ classdef hosobject < handle
                 me.bufferPos = 0;
                 return
             end
-            getsnip = min(me.bufferN-me.bufferPos,length(snip));
+           % getsnip = min(me.bufferN-me.bufferPos,length(snip));
             me.inputbuffer(length(snip)+(1:end-length(snip))) = me.inputbuffer(1:me.bufferN-length(snip));
             me.inputbuffer(1:length(snip)) = snip;
             me.bufferPos = me.bufferPos + length(snip);
@@ -1118,6 +1204,15 @@ classdef hosobject < handle
             nxin = numel(xin);
             xisnan = isnan(xin);
             
+            
+            use_partial_delay_method = true;
+            %%% If false, uses the older method which recomputed the HOS at
+            %%% each iteration, which is unnecessary. If true, then
+            %%% HOS are estimated once at the outset along with the partial 
+            %%% delay filters for each segment. Included here only for the 
+            %%% sake of debugging and will be removed eventually 
+            
+            
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
                 if  size(xin,1) ~=me(1).bufferN 
@@ -1155,10 +1250,10 @@ classdef hosobject < handle
                 olddt =0;
 %                  Xwin = Xchop.*repmat(kaiser(me(1).bufferN,5),1,size(Xchop,2));
 %                 for k = 1:length(Xchop)
-                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
+                Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
 %                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
-                    Xsh = Xwin;
-                     Xfilt=Xsh;
+                Xsh = Xwin;
+                Xfilt=Xsh;
 %                 end
                 fprintf('\nComponent %3i Iter %3i',compno,0)
                 color_cycle = 10;
@@ -1180,6 +1275,16 @@ classdef hosobject < handle
                         moment_type = 'kurtosis';
                     otherwise
                         moment_type = 'standardized cumulant';
+                 end
+                apply_window = false;
+                use_shifted=false;
+                initialize = true;
+                if use_partial_delay_method
+                    me(1).get_input(Xsh,apply_window,use_shifted,initialize);
+                    Gpart = me(1).partial_delay_filt(Xsh,false); 
+                    me(1).G = mean(Gpart,2);
+%                     me(1).apply_filter(Xsh,false,true);
+%                     newdt = me(1).delay;
                 end
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
@@ -1216,18 +1321,32 @@ classdef hosobject < handle
                     if k >2
                       olddt = me(1).delay;
                     end
-%                      me(1).B(:)=0;
-%                     me(1).D(:) = 0;
-%                     me(1).BIASnum(:)=0;
+
 
              
-                    apply_window = false;
-                    use_shifted=false;
-                    initialize = true;
-                    me(1).get_input(Xsh,apply_window,use_shifted,initialize);
-                    [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
-                    Xsh = real(ifftshift(ifft(FXsh),1));
-                    newdt = me(1).delay;
+                   if use_partial_delay_method
+                       [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
+                       Xsh = real(ifftshift(ifft(FXsh),1));
+                       newdt = me(1).delay;
+                       delt = me(1).radw(me(1).keepfreqs{1})*newdt;
+                       Gpart = exp(-1i.*delt).*Gpart; 
+                       G = mean(Gpart,2);
+                       me(1).G = G;
+                       me(1).feature = mean(Xsh,2);
+                       if me(1).adjust_lag
+                           ffun = real(ifft(me(1).filterftlag));                   
+                           mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
+                           mph = mph./(abs(mph)+eps);
+                           me(1).lag = mph; % Circularshift to keep filter energy centered on the window
+                        end
+                   else
+                       %%% This approach recomputes all statistics at every
+                       %%% iteration, which is unnecessary.
+                        me(1).get_input(Xsh,apply_window,use_shifted,initialize);
+                        [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
+                       newdt = me(1).delay;
+                        Xsh = real(ifftshift(ifft(FXsh),1));
+                   end
                     % checks two and one step back to reduce getting
                     % trapped at points of cyclical stability.
 %                     del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
@@ -1235,15 +1354,15 @@ classdef hosobject < handle
                     olddt2 = olddt;
                
                     
-                    if ~isempty(me(1).regval)
-                    %%% Now update the regressor weights, if there are any
-                    %%% regresors
-                    
-                        cumXfilt = cumulant(Xfilt,me(1).order);
-                        nrm = @(x)x./sqrt(sum(abs(x).^2));
-%                         me(1).regweight = nrm(me(1).regval.value\cumXfilt');
-%                         me(1).sampweight=nrm(me(1).regval.value*me(1).regweight);
-                    end
+%                     if ~isempty(me(1).regval)
+%                     %%% Now update the regressor weights, if there are any
+%                     %%% regressors
+%                     
+%                         cumXfilt = cumulant(Xfilt,me(1).order);
+%                         nrm = @(x)x./sqrt(sum(abs(x).^2));
+% %                         me(1).regweight = nrm(me(1).regval.value\cumXfilt');
+% %                         me(1).sampweight=nrm(me(1).regval.value*me(1).regweight);
+%                     end
                     
                 end
                 
@@ -1431,10 +1550,12 @@ classdef hosobject < handle
             Xthresh = Xfilt.*THR;
             Xthresh(isnan(Xthresh))=0;
         end
+        
+        %%%%%%
         function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
             
             if nargin < 2
-                Xin = me.inputbuffer;
+                X = me.inputbuffer;
             end
             if nargin < 3 || isempty(threshold)
                 threshold = me.thresh;
@@ -1445,16 +1566,16 @@ classdef hosobject < handle
             xisnan = isnan(X);
 %             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
-            if size(X,1) == me.bufferN
-                Xfilt = ifftshift(Xfilt,1);
-             
-                win = me.win;
-              
-                Xwin = repmat(win,1,size(X,2)).*X;
-
-            else
-                Xwin = X;
-            end
+%             if size(X,1) == me.bufferN
+%                 Xfilt = ifftshift(Xfilt,1);
+%              
+%                 win = me.win;
+%               
+%                 Xwin = repmat(win,1,size(X,2)).*X;
+% 
+%             else
+%                 Xwin = X;
+%             end
 
             % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             Xthr=me.filter_threshold(Xfilt,threshold);
@@ -1467,7 +1588,7 @@ classdef hosobject < handle
             featfft = fft(wf);
             Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
             Xrec(size(X,1)+1:length(wf),:) = [];
-            X(xisnan)=0;
+            %X(xisnan)=0;
             Xrec(xisnan)=0;
 
             use_filtered_lmse = true;
@@ -1482,7 +1603,7 @@ classdef hosobject < handle
                 beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
                 Xrec = beta*Xrec; 
             else
-                a= sum(abs(Xrec(:)).^2);
+                a= sum(abs(Xrec(:)).^2); %#ok<*UNRCH>
                 if a > 0
                  Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
                 end
@@ -1524,21 +1645,7 @@ classdef hosobject < handle
                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
                lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
                me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
-% 
-% %                mph = mean(exp(1i*2*pi*me.delay./me.bufferN));
-% %                mph = mph./abs(mph);
-%                ffun = real(ifft(me.filterfft));
-%                mph = sum(exp(1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sqrt(me.bufferN*sum(abs(ffun).^2));
-%                mph = mph./abs(mph);
-% %                mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
-% %                  lr2=me.hos_learning_rate;
-% %                  lr2 = me.learningfunction(lr2,sum(getwin),1/lr2);
-% %                  lr2=sum(getwin)./(sum(getwin)+100);
-%                lr2=lradj;
-%                lr2=0;
-% %             me.avg_delay = me.avg_delay*(1-lr2) + lr2*mph;
-% %                lr2=.01;
-%                 me.avg_delay =  lr2*mph + (1-lr2);
+
             end
             if me.do_wave_update
               %  Xsh = real(ifft(FXsh(:,getwin)));
@@ -1551,7 +1658,7 @@ classdef hosobject < handle
            
         end
         
-        function out = update_criteria(me,Xfilt)
+        function out = update_criteria(me,Xfilt) %#ok<INUSL>
             out = true(1,size(Xfilt,2)); % Placeholder for now
         end
         
