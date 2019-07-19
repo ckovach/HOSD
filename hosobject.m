@@ -74,6 +74,7 @@ classdef hosobject < handle
        dat = [];
        avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
        outlier_threshold = 5;
+       fftN = 1024;
        regstat = [];
        regweight=[];
        sampweight = [];
@@ -95,13 +96,14 @@ classdef hosobject < handle
         sampt = []; % Vector of sample indices
         delay = 0;
         waveftlag = [];
+      
         win = sasaki(1024);
 
     end
     
     properties (Access = private)
       bufferN = 1024;
-
+      
       G = []; 
 
 %      wintype = 'hann'; % Default window type
@@ -118,7 +120,7 @@ classdef hosobject < handle
        Bval = 0;
        Bpartval = {};
        Dval = 1;
-       
+       padN = 0;       
        regval=[];
     end
     properties (Dependent = true)
@@ -153,6 +155,7 @@ classdef hosobject < handle
         B ;
         Bpart ;
         D ;
+        pad; %
         regressor;
     end
     
@@ -165,7 +168,7 @@ classdef hosobject < handle
             end
             if isa(order,mfilename)
                obj = order;
-               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','highpass','lowpass','glowpass','buffersize','filterftlag','fullmap','partialbicoh'});
+               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh'});
                
                if length(obj)==1
                    obj(2:length(me)) = obj;
@@ -229,7 +232,7 @@ classdef hosobject < handle
                 lowpass = me(1).lowpass;
             end
              if nargin < 5 || isempty(freqs)
-                freqs = fftfreq(me(1).bufferN)*me(1).sampling_rate;
+                freqs = fftfreq(me(1).fftN)*me(1).sampling_rate;
             end
             if isnumeric(freqs)
                 freqs = {freqs};
@@ -266,10 +269,11 @@ classdef hosobject < handle
             me(1).sumlr =0;
             me(1).sumlr2 = 0;
             z=zeros(me(1).bufferN,1);
+            z2=zeros(me(1).fftN,1);
             me(1).inputbuffer = z;
             me(1).outputbuffer = z;
-            me(1).waveform = z;
-            me(1).shiftbuffer = z;
+            me(1).waveform = z2;
+            me(1).shiftbuffer = z2;
             me(1).thresholdbuffer=z;
             me(1).PSD = [z;0];
 %             me(1).G = ones(size(z));
@@ -421,9 +425,16 @@ classdef hosobject < handle
         end
         function set.buffersize(me,N)
            me.bufferN = N;
+           if islogical(me.padN)&& me.padN
+               me.fftN = me.bufferN + N;
+           elseif me.padN<1 && me.padN>0
+               me.fftN = me.bufferN + round(me.padN*N);
+           else
+               me.fftN = me.padN + me.bufferN;
+           end
            me.win = window(me.wintype,N); 
-           me.radw = ifftshift((0:me.bufferN-1)' - floor(me.bufferN/2))/me.bufferN*2*pi;
-           me.sampt = ifftshift((0:me.bufferN-1) - floor(me.bufferN/2)'); 
+           me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
+           me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
            me.reset;
         end
         function out = get.window(me)
@@ -435,7 +446,7 @@ classdef hosobject < handle
         end
         function out = get.filterftlag(me)
            %%% Filter FT without circular shift adjustment
-            out = zeros(me.bufferN,1);
+            out = zeros(me.fftN,1);
             out(me.keepfreqs{1}) = me.G;
         end
         function out = get.filterfft(me)
@@ -444,7 +455,7 @@ classdef hosobject < handle
             out =me.filterftlag;
            
             %Adjust centering.
-           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
            delt = me.radw*dt;
            if isempty(me.radw)
                delt = 0;
@@ -454,7 +465,7 @@ classdef hosobject < handle
         end
         function set.filterfft(me,in)
            
-           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+           dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
            delt = me.radw*dt;
            F= exp(1i*delt).*in;
            
@@ -474,7 +485,7 @@ classdef hosobject < handle
             [~,mxi] = max(ifft(F.*me.filterftlag));
             
                %Adjust centering.
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN + me.sampt(mxi);
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN + me.sampt(mxi);
             delt = me.radw*dt;
             out = exp(1i*delt).*F;
          
@@ -486,7 +497,7 @@ classdef hosobject < handle
              F = in;
             
             %Adjust centering.
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
             delt = me.radw*dt;
             if isempty(delt)
                 delt = 0;
@@ -515,6 +526,7 @@ classdef hosobject < handle
                 warning('Filter function size does not match current buffer. Filter will be padded.')
                 in(end+1:me.bufferN) = 0;
             end
+            in(end+1:me.fftN) = 0;
             F =fft(fftshift(in));
 %             F =fft((in));
             me.filterfft = F;
@@ -573,6 +585,7 @@ classdef hosobject < handle
                     win =ones(size(X,1),1);
                 end
                 Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
+                Xwin(end+1:me.fftN,:) = 0;
                 FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
                 Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
@@ -608,10 +621,10 @@ classdef hosobject < handle
             else
 %                  Xin = X(:);
                 Xin = X;
-                Xin(end+me.bufferN,:) = 0;
+                Xin(end+me.fftN,:) = 0;
                 Xfilt = filter(me.filterfun,1,Xin);
-                Xfilt = Xfilt(ceil(me.bufferN/2)+1:end-floor(me.bufferN/2),:);
-       
+                Xfilt = Xfilt(ceil(me.fftN/2)+1:end-floor(me.fftN/2),:);
+                
             end
                
         end
@@ -817,7 +830,7 @@ classdef hosobject < handle
             end
             
                %%% Adjust for lag
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.bufferN;
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
             delt = me.radw*dt;
             delt(isnan(delt))=0;
             for k = 1:length(FXs)
@@ -970,7 +983,7 @@ classdef hosobject < handle
                
                 if me.adjust_lag
                    ffun = real(ifft(me.filterftlag));                   
-                   mph = sum(exp(-1i*2*pi*me.sampt(:)./me.bufferN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
+                   mph = sum(exp(-1i*2*pi*me.sampt(:)./me.fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                    mph = mph./(abs(mph)+eps);
                    me.lag = mph; % Circularshift to keep filter energy centered on the window
                    
@@ -1066,15 +1079,18 @@ classdef hosobject < handle
             
             
         end
-        function [Xchop,T] = chop_input(me,xin,apply_window)
+        function [Xchop,T] = chop_input(me,xin,apply_window,delay)
             if nargin < 3 || isempty(apply_window)
                 apply_window = true;
+            end
+            if nargin < 4 || isempty(delay)
+                delay=0;
             end
             nxin = length(xin);
             stepn = round(me(1).poverlap*me(1).bufferN);
             nget = nxin - me(1).bufferN+1;
             tindx = (0:me(1).bufferN-1)';
-            wint = (1:stepn:nget);
+            wint = (1:stepn:nget)+delay;
 
             T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
             Xchop = xin(T);
@@ -1493,6 +1509,7 @@ classdef hosobject < handle
                warning('Updating is currently disabled. Set do_update = true to enable.') 
                return
             end
+            X(end+1:me.fftN,:)=0;
             [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
             getwin = me.update_criteria(Xfilt);
            
@@ -1564,6 +1581,17 @@ classdef hosobject < handle
 %             
 %             
 %         end
+        function out = get.pad(me)
+            out = me.padN;
+        end
+        function set.pad(me,in)
+            me.padN = in;
+            if islogical(me.padN) && me.padN
+                me.fftN = me.bufferN+me.padN;
+            else
+                me.fftN = me.bufferN+me.padN;
+            end
+        end
     end
     
 end
