@@ -1235,7 +1235,7 @@ classdef hosobject < handle
                         Xchop = xin(T);
                     
                         hasnans = any(xisnan(T));
-                        if any(hasnans)
+                        if all(hasnans)
                             fprintf('\nAll segments contain NaN values. Discarding these data')
                             return
                         elseif any(hasnans)
