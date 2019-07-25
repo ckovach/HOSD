@@ -131,7 +131,7 @@ switch frequency_spacing
 end
 
 %   frsrti(end+1) = length(freqs{order})+1;
-[srt,srti] = sort([(-1)^two_sided*Fsum(:);frcent(:)]);
+[srt,srti] = sort([-Fsum(:);frcent(:)]);
 E = [zeros(n,1);ones(length(frcent),1)];
 E = E(srti); 
 IND = zeros(size(E));
