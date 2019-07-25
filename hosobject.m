@@ -122,6 +122,16 @@ classdef hosobject < handle
        Dval = 1;
        padN = 0;       
        regval=[];
+       
+       use_partial_delay_method = true;
+            %%% If false, uses the older method which computed HOS  before
+            %%% filer estimation, which is unnecessary in iterated estimation.
+            %%% If true, then the partial_delay_filters are estimated for each
+            %%% segment and the detection filter is obtained by shifting and 
+            %%% averaging the segment filters. This option is included for the 
+            %%% sake of debugging and will be removed eventually. 
+        
+       do_indexing_update = true;
     end
     properties (Dependent = true)
         
@@ -180,10 +190,11 @@ classdef hosobject < handle
                me(1).order = obj(1).order;               
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
+               me(1).do_indexing_update = false;
                for k = 1:length(fns)                  
                    me(1).(fns{k}) = obj(1).(fns{k});
                end
-                
+               me(1).do_indexing_update = true;
                if length(me)>1
                    me(2:end) = hosobject(obj(2:end));
                end
@@ -293,6 +304,9 @@ classdef hosobject < handle
         end
         function update_frequency_indexing(me,freqindx,mask)
            
+            if ~me(1).do_indexing_update
+                return
+            end
             order = me.order;
             freqs=me.freqs;
             
@@ -1155,6 +1169,7 @@ classdef hosobject < handle
         
             else
                 me(1).write_buffer(xin);
+                return
             end    
             out = Xchop;
             if length(me)>1
@@ -1205,13 +1220,7 @@ classdef hosobject < handle
             xisnan = isnan(xin);
             
             
-            use_partial_delay_method = true;
-            %%% If false, uses the older method which recomputed the HOS at
-            %%% each iteration, which is unnecessary. If true, then
-            %%% HOS are estimated once at the outset along with the partial 
-            %%% delay filters for each segment. Included here only for the 
-            %%% sake of debugging and will be removed eventually 
-            
+        
             
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
@@ -1227,10 +1236,14 @@ classdef hosobject < handle
                     
                         hasnans = any(xisnan(T));
                         if any(hasnans)
+                            fprintf('\nAll segments contain NaN values. Discarding these data')
+                            return
+                        elseif any(hasnans)
                             fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
                             T = T(:,~hasnans);
                             Xchop = xin(T);
                         end
+                        
 %                     end
                     if length(xin)==1  %%% Streaming is only implemented for single-channel input
                         snip = xin(T(end)+1:numel(xin));
@@ -1279,7 +1292,7 @@ classdef hosobject < handle
                 apply_window = false;
                 use_shifted=false;
                 initialize = true;
-                if use_partial_delay_method
+                if me(1).use_partial_delay_method
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                     Gpart = me(1).partial_delay_filt(Xsh,false); 
                     me(1).G = mean(Gpart,2);
@@ -1324,7 +1337,7 @@ classdef hosobject < handle
 
 
              
-                   if use_partial_delay_method
+                   if me(1).use_partial_delay_method
                        [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
                        Xsh = real(ifftshift(ifft(FXsh),1));
                        newdt = me(1).delay;
@@ -1566,16 +1579,16 @@ classdef hosobject < handle
             xisnan = isnan(X);
 %             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
-%             if size(X,1) == me.bufferN
-%                 Xfilt = ifftshift(Xfilt,1);
-%              
+            if size(X,1) == me.bufferN
+                Xfilt = ifftshift(Xfilt,1);
+             
 %                 win = me.win;
 %               
 %                 Xwin = repmat(win,1,size(X,2)).*X;
-% 
+
 %             else
 %                 Xwin = X;
-%             end
+            end
 
             % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             Xthr=me.filter_threshold(Xfilt,threshold);
