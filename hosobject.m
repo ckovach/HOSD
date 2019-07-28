@@ -711,7 +711,11 @@ classdef hosobject < handle
                 X = xin;
             end
             if isempty(R)
-                R = regressor(X);
+                if isempty(which('regressor'))
+                    return
+                else
+                    R = regressor(X);
+                end
             else
                 R2 = regressor(X);
                 R.value = R2.value;
@@ -1006,6 +1010,7 @@ classdef hosobject < handle
                 else
                     FX = FXs{k};
                 end
+%                 FX(isnan(FX)) = 0;
                 FXk = FX(me.freqindx.Is(:,k),:);
                 for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
                     FFXpart{kk} = FFXpart{kk}.*FXk;
@@ -1295,7 +1300,7 @@ classdef hosobject < handle
                 if me(1).use_partial_delay_method
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                     Gpart = me(1).partial_delay_filt(Xsh,false); 
-                    me(1).G = mean(Gpart,2);
+                    me(1).G = nanmean(Gpart,2);
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
                 end
@@ -1338,12 +1343,12 @@ classdef hosobject < handle
 
              
                    if me(1).use_partial_delay_method
-                       [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
+                       [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
                        Xsh = real(ifftshift(ifft(FXsh),1));
                        newdt = me(1).delay;
                        delt = me(1).radw(me(1).keepfreqs{1})*newdt;
-                       Gpart = exp(-1i.*delt).*Gpart; 
-                       G = mean(Gpart,2);
+                       Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
+                       G = nanmean(Gpart,2);
                        me(1).G = G;
                        me(1).feature = mean(Xsh,2);
                        if me(1).adjust_lag
@@ -1364,7 +1369,7 @@ classdef hosobject < handle
                     % trapped at points of cyclical stability.
 %                     del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     del = std(olddt2-newdt);%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
-                    olddt2 = olddt;
+                    Folddt2 = olddt;
                
                     
 %                     if ~isempty(me(1).regval)
@@ -1411,8 +1416,8 @@ classdef hosobject < handle
             %
             % see COMPLEXGLM
             
-            do_permtest = true; %Do a permutation test to verify significant results
-            maxpermn = 5e5;
+            do_permtest = false; %Do a permutation test to verify significant results
+            maxpermn = 5e5; %#ok<NASGU>
             
             
             me(1).regressor = xin;
@@ -1445,7 +1450,7 @@ classdef hosobject < handle
                permi = 1;
                den = zeros(size(out.pval(1:end-1)));
                num = den;
-               num_threshold = [5 5 4 2 1]; % Number of super-threshold permutations at which to stop at ceil(log10(permutation_index)
+               num_threshold = [5 4 3 2 1]; % Number of super-threshold permutations at which to stop at ceil(log10(permutation_index)
                fp = fprintf('\nPermutation %i, Nsig: %i',0,0);
                %%% Permutation test with number of permutations adjusted
                %%% to nominal p-value. 
@@ -1454,7 +1459,7 @@ classdef hosobject < handle
                while any(out.pval<=1/(permi*2)) && permi<maxpermn && sum(geti)>0
                    rp = randperm(size(FFY,2));
                    if mod(permi,10.^floor(log10(permi)-2))==0
-                      geti = num < num_threshold(min(end,ceil(log10(permi+1))));
+	               geti = num < num_threshold(min(end,ceil(log10(permi+1))));
                        fp = fprintf([repmat('\b',1,fp),'Permutation %i, Nsig: %i'],permi,sum(geti))-fp;
                    end
                    [~,dev] = complexglm(FFY(geti,rp)',x,'diagonly',false);
