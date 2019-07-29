@@ -1,0 +1,264 @@
+
+
+
+
+function bsidout=run_hos_analysis(dat, outputdir,inputfiles,jobindex)
+
+opts.lowpass = 200;
+opts.windur = 3;
+opts.povlp=.5;
+opts.target_fs = 500;
+opts.resamp = [];
+opts.bsidargs={};
+opts.bands = [150 200 20
+        80 125  15
+        40 80   10
+        20 40   5
+        10 20   2
+        0  10   1];
+opts.time_freq_smoothn=5;
+opts.ncomp = 2;    
+opts.zthresh = Inf; %Exclude windows in which max value exceeds this z-score threshold.
+% opts.do_regression = false;
+opts.version = 'hos';
+opts.hos_order=3;
+opts.nperm = 5e3;
+opts.hosargs = {};
+opts.make_plots = true;
+opts.redo_hosd = false;
+% opts.autodep = struct('order',8,'tau',.025);
+outcode = char(java.util.UUID.randomUUID);
+t0=tic;
+if ischar(dat)
+    inputdir = dat;
+
+    if jobindex==0; jobindex =1 ;end
+    useclust=true;
+    
+    [~,fn,ext] = fileparts(inputfiles{jobindex});
+    switch ext
+        case '.mat'
+            ld = load(fullfile(inputdir,fn));
+            dat = ld.dat;
+            if isfield(ld,'opts')
+                fldn = fieldnames(ld.opts);
+                for k = 1:length(fldn)
+                    opts.(fldn{k})=ld.opts.(fldn{k});
+                end
+            end
+        case '.ncs'
+            dat = readncs([fn,ext],inputdir);
+    end
+    fid = fopen(fullfile(outputdir,'manifest.txt'),'a+');
+    fprintf(fid,'\n%s\t0\tINPUT\t%s\t%0.3fs',[fn,ext],outcode,toc(t0));
+    fclose(fid);
+    if exist(fullfile(inputdir,'model.mat'),'file')
+        ldopt=load(fullfile(inputdir,'model.mat'));
+        fldn = fieldnames(ldopt.opts);
+        for k = 1:length(fldn)
+            opts.(fldn{k})=ldopt.opts.(fldn{k});
+        end
+        if strcmp(ext,'.ncs')
+             chn = regexp(dat.file,'LFPx(\d*)','tokens','once');
+            chn = str2double(chn{1});
+            chan = opts.block.lozchannels([opts.block.lozchannels.channel]==chn);
+            ld.chan = chan;
+            ld.blkdat = opts.block;
+            dat.chan = chan;
+            dat.block = opts.block;
+        end
+        opts.modelopts = ldopt.model;
+    end
+    
+    
+    switch opts.version
+        case 'hos'
+            outfn = sprintf('%s_%i_hos.mat',ld.blkdat.block,ld.chan.channel);
+        otherwise  
+            outfn = sprintf('%s_%i_out.mat',ld.blkdat.block,ld.chan.channel);
+    end
+    outputfile = fullfile(outputdir,outfn);
+    
+else
+    useclust = false;
+end
+if nargin > 1 && isstruct(outputdir)
+    optsin = outputdir;
+    fldn = fieldnames(optsin);
+    for k = 1:length(fldn)
+        opts.(fldn{k})=optsin.(fldn{k});
+    end
+    outputdir = '';
+    outputfile = '';
+end
+if isempty(opts.resamp)
+    [a,b] = rat(opts.target_fs/dat.fs,.1);
+    if b>a
+        opts.resamp = [a b];
+    else
+        opts.resamp = [1 1];
+    end
+elseif length(opts.resamp)==1  % Scalar value for resampling is treated as decimation factor
+    opts.resamp = [1 opts.resamp];
+end
+
+if ~isfield(dat,'denoised')  ||  ~dat.denoised
+%     fig = figure;
+    xdn = dbtDenoise(dat.dat,dat.fs(1),.1,'make plot',false,'spike window',.01);
+%     fr = getframe(fig);
+%     dat.denoising = fr;
+%     delete(fig);
+%     shg
+    dat.dat = xdn;
+    dat.denoised=1;
+end
+
+dat.dat = resample(double(dat.dat),opts.resamp(1),opts.resamp(2));
+dat.fs = dat.fs*opts.resamp(1)./opts.resamp(2);
+
+n = length(dat.dat);
+
+if isfield(opts,'modelopts') && ~isempty(opts.modelopts)
+    mdl = model(opts.modelopts);
+   mdl.event = opts.modelopts.event;
+    mdl.sampling_rate=dat.fs;
+
+elseif isfield(opts,'event')
+        
+    mdl = model;
+    mdl.event = opts.event;
+    mdl.sampling_rate=dat.fs;
+else
+    mdl = [];
+end
+
+
+
+
+if isnumeric(opts.windur)
+    segment = dat.fs(1)*opts.windur;
+    
+    Trange= [-1 1]*segment/2;
+    
+    segment = struct('Trange',Trange,'fs',1,'povlp',opts.povlp);
+    segment.wint= 1/segment.fs:diff(segment.Trange)*(1-segment.povlp):n/segment.fs;
+else
+    segment = opts.windur;
+end
+
+[T,tt] = chopper(segment.Trange,segment.wint,segment.fs);
+T(T<1)=1;T(T>n)=n;
+if opts.zthresh<Inf
+   z = zscore(dat.dat);
+   discard = any(z(T)>opts.zthresh);
+   segment.wint(discard)=[];
+end
+
+
+hos(opts.ncomp) = hosobject(opts.hos_order);
+z = zscore(double(dat.dat));
+if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
+    load(outputfile,'hos')
+else
+    hos.initialize(z(T),dat.fs(1),opts.lowpass,[],[],opts.hosargs{:});
+end
+% xrec = hos.xrec(z); % Get the reconstruction
+% ximp = hos.ximp(z);
+% xfilt = hos.xfilt(z);
+xthresh = hos.xthresh(z);
+
+for compi = 1:length(hos)
+    segment.wintadj = hos(compi).delay + segment.wint;
+    for bi = 1:size(opts.bands,1)   
+
+       dbx = dbt(dat.dat,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
+        %%% envelope smoothing
+       dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
+       [As{bi},attsb] = choptf(segment.Trange*segment.fs/dat.fs(1),segment.wintadj*segment.fs/dat.fs(1),dbx,segment.Trange*segment.fs/dat.fs(1));
+       atts{bi} = attsb-mean(segment.Trange(:)*segment.fs/dat.fs(1));
+       Mbi{bi} = mean(20*log10(abs(As{bi})),3)';
+    %    Mevbi{bi} = 20*log10(abs(mean(As{bi},3)))';
+       frqs{bi}=dbx.frequency;
+    end           
+    [~,pks] = getpeak2(xthresh(:,compi));
+     imp = full(pks==1);
+
+%      opts.autodep = struct('order',{0 8},'tau',{0 , median(diff(find(imp)))/dat.fs});
+
+    if isfield(opts,'inpt')
+       inpt = opts.inpt;
+       dbinpt = dbt(inpt.dat,inpt.fs,20,'lowpass',min(inpt.fs/2,4e3));
+%        imp = full(ximp(:,compi));
+       
+       dbsnd = dbt(abs(dbinpt.blrep),dbinpt.sampling_rate,.25);
+       sndY = reshape(dbsnd.blrep,length(dbsnd.time),numel(dbsnd.blrep(1,:,:)));
+       dbimp = dbt(imp,dat.fs(1),.25,'lowpass', dbsnd.lowpass);
+       impX = reshape(dbimp.blrep,length(dbimp.time),numel(dbimp.blrep(1,:,:)));
+
+       coh = dbtcoh(dbimp,dbsnd);
+       C = squeeze(coh);
+       C(:,2*end+1) = 0;
+       CTF = fftshift(real(ifft(C,[],2)),2);
+       res.CTF = CTF;
+       
+       res.ctft = ((0:size(C,2)-1)-floor(size(C,2)/2))./size(C,2)./diff(dbimp.frequency(1:2));
+        res.ctftfrq = dbinpt.frequency';
+     end
+
+
+    res(compi).atts=atts;
+    res(compi).Mbi=Mbi;
+    res(compi).afrqs = frqs;
+    
+    if ~isempty(mdl)
+         opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs});
+         mdl.autodep = opts.autodep;
+
+        mdl.response = imp;
+
+        if isfield(opts,'regressors')
+            mdl.addregressor(opts.regressors);
+        end
+
+
+        fit = fitmod(mdl);
+        res(compi).model = model;
+        res(compi).fit = fit;
+    end
+    bsidout(1).segment(compi) = segment;
+end
+
+bsidout.hos= hos;
+bsidout.result = res;
+bsidout(1).dat = z;
+    
+
+    
+bsidout(1).chan = dat.chan;
+bsidout(1).block = dat.block;
+bsidout(1).fs = dat.fs(1);
+% bsidout(1).origdatafile=dat.origdatafile;
+bsidout(1).opts = opts;
+
+
+if isfield(opts,'make_plots') && opts.make_plots
+   bsidout(1).res = hos_regression_plot(bsidout,useclust,outputdir);
+end
+
+try
+    fid = fopen([mfilename,'.m']);
+    bsidout(1).COM = fread(fid,'uchar=>char')';
+    fclose(fid)
+catch
+    bsidout(1).COM = '';
+end
+if useclust
+    
+    save(outputfile,'-struct','bsidout');
+    fid = fopen(fullfile(outputdir,'manifest.txt'),'a+');
+    fprintf(fid,'\n%s\t0\tOUTPUT\t%s\t%0.3fs',outfn,outcode,toc(t0));
+    fclose(fid);
+    
+
+end
+    
