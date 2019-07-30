@@ -101,7 +101,7 @@ classdef hosobject < handle
 
     end
     
-    properties (Access = private)
+    properties (Access = protected)
       bufferN = 1024;
       
       G = []; 
@@ -460,8 +460,8 @@ classdef hosobject < handle
         end
         function out = get.filterftlag(me)
            %%% Filter FT without circular shift adjustment
-            out = zeros(me.fftN,1);
-            out(me.keepfreqs{1}) = me.G;
+            out = zeros(me.fftN,size(me.G,2),size(me.G,3));
+            out(me.keepfreqs{1},:,:) = me.G;
         end
         function out = get.filterfft(me)
            
@@ -483,23 +483,23 @@ classdef hosobject < handle
            delt = me.radw*dt;
            F= exp(1i*delt).*in;
            
-            me.G = F(me.keepfreqs{1}) ;
+            me.G = F(me.keepfreqs{1},:,:) ;
             
         end
         function out = get.filterfun(me)
            %%% Filter function with lag adjustment
             F = me.filterfft;
-            out = ifftshift(real(ifft(F)));
-%             out = real(ifft(F));
+%             out = ifftshift(real(ifft(F)));
+            out = real(ifft(F));
             
         end
          function out = get.wavefft(me)
            
             F = me.waveftlag;
-            [~,mxi] = max(ifft(F.*me.filterftlag));
+        %    [~,mxi] = max(ifft(F.*me.filterftlag));
             
                %Adjust centering.
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN + me.sampt(mxi);
+            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;% + me.sampt(mxi);
             delt = me.radw*dt;
             out = exp(1i*delt).*F;
          
@@ -541,8 +541,8 @@ classdef hosobject < handle
                 in(end+1:me.bufferN) = 0;
             end
             in(end+1:me.fftN) = 0;
-            F =fft(fftshift(in));
-%             F =fft((in));
+%             F =fft(fftshift(in));
+            F =fft((in));
             me.filterfft = F;
             
         end
@@ -567,12 +567,13 @@ classdef hosobject < handle
         end
         %%%%%%%
         function out = get.feature(me)
-            out = ifftshift(me.waveform); 
-%             out = me.waveform;
+%             out = ifftshift(me.waveform); 
+             out = me.waveform;
         end
          %%%%%%%
         function set.feature(me,in)
-           me.waveform = fftshift(in); 
+%            me.waveform = fftshift(in); 
+           me.waveform = in; 
         end
         %%%%%%%%
         function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
@@ -598,7 +599,8 @@ classdef hosobject < handle
                 else
                     win =ones(size(X,1),1);
                 end
-                Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
+%                 Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
+                Xwin = repmat(win,1,size(X,2)).*X;
                 Xwin(end+1:me.fftN,:) = 0;
                 FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
@@ -748,9 +750,9 @@ classdef hosobject < handle
            end
             [out,~] = me(1).apply_filter(in,apply_window,false);  
         
-            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
-                out = ifftshift(out,1);
-            end
+%             if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
+%                 out = ifftshift(out,1);
+%             end
             
            if length(me)>1
                out = cat(sum(size(in)>1)+1,out,me(2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window));
@@ -791,9 +793,9 @@ classdef hosobject < handle
            end
            
            xf = me(1).apply_filter(in,apply_window,false);
-           if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
-               xf = ifftshift(xf,1);
-           end
+%            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
+%                xf = ifftshift(xf,1);
+%            end
 
            
            if return_sparse
@@ -1087,7 +1089,7 @@ classdef hosobject < handle
                 me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)));
                
                 if me.adjust_lag
-                   ffun = real(ifft(me.filterftlag));                   
+                   ffun = ifftshift(real(ifft(me.filterftlag.*abs(me.waveftlag+eps))));                   
                    mph = sum(exp(-1i*2*pi*me.sampt(:)./me.fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                    mph = mph./(abs(mph)+eps);
                    me.lag = mph; % Circularshift to keep filter energy centered on the window
@@ -1344,7 +1346,8 @@ classdef hosobject < handle
              
                    if me(1).use_partial_delay_method
                        [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
-                       Xsh = real(ifftshift(ifft(FXsh),1));
+%                        Xsh = real(ifftshift(ifft(FXsh),1));
+                       Xsh = real(ifft(FXsh));
                        newdt = me(1).delay;
                        delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                        Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
@@ -1352,7 +1355,8 @@ classdef hosobject < handle
                        me(1).G = G;
                        me(1).feature = mean(Xsh,2);
                        if me(1).adjust_lag
-                           ffun = real(ifft(me(1).filterftlag));                   
+%                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
+                           ffun = ifftshift(real(ifft((me(1).filterftlag).*abs(me(1).waveftlag+eps))));                   
                            mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                            mph = mph./(abs(mph)+eps);
                            me(1).lag = mph; % Circularshift to keep filter energy centered on the window
@@ -1585,7 +1589,7 @@ classdef hosobject < handle
 %             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
             if size(X,1) == me.bufferN
-                Xfilt = ifftshift(Xfilt,1);
+                 Xfilt = ifftshift(Xfilt,1);
              
 %                 win = me.win;
 %               
@@ -1598,7 +1602,8 @@ classdef hosobject < handle
             % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
             Xthr=me.filter_threshold(Xfilt,threshold);
             
-            wf = fftshift(me.waveform);
+%             wf = fftshift(me.waveform);
+            wf = me.waveform;
             wf(end+1:size(Xthr,1)) = 0;
             wf = circshift(wf,-floor(me.bufferN/2));
             Xthr(end+1:length(wf),:)=0;
@@ -1614,7 +1619,9 @@ classdef hosobject < handle
                 %%% Apply the filter to the reconstructed data for LMSE fitting
                 %%% so that the frequencies are appropriately weighted.
                 Xrecfilt = me.xfilt(Xrec,apply_window);
-                
+                if size(X,1) == me.bufferN
+                     Xrecfilt = ifftshift(Xrecfilt,1);
+                end
                 Xrecfilt(isnan(Xfilt))=0;
                 Xfilt(isnan(Xfilt)) = 0;
                 
