@@ -17,16 +17,16 @@ classdef mvhosd < hosobject
             
         end
         
-        function [Xsh,Xwin] = align(me,maxiter,makeplot,compno)
+        function [Xsh,Xwin] = align(me,Xwin,Gpart,maxiter,makeplot,compno)
              % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
-            if nargin < 4
+            if nargin < 6
                 compno = 1;
             end
-            if nargin < 3
+            if nargin < 5
                 makeplot = true;
             end
-            if nargin < 2 || isempty(maxiter)
+            if nargin < 4 || isempty(maxiter)
                 maxiter = 25;
             end
 %             if ~iscell(xin)
@@ -35,22 +35,22 @@ classdef mvhosd < hosobject
 %             nxin = numel(xin);
 %             xisnan = isnan(xin);       
             
-            if size(me(1).Xwin,3)>1
-               nsig = size(me(1).Xwin,3);
+            if size(Xwin,3)>1
+               nsig = size(Xwin,3);
                sigdim = 3;
             else
-                nsig = size(me(1).Xwin,2);
+                nsig = size(Xwin,2);
                 sigdim = 2;
             end
             
             me(1).bufferPos = 0; % Discard the buffer
            
-            Gpart = me(1).Gpart;
+%             Gpart = me(1).Gpart;
             
             Gpart0 = Gpart;
             
       %      Xwin(end+1:me(1).fftN,:) = 0;
-            Xwin = me(1).Xwin;
+%             Xwin = me(1).Xwin;
             Xsh = Xwin;
              Xfilt=nanmean(Xsh,3);
             
@@ -174,8 +174,8 @@ classdef mvhosd < hosobject
                    mph = mph./(abs(mph)+eps);
                    me(1).lag = mph; % Circularshift to keep filter energy centered on the window
                 end
-                me(1).Gpart = Gpart;
-                me(1).Xwin = Xsh;
+                Gpart = Gpart;
+                Xwin = Xsh;
               
             
                 % checks two and one step back to reduce getting
@@ -196,11 +196,11 @@ classdef mvhosd < hosobject
                Xrec = me(:,1).xrec(Xwin);
 %                if nargout > 0
 %                    [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
-                   me(2).Xwin = Xwin-Xrec;
+%                    me(2).Xwin = Xwin-Xrec;
                    delt = me(1).radw*me(1).delay; 
-                   me(2).Gpart = (Gpart - me(1).filterfft).*exp(1i.*delt); % The partial delay filter has to retain the correct alignment to Xwin.
+%                    me(2).Gpart = (Gpart - me(1).filterfft).*exp(1i.*delt); % The partial delay filter has to retain the correct alignment to Xwin.
 %                    [Xsh2,Xwin2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
-                   [Xsh2,Xwin2] = me(2:end).align(maxiter,makeplot,compno+1);
+                   [Xsh2,Xwin2] = me(2:end).align(Xwin-Xrec,(Gpart - me(1).filterfft).*exp(1i.*delt),maxiter,makeplot,compno+1);
                    Xsh = cat(3,Xsh,Xsh2);
                    Xwin = cat(3,Xwin,Xwin2);
 %                    T = cat(3,T,T2);
@@ -384,17 +384,20 @@ classdef mvhosd < hosobject
         
        
         %%%%%%%
-         function out = xthresh(me,in,threshold)
+         function out = xthresh(me,in,threshold,apply_window)
            if nargin < 2
                in = me(1).dat;
            end
             if nargin < 3 || isempty(threshold)
                 threshold = me(1).thresh;
             end
+            if nargin < 4 || isempty(apply_window)
+                apply_window = false;
+            end
             Xfilt = me(1).xfilt(in);
             out=me(1).filter_threshold(Xfilt,threshold);
             if size(me,2)>1
-               out = cat(sum(size(in)>1)+1,out,me(:,2:end).xfilt(in-me(:,1).xrec(in,[],apply_window),apply_window));
+               out = cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in,threshold,apply_window),threshold,apply_window));
            end
          end
            %%%
