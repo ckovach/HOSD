@@ -155,6 +155,7 @@ if opts.zthresh<Inf
 end
 
 
+hos(1) = hosobject(opts.hos_order);
 hos(opts.ncomp) = hosobject(opts.hos_order);
 z = zscore(double(dat.dat));
 if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
@@ -220,10 +221,13 @@ for compi = 1:length(hos)
             mdl.addregressor(opts.regressors);
         end
 
-
-        fit = fitmod(mdl);
-        res(compi).model = model;
-        res(compi).fit = fit;
+        if ~all(isnan(imp))
+            fit = fitmod(mdl);            
+            res(compi).fit = fit;
+        else
+            res(compi).fit = [];
+        end            
+            res(compi).model = model;
     end
     bsidout(1).segment(compi) = segment;
 end
