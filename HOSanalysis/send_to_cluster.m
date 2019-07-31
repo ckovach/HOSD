@@ -102,7 +102,7 @@ for k = 1:length(fldn)
 end
 
 if nargin > 1 
-    mdlfile = fullfile(tempdir,'model.mat');
+    mdlfile = fullfile(xne.tempdir,'model.mat');
     save(mdlfile,'model','opts');
 end
 
