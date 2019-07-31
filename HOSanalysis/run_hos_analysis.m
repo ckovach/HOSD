@@ -146,7 +146,7 @@ else
     segment = opts.windur;
 end
 
-[T,tt] = chopper(segment.Trange,segment.wint,segment.fs);
+[T,~] = chopper(segment.Trange,segment.wint,segment.fs);
 T(T<1)=1;T(T>n)=n;
 if opts.zthresh<Inf
    z = zscore(dat.dat);
@@ -168,70 +168,74 @@ end
 % xfilt = hos.xfilt(z);
 xthresh = hos.xthresh(z);
 
-for compi = 1:length(hos)
-    segment.wintadj = hos(compi).delay + segment.wint;
-    for bi = 1:size(opts.bands,1)   
+if ~isfield(opts,'no_anls') || ~opts.no_anls
+    for compi = 1:length(hos)
+        segment.wintadj = hos(compi).delay + segment.wint;
+        for bi = 1:size(opts.bands,1)   
 
-       dbx = dbt(dat.dat,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
-        %%% envelope smoothing
-       dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
-       [As{bi},attsb] = choptf(segment.Trange*segment.fs/dat.fs(1),segment.wintadj*segment.fs/dat.fs(1),dbx,segment.Trange*segment.fs/dat.fs(1));
-       atts{bi} = attsb-mean(segment.Trange(:)*segment.fs/dat.fs(1));
-       Mbi{bi} = mean(20*log10(abs(As{bi})),3)';
-    %    Mevbi{bi} = 20*log10(abs(mean(As{bi},3)))';
-       frqs{bi}=dbx.frequency;
-    end           
-    [~,pks] = getpeak2(xthresh(:,compi));
-     imp = full(pks==1);
+           dbx = dbt(dat.dat,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
+            %%% envelope smoothing
 
-%      opts.autodep = struct('order',{0 8},'tau',{0 , median(diff(find(imp)))/dat.fs});
+            dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
+           [As{bi},attsb] = choptf(segment.Trange*segment.fs/dat.fs(1),segment.wintadj*segment.fs/dat.fs(1),dbx,segment.Trange*segment.fs/dat.fs(1)); %#ok<*AGROW>
+           atts{bi} = attsb-mean(segment.Trange(:)*segment.fs/dat.fs(1));
+           Mbi{bi} = mean(20*log10(abs(As{bi})),3)';
+        %    Mevbi{bi} = 20*log10(abs(mean(As{bi},3)))';
+           frqs{bi}=dbx.frequency;
+        end           
+        [~,pks] = getpeak2(xthresh(:,compi));
+         imp = full(pks==1);
 
-    if isfield(opts,'inpt')
-       inpt = opts.inpt;
-       dbinpt = dbt(inpt.dat,inpt.fs,20,'lowpass',min(inpt.fs/2,4e3));
-%        imp = full(ximp(:,compi));
-       
-       dbsnd = dbt(abs(dbinpt.blrep),dbinpt.sampling_rate,.25);
-       sndY = reshape(dbsnd.blrep,length(dbsnd.time),numel(dbsnd.blrep(1,:,:)));
-       dbimp = dbt(imp,dat.fs(1),.25,'lowpass', dbsnd.lowpass);
-       impX = reshape(dbimp.blrep,length(dbimp.time),numel(dbimp.blrep(1,:,:)));
+    %      opts.autodep = struct('order',{0 8},'tau',{0 , median(diff(find(imp)))/dat.fs});
 
-       coh = dbtcoh(dbimp,dbsnd);
-       C = squeeze(coh);
-       C(:,2*end+1) = 0;
-       CTF = fftshift(real(ifft(C,[],2)),2);
-       res.CTF = CTF;
-       
-       res.ctft = ((0:size(C,2)-1)-floor(size(C,2)/2))./size(C,2)./diff(dbimp.frequency(1:2));
-        res.ctftfrq = dbinpt.frequency';
-     end
+        if isfield(opts,'inpt')
+           inpt = opts.inpt;
+           dbinpt = dbt(inpt.dat,inpt.fs,20,'lowpass',min(inpt.fs/2,4e3));
+    %        imp = full(ximp(:,compi));
+
+           dbsnd = dbt(abs(dbinpt.blrep),dbinpt.sampling_rate,.25);
+%            sndY = reshape(dbsnd.blrep,length(dbsnd.time),numel(dbsnd.blrep(1,:,:)));
+           dbimp = dbt(imp,dat.fs(1),.25,'lowpass', dbsnd.lowpass);
+%            impX = reshape(dbimp.blrep,length(dbimp.time),numel(dbimp.blrep(1,:,:)));
+
+           coh = dbtcoh(dbimp,dbsnd);
+           C = squeeze(coh);
+           C(:,2*end+1) = 0;
+           CTF = fftshift(real(ifft(C,[],2)),2);
+           res.CTF = CTF;
+
+           res.ctft = ((0:size(C,2)-1)-floor(size(C,2)/2))./size(C,2)./diff(dbimp.frequency(1:2));
+            res.ctftfrq = dbinpt.frequency';
+         end
 
 
-    res(compi).atts=atts;
-    res(compi).Mbi=Mbi;
-    res(compi).afrqs = frqs;
-    
-    if ~isempty(mdl)
-         opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs});
-         mdl.autodep = opts.autodep;
+        res(compi).atts=atts;
+        res(compi).Mbi=Mbi;
+        res(compi).afrqs = frqs;
 
-        mdl.response = imp;
+        if ~isempty(mdl)
+             opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs});
+             mdl.autodep = opts.autodep;
 
-        if isfield(opts,'regressors')
-            mdl.addregressor(opts.regressors);
+            mdl.response = imp;
+
+            if isfield(opts,'regressors')
+                mdl.addregressor(opts.regressors);
+            end
+
+            if ~all(isnan(imp))
+                fit = fitmod(mdl);            
+                res(compi).fit = fit;
+            else
+                res(compi).fit = [];
+            end            
+                res(compi).model = model;
         end
-
-        if ~all(isnan(imp))
-            fit = fitmod(mdl);            
-            res(compi).fit = fit;
-        else
-            res(compi).fit = [];
-        end            
-            res(compi).model = model;
+        bsidout(1).segment(compi) = segment;
     end
-    bsidout(1).segment(compi) = segment;
+else
+    res=[];
 end
-
 bsidout.hos= hos;
 bsidout.result = res;
 bsidout(1).dat = z;
@@ -252,7 +256,7 @@ end
 try
     fid = fopen([mfilename,'.m']);
     bsidout(1).COM = fread(fid,'uchar=>char')';
-    fclose(fid)
+    fclose(fid);
 catch
     bsidout(1).COM = '';
 end
