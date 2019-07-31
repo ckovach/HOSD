@@ -981,9 +981,10 @@ classdef hosobject < handle
             end
             
                %%% Adjust for lag
-            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
-            delt = me.radw*dt;
-            delt(isnan(delt))=0;
+%             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
+%             delt = me.radw*dt;
+%             delt(isnan(delt))=0;
+            delt = 0;
             for k = 1:length(Xs)
                 FXs{k} = repmat(exp(-1i*delt),1,size(Xs{k},2)).*fft(Xs{k});
             end
@@ -1356,7 +1357,7 @@ classdef hosobject < handle
                        me(1).feature = mean(Xsh,2);
                        if me(1).adjust_lag
 %                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
-                           ffun = ifftshift(real(ifft((me(1).filterftlag).*abs(me(1).waveftlag+eps))));                   
+                           ffun = ifftshift(real(ifft((me(1).filterftlag).*abs(me(1).waveftlag+eps))),1);                   
                            mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                            mph = mph./(abs(mph)+eps);
                            me(1).lag = mph; % Circularshift to keep filter energy centered on the window
