@@ -1547,7 +1547,7 @@ classdef hosobject < handle
                 if mod(me.order,2)==0
                     %%% Correction for power spectral component with even
                     %%% orders
-                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)'+thresh;
+                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)+thresh;
                 else
                     Xbaseline =thresh;
                 end
@@ -1557,7 +1557,7 @@ classdef hosobject < handle
                 threshold_crossing = diff(Xthr)>0;
                 detect =any(threshold_crossing);
                 
-                trialthresh = Xsrt(threshold_crossing);
+                trialthresh(detect) = Xsrt(threshold_crossing)';
                 trialthresh(~detect) = Inf;
             end
 
