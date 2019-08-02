@@ -14,8 +14,8 @@ function xne = send_to_cluster(files, model,optsin)
 % See RUN_HOS_ANALYSIS, MODEL, REGRESSOR
 
 opts.queue = 'UI,CCOM,all.q';
-opts.nslots = 4;
 opts.profile = 'mid_mem';
+opts.nslots = 4;
 opts.skipdone = true;
 
 if isa(files,'xargon')

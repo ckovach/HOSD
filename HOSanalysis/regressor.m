@@ -36,7 +36,7 @@ classdef regressor
         window
         windowest 
         ddev
-        
+        fun
     end
    
     properties( Dependent = true)
