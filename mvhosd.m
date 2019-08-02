@@ -235,10 +235,15 @@ classdef mvhosd < hosobject
                 Xwin = repmat(win,1,size(X,2),size(X,3)).*X; %#ok<*PROPLC>
                 Xwin(end+1:me(1).fftN,:,:) = 0;
                 FXwin = fft(Xwin);
+%                 FXwin = FXwin(me(1).keepfreqs{1},:,:);
 %                filts = cat(3,me(:,1).filterfft);
                 
 %                 FXwin = fft(X)';
-                Xfilt = sum(real(ifft(FXwin.*repmat(me(1).filterfft,1,size(X,2)))),3);   
+                FXfilt =zeros(size(Xwin,1),size(Xwin,2));
+                FXfilt(me(1).keepfreqs{1},:) = sum(FXwin(me(1).keepfreqs{1},:,:).*repmat(me(1).filterfft(me(1).keepfreqs{1},:,:),1,size(X,2)),3);
+                Xfilt = real(ifft(FXfilt));
+                
+%                 Xfilt = sum(real(ifft(FXwin.*repmat(me(1).filterfft(me(1).keepfreqs{1}),1,size(X,2)))),3);   
                 if nargout > 3
                     mvXfilt = real(ifft(FXwin.*repmat(me(1).filterfft,1,size(X,2))));   
                 end                    
