@@ -467,9 +467,14 @@ for bsdi = 1:length(bsidin.result)
         
        wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
         BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
+        szBB = size(BB);
+        PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
+        for bk = 4:bsidin.hos(bsdi).order %%% Gives something to plot for orders > 3
+            BB = mean(BB,bk-1);
+            PB = mean(PB,bk-1);
+        end
         BB(wb<=0,:)=[];
         BB(:,wb<=0)=[];
-        PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
         PB(wb<=0,:)=[];
         PB(:,wb<=0)=[];
         
@@ -491,7 +496,13 @@ for bsdi = 1:length(bsidin.result)
        cbar = colorbar('SouthOutside','position',[  0.4303    0.5488    0.1767    0.0200]);
 %           axis([0 1 0 1]*max(wb))
 %          ax4.Position = [.71 .53 .188 .4];
-      title('Part/Full Bicoherence');
+      if bsidin.hos(bsdi).order ==3
+          title('Part/Full Bicoherence');
+      elseif bsidin.hos(bsdi).order ==4
+          title('Part/Full tricoherence avgd. over 3rd dim');
+      else
+          title('Part/Full polycoherence avgd. over dims');
+      end       
       xlabel Hz
       ylabel Hz
 %       if bsdi==1
