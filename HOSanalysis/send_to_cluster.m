@@ -17,6 +17,7 @@ opts.queue = 'UI,CCOM,all.q';
 opts.profile = 'mid_mem';
 opts.nslots = 4;
 opts.skipdone = true;
+opts.nslots = 4;
 
 if isa(files,'xargon')
     xne = files;
