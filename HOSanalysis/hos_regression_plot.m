@@ -466,6 +466,7 @@ for bsdi = 1:length(bsidin.result)
           
         
        wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
+       wb2 = fftshift(bsidin.hos(1).freqindx.Bfreqs{2});
         BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
         szBB = size(BB);
         PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
@@ -474,18 +475,19 @@ for bsdi = 1:length(bsidin.result)
             PB = mean(PB,bk-1);
         end
         BB(wb<=0,:)=[];
-        BB(:,wb<=0)=[];
+        BB(:,wb2<=0)=[];
         PB(wb<=0,:)=[];
-        PB(:,wb<=0)=[];
+        PB(:,wb2<=0)=[];
         
         wb(wb<=0)=[];
+        wb2(wb2<=0)=[];
          wintp =10.^(linspace(log10(wb(2)),log10(wb(end)),length(wb)));
-        mm = meshgrid(wb,wb);
+        [mm1,mm2] = meshgrid(wb,wb2);
         mmintp = meshgrid(wintp,wintp);
-        BBintp = interp2(mm,mm',BB,mmintp,mmintp');
-        PBintp = interp2(mm,mm',PB,mmintp,mmintp');
+        BBintp = interp2(mm2',mm1',BB,mmintp,mmintp');
+        PBintp = interp2(mm2',mm1',PB,mmintp,mmintp');
         
-        BBintp(mm<mm')=PBintp(mm<mm');
+        BBintp(mmintp<mmintp')=PBintp(mmintp<mmintp');
         ax4 = subplot(2,3,2);
 
 %        imagesc(wb,wb,abs(ld.bsid(1).B))
