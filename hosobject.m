@@ -78,6 +78,9 @@ classdef hosobject < handle
        regstat = [];
        regweight=[];
        sampweight = [];
+       Imats = {};
+       Iconjmats = {};
+       
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -295,6 +298,8 @@ classdef hosobject < handle
             me(1).window_number=0;
             me(1).avg_delay = 1;
             me(1).lag=1;
+            me(1).Imats = {};
+            me(1).Iconjmats = {};
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
@@ -828,7 +833,7 @@ classdef hosobject < handle
            end
         end
         %%%%%%%
-        function update_bispectrum(me,FXs,initialize)
+        function FFXpart = update_bispectrum(me,FXs,initialize)
             
             %Right now this updates in chunks with temporal decay weighting
             %applied only serially. That is, a simple average is obtained
@@ -963,9 +968,13 @@ classdef hosobject < handle
         end
         
          %%%%%%%
-        function Gout = partial_delay_filt(me,Xs,returnfull)
+        function Gout = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum)
             
             
+            
+            if nargin < 4 || isempty(use_sample_bispectrum)
+                use_sample_bispectrum = false; % Uses precomputed statistics if false
+            end
             if nargin < 3 || isempty(returnfull)
                 returnfull = true;
             end
@@ -1002,25 +1011,29 @@ classdef hosobject < handle
 %             FX = fft(Xwin);
            % FFX = 1;
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
-            FFX = conj(FX(me.freqindx.Is(:,me.order),:));
-            FFXpart = {};
-            FFXpart(1:me.order-1) = {FFX};
-            FFXpart{me.order} = ones(size(FFX));
             
-            for k = me.order-1:-1:1
-                if k>length(FXs)
-                    FX = FXs{1};
-                else
-                    FX = FXs{k};
+            if ~use_sample_bispectrum
+                FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+                FFXpart = {};
+                FFXpart(1:me.order-1) = {FFX};
+                FFXpart{me.order} = ones(size(FFX));
+
+                for k = me.order-1:-1:1
+                    if k>length(FXs)
+                        FX = FXs{1};
+                    else
+                        FX = FXs{k};
+                    end
+    %                 FX(isnan(FX)) = 0;
+                    FXk = FX(me.freqindx.Is(:,k),:);
+                    for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
+                        FFXpart{kk} = FFXpart{kk}.*FXk;
+                    end
+                    FFX = FFX.*FXk;
                 end
-%                 FX(isnan(FX)) = 0;
-                FXk = FX(me.freqindx.Is(:,k),:);
-                for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
-                    FFXpart{kk} = FFXpart{kk}.*FXk;
-                end
-                FFX = FFX.*FXk;
+            else
+                FFXpart = me.update_bispectrum(FX,true);
             end
-            
             
             BC = me.B./(me.D+eps);
             bias = sqrt(me.BIASnum./(me.D.^2+eps));
@@ -1034,8 +1047,15 @@ classdef hosobject < handle
             len = length(me.B)-1;
             for k = 1:length(FFXpart)
                 
-                Iconj = integrator(me.freqindx.remap.*cast(me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
-                I = integrator(me.freqindx.remap.*cast(~me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+                if k<=length(me.Imats)
+                    I = me.Imats{k};
+                    Iconj = me.Iconjmats{k};
+                else
+                    Iconj = integrator(me.freqindx.remap.*cast(me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+                    I = integrator(me.freqindx.remap.*cast(~me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+                    me.Imats{k}= I;
+                    me.Iconjmats{k} = Iconj;
+                end
                 HF = H(1:end-1).*FFXpart{k};
                
                 Gpart = Gpart + I*HF + Iconj*conj(HF);
@@ -1202,6 +1222,8 @@ classdef hosobject < handle
             wint = (1:stepn:nget)+delay;
 
             T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+            T(T>length(xin))=length(xin);
+            T(T<1)=length(xin);
             Xchop = xin(T);
             if apply_window
                Xchop = fftshift(repmat(me(1).win,1,size(T,2)).*Xchop,1);
@@ -1374,7 +1396,7 @@ classdef hosobject < handle
                     % trapped at points of cyclical stability.
 %                     del = sqrt(mean((olddt2-newdt).^2));%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                     del = std(olddt2-newdt);%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
-                    Folddt2 = olddt;
+                    olddt2 = olddt;
                
                     
 %                     if ~isempty(me(1).regval)
