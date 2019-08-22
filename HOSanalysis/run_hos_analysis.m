@@ -39,7 +39,11 @@ if ischar(dat)
     switch ext
         case '.mat'
             ld = load(fullfile(inputdir,fn));
-            dat = ld.dat;
+            if isnumeric(ld.dat)
+                dat = ld;
+            else
+                dat = ld.dat;
+            end
             if isfield(ld,'opts')
                 fldn = fieldnames(ld.opts);
                 for k = 1:length(fldn)
@@ -66,7 +70,10 @@ if ischar(dat)
             ld.blkdat = opts.block;
             dat.chan = chan;
             dat.block = opts.block;
+        elseif ~isfield(ld,'blkdat') && isfield(ld,'block')
+            ld.blkdat=ld.block;
         end
+            
         opts.modelopts = ldopt.model;
     end
     
@@ -232,6 +239,9 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
                 res(compi).model = model;
         end
         bsidout(1).segment(compi) = segment;
+    end
+    if isfield(opts,'hos_regressor')&& ~isempty(opts.hos_regressor)
+            bsidout.hosregresult = hos.hos_regress(z,opts.hos_regressor);
     end
 else
     res=[];
