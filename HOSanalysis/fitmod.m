@@ -84,8 +84,11 @@ switch mdl.modelType
 end
 
 csy = cumsum(pfun(out.yfit))/sum(mdl.response);
-[~,out.kstest] = kstest(find(mdl.response),[find(mdl.response),csy(find(mdl.response))]);
-
+try
+    [~,out.kstest] = kstest(find(mdl.response),[find(mdl.response),csy(find(mdl.response))]);
+catch
+    out.kstest = nan;
+end
 for k = 1:length(regs)
     regs(k).value(:) = [];
 end
