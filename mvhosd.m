@@ -83,7 +83,7 @@ classdef mvhosd < hosobject
              end
              nsig = size(Xsh,3);
             while del >tol && iter < maxiter                  
-                [~,plotcompi] = sort(sum(abs(me(1).wavefft).*abs(me(1).filterfft)),'descend');
+                [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
                 if all(ishandle(makeplot))
                     for k = 1:size(makeplot,2)
