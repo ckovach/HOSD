@@ -300,6 +300,7 @@ classdef hosobject < handle
             me(1).lag=1;
             me(1).Imats = {};
             me(1).Iconjmats = {};
+            me(1).waveftlag(:)=0;
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
