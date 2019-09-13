@@ -16,7 +16,7 @@ if use_glmfit
     [b,devfull,stat] = glmfit(X,mdl.response,mdl.modelType); 
 else
     X(:,end+1)=1;
-    [b,H,LL] = vectorglm(X,mdl.response,[],mdl.modelType); 
+    [b,H,LL] = vectorglm(X,mdl.response,[],mdl.modelType,'gaussreg',1e-6); 
     devfull = -2*LL;
     stat.covb = -H^-1;
 end
