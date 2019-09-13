@@ -17,12 +17,12 @@ opts.queue = 'UI,CCOM,all.q';
 opts.profile = 'mid_mem';
 opts.skipdone = true;
 opts.nslots = 4;
-opts.concatenate = [];
+
 if isa(files,'xargon')
     xne = files;
     files = {xne.datafiles(1:end-1).orig};
     mdlfile = xne.datafiles(end).orig;
-    load(mdlfile,'opts','model')
+
 else
     if ischar(files)
         [~,fn,ext] = fileparts(files);
@@ -77,21 +77,10 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
     infiles = cat(1,infiles{:});
     outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
     outfiles = cat(1,outfiles{:});
-%     donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
-    [ism,ismi]= ismember(infiles(:,2),outfiles(:,2));
-    donefiles = infiles(ism);
-    pdffiles = outfiles(contains(outfiles(:,1),'pdf'));
-    pdfch = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
-    pdfch = cellfun(@str2num,[pdfch{:}]);
+    donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
     [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
-    [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
-    donech = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
-    donech = unique(cellfun(@str2double,[donech{ismi(ism)}]),'stable');
 %     files = files(~ismember(strcat(ff,ext),donefiles));
-    missing = ~ismember(strcat(ff,ext),donefiles);
-    donech(~missing) =donech(ford(~missing));
-
-    xne.jobindices=find( missing | (~isempty(pdfch) & ~ismember(donech,pdfch)));
+    xne.jobindices=find(~ismember(strcat(ff,ext),donefiles))
 %    donef = dir(fullfile(existing_dir,'*_hos.mat'));
 %    donech = regexp({donef.name},'_(\d*)_hos[.]mat','tokens','once');
 %    donech = cellfun(@str2double,donech);
