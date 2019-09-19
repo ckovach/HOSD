@@ -455,12 +455,12 @@ classdef hosobject < handle
            me.win = window(me.wintype,N); 
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
            me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
-%            if N ~= me.buffersize
+           if N ~= me.buffersize
                 freqs = {fftfreq(me.fftN)*me.sampling_rate};
                 freqs(1:me.order) = freqs;
                 me.freqs = freqs;
                 me.update_frequency_indexing;
-%            end
+           end
            me.reset;
         end
         function out = get.window(me)
@@ -1237,18 +1237,21 @@ classdef hosobject < handle
             end
              
         end
-        function [Xsh,Xwin,T,wint] = get_block(me,xin,maxiter,makeplot,compno)
+        function [Xsh,Xwin,T,wint] = get_block(me,xin,maxiter,makeplot,segment,compno)
            
             % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
-            if nargin < 5
+            if nargin < 6
                 compno = 1;
             end
-            if nargin < 4
+            if nargin < 4 || isempty(makeplot)
                 makeplot = true;
             end
             if nargin < 3 || isempty(maxiter)
                 maxiter = 25;
+            end
+            if nargin < 5 || isempty(segment)
+                segment = struct('Trange',[0 me(1).buffersize],'wint',[],'fs',1);
             end
 %             if ~iscell(xin)
 %                 xin = {xin};
@@ -1257,17 +1260,35 @@ classdef hosobject < handle
             xisnan = isnan(xin);
             
             
+            if ~isfield(segment,'fs')||isempty(segment.fs)
+                segment.fs = 1;
+            end
+            
+            if ~isfield(segment,'Trange')||isempty(segment.Trange)
+                segment.Trange = [0 me(1).buffersize-1]./segment.fs;
+            else
+                 tindx = (segment.Trange(1):1/segment.fs:segment.Trange(2));
+                 if length(tindx) ~= me(1).bufferN
+                     me(1).buffersize = length(tindx);
+                 end
+            end
         
             
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
                 if  size(xin,1) ~=me(1).bufferN 
-                    stepn = round(me(1).poverlap*me(1).bufferN);
-                    nget = nxin - me(1).bufferN+1;
+                    if ~isfield(segment,'wint') || isempty(segment.wint)
+                        stepn = round(me(1).poverlap*me(1).bufferN);
+                        nget = nxin - me(1).bufferN+1;
+                        wint = (1:stepn:nget)./segment.fs;
+                    else
+                        wint = round(segment.wint*segment.fs);
+                    end
                     tindx = (0:me(1).bufferN-1)';
-                    wint = (1:stepn:nget);
-
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+                    T(T<1) = 1;
+                    T(T>length(xin))=length(xin);
+                    
 %                     for k = 1:length(xin)
                         Xchop = xin(T);
                     
@@ -1432,12 +1453,12 @@ classdef hosobject < handle
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
-                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
                    Xsh = cat(3,Xsh,Xsh2);
                    Xwin = cat(3,Xwin,Xwin2);
                    T = cat(3,T,T2);
                else
-                    me(2:end).get_block(xin-xrec,maxiter,makeplot,compno+1);
+                    me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
                end
             end
         end

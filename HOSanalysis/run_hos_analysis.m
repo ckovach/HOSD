@@ -50,6 +50,12 @@ if ischar(dat)
                     opts.(fldn{k})=ld.opts.(fldn{k});
                 end
             end
+            if isfield(ld,'chan')
+                dat.chan = ld.chan;
+            end
+            if isfield(ld,'blkdat')
+                dat.block = ld.blkdat;
+            end
         case '.ncs'
             dat = readncs([fn,ext],inputdir);
     end
@@ -99,7 +105,7 @@ if nargin > 1 && isstruct(outputdir)
     outputfile = '';
 end
 if isempty(opts.resamp)
-    [a,b] = rat(opts.target_fs/dat.fs,.1);
+    [a,b] = rat(opts.target_fs/dat.fs(1),.1);
     if b>a
         opts.resamp = [a b];
     else
@@ -121,34 +127,35 @@ if ~isfield(dat,'denoised')  ||  ~dat.denoised
 end
 
 dat.dat = resample(double(dat.dat),opts.resamp(1),opts.resamp(2));
-dat.fs = dat.fs*opts.resamp(1)./opts.resamp(2);
+dat.fs = dat.fs(1)*opts.resamp(1)./opts.resamp(2);
 
 n = length(dat.dat);
 
 if isfield(opts,'modelopts') && ~isempty(opts.modelopts)
     mdl = model(opts.modelopts);
    mdl.event = opts.modelopts.event;
-    mdl.sampling_rate=dat.fs;
+    mdl.sampling_rate=dat.fs(1);
 
 elseif isfield(opts,'event')
         
     mdl = model;
     mdl.event = opts.event;
-    mdl.sampling_rate=dat.fs;
+    mdl.sampling_rate=dat.fs(1);
 else
     mdl = [];
 end
 
 
+apply_to_chopped_data = isstruct(opts.windur);
 
-
-if isnumeric(opts.windur)
+if ~apply_to_chopped_data
     segment = dat.fs(1)*opts.windur;
     
     Trange= [-1 1]*segment/2;
     
     segment = struct('Trange',Trange,'fs',1,'povlp',opts.povlp);
     segment.wint= 1/segment.fs:diff(segment.Trange)*(1-segment.povlp):n/segment.fs;
+    
 else
     segment = opts.windur;
 end
@@ -168,7 +175,12 @@ z = zscore(double(dat.dat));
 if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
     load(outputfile,'hos')
 else
-    hos.initialize(z(T),dat.fs(1),opts.lowpass,[],[],opts.hosargs{:});
+     hos.initialize(size(T,1),dat.fs(1),opts.lowpass,[],[],opts.hosargs{:});
+    if apply_to_chopped_data
+        hos.get_block(z(T));  % Deflation is done on the chopped data
+    else
+        hos.get_block(z,[],[],segment);  % Deflation is done on the entire record. 
+    end
 end
 % xrec = hos.xrec(z); % Get the reconstruction
 % ximp = hos.ximp(z);
@@ -221,7 +233,7 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
         res(compi).afrqs = frqs;
 
         if ~isempty(mdl)
-             opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs});
+             opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs(1)});
              mdl.autodep = opts.autodep;
 
             mdl.response = imp;
@@ -271,7 +283,7 @@ catch
     bsidout(1).COM = '';
 end
 if useclust
-    
+    bsidout = stripfunctions(bsidout);
     save(outputfile,'-struct','bsidout');
     fid = fopen(fullfile(outputdir,'manifest.txt'),'a+');
     fprintf(fid,'\n%s\t0\tOUTPUT\t%s\t%0.3fs',outfn,outcode,toc(t0));

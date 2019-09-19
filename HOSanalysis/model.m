@@ -127,7 +127,7 @@ classdef model
                 end
 %                 F(evw.T(:)*ones(1,size(evs,3))+size(F,1)*ones(numel(evw.T),1)*(0:size(evs,3)-1)) = evs(:);
                 %Indicate times to be ignored outside the regression window
-                mask = true(size(F(:,1)));
+                mask = true(size(F,1),1);
 %                 mask(evw.T) = false;
                   mask(trts,:) = false;
                 if isfield(me.event(k),'center')

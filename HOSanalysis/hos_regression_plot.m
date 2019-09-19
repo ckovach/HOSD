@@ -232,6 +232,9 @@ for bsdi = 1:length(bsidin.result)
             for k = 1:length(windowreg)
                 subplot(2+length(windowreg),3,3*k+4)
                 rg = fit.regressors(windowreg(k));
+                if isempty(rg.windowest.intensity)
+                    continue
+                end 
                 plot(tt([1 end]),[0 0],'k')
                 hold on
                 plot(tt,rg.windowest.wald);

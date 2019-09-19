@@ -53,6 +53,7 @@ for k = 1:length(codes)
         evw = mdl.get_event_window(regs(regi).window);
         
         [unqlev,~,unqlevi] = unique(regs(regi).levmat(1:end-1,:)','rows');
+        regs(regi).windowest=struct('intensity',[],'sd',[],'wald',[],'tt',[]);
         for kk = 1:size(unqlev,1)
             levi = unqlevi==kk;
             regs(regi).windowest.intensity(:,kk) = evw.P*bsub(levi); 

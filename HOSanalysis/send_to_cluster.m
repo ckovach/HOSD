@@ -18,11 +18,29 @@ opts.profile = 'mid_mem';
 opts.skipdone = true;
 opts.nslots = 4;
 opts.concatenate = [];
+opts.window = 'hann';
+
+if nargin < 2
+    model = [];
+end
 if isa(files,'xargon')
     xne = files;
     files = {xne.datafiles(1:end-1).orig};
-    mdlfile = xne.datafiles(end).orig;
-    load(mdlfile,'opts','model')
+%     mdlfile = xne.datafiles(end).orig;
+%     mdlfile = fullfile(xne.datafiles(end).orig;
+    if ~isempty(xne.subpaths.assets.local)
+        mdlfile = fullfile(xne.subpaths.assets.local,'model.mat');
+    end
+    if ~exist(mdlfile,'file')        
+        mdlfile = fullfile(xne.local_save_dir,'options.mat');
+    end
+    ld = load(mdlfile,'opts','model');
+    if nargin < 3 || isempty(optsin)
+        optsin = ld.opts;
+    end
+    if nargin < 2 || isempty(model)
+        model = ld.model;
+    end
 else
     if ischar(files)
         [~,fn,ext] = fileparts(files);
@@ -41,7 +59,7 @@ else
 
     xne = xargon(which('run_hos_analysis'));
 end
-if nargin >2 
+if ~isempty(model) 
     if isstruct(optsin)
         fldn = fieldnames(optsin);
         for k = 1:length(fldn)
@@ -73,6 +91,7 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
     manfile = fullfile(existing_dir,'manifest.txt');
     fid = fopen(manfile,'r');
     txt = fread(fid,'uchar=>char')';
+    fclose(fid);
     infiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*INPUT\t*([\w-]*)','tokens');
     infiles = cat(1,infiles{:});
     outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
@@ -89,9 +108,15 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
     donech = unique(cellfun(@str2double,[donech{ismi(ism)}]),'stable');
 %     files = files(~ismember(strcat(ff,ext),donefiles));
     missing = ~ismember(strcat(ff,ext),donefiles);
-    donech(~missing) =donech(ford(~missing));
-
-    xne.jobindices=find( missing | (~isempty(pdfch) & ~ismember(donech,pdfch)));
+    
+    if any(missing)
+        xne.jobindices=find( missing );
+    else
+       donech(~missing) =donech(ford(~missing));
+ 
+        xne.jobindices = find(~isempty(pdfch) & ~ismember(donech,pdfch));
+    end
+    
 %    donef = dir(fullfile(existing_dir,'*_hos.mat'));
 %    donech = regexp({donef.name},'_(\d*)_hos[.]mat','tokens','once');
 %    donech = cellfun(@str2double,donech);
@@ -102,9 +127,12 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
 %    undoneidx = find(~ismember(availch,donech));
    if isempty(xne.jobindices)
        fprintf('\nAll channels finished')
+       if ~strcmp(xne.jobindices,'none')
+           xne.finish();
+       end
        return
    elseif xne.nparallel <length(infiles)
-       fprintf('\n%i channels remaining of %i',xne.nparallel,length(infiles));
+       fprintf('\n%i channels remaining of %i in %s',xne.nparallel,length(infiles),existing_dir);
    end
 %     xne.jobindices=undoneidx;  
 else
@@ -122,7 +150,7 @@ end
 %     end
 % end
 
-if nargin > 1 
+if nargin > 1 || ~isempty(model)
     mdlfile = fullfile(xne.tempdir,'model.mat');
     save(mdlfile,'model','opts');
     xne.datafiles = [files,{mdlfile}];
@@ -153,13 +181,14 @@ manfile = fullfile(xne.local_save_dir,'manifest.txt');
 if exist(manfile,'file')
     fid = fopen(manfile,'r');
     txt = fread(fid,'uchar=>char')';
+    fclose(fid);
     re = regexp(txt,'([^\n\s]*[.]pdf)[^\n]','tokens');
     re =[re{:}];
     re2 = regexp(re,'contact_(\d*)_','tokens','once');
-    cnum = cellfun(@(x)str2num(['0',x{1}]),re2);
+    cnum = cellfun(@(x)str2num(['0',x{:}]),re2);
     [srt,srti] = sort(cnum);
         
-    fns = fullfile(xne.local_save_dir,'figs',re(srti));
+    fns = fullfile(xne.local_save_dir,'figs',re(srti(srt>0)));
     com = sprintf('gs -sDEVICE=pdfwrite -dEPSCrop  -dMaxInlineImageSize=100000 -o%s%s%s_summary.pdf %s',xne.local_save_dir,filesep,regexp(xne.local_save_dir,['[^',filesep,']*$'],'match','once'),sprintf(' %s ',fns{:}));
     [err,out]=system(com);
  
