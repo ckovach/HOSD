@@ -300,7 +300,7 @@ classdef hosobject < handle
             me(1).lag=1;
             me(1).Imats = {};
             me(1).Iconjmats = {};
-            me(1).waveftlag(:)=0;
+            me(1).waveftlag=z;
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
@@ -455,6 +455,12 @@ classdef hosobject < handle
            me.win = window(me.wintype,N); 
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
            me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
+%            if N ~= me.buffersize
+                freqs = {fftfreq(me.fftN)*me.sampling_rate};
+                freqs(1:me.order) = freqs;
+                me.freqs = freqs;
+                me.update_frequency_indexing;
+%            end
            me.reset;
         end
         function out = get.window(me)
