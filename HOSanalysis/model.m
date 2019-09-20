@@ -166,7 +166,9 @@ classdef model
                     trintcpt = zeros(size(Fs,1),1);
                     trintcpt(trts) = 1;
                     Freg(end+1) = regressor(fft(trintcpt),'label','trial intcpt');
-                end                
+                end 
+                Freg = Freg(arrayfun(@(x)~isempty(x.value),Freg));
+
                 %%%
                 switch lower(me.timeBasis)
                     case {'polynomial','chebyt','bernstein'}
