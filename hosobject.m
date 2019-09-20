@@ -101,13 +101,13 @@ classdef hosobject < handle
         waveftlag = [];
       
         win = sasaki(1024);
+      G = []; 
 
     end
     
     properties (Access = protected)
       bufferN = 1024;
       
-      G = []; 
 
 %      wintype = 'hann'; % Default window type
       wintype = 'sasaki'; % Default window type
@@ -181,7 +181,7 @@ classdef hosobject < handle
             end
             if isa(order,mfilename)
                obj = order;
-               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh'});
+               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'});
                
                if length(obj)==1
                    obj(2:length(me)) = obj;
@@ -226,7 +226,7 @@ classdef hosobject < handle
                 X = [];
              end
              if nargin >1 && ~isempty(N)
-                me(1).buffersize = N;
+                me(1).bufferN = N;
              end
             if nargin < 6
                 freqindex = [];
@@ -444,6 +444,8 @@ classdef hosobject < handle
             out = me.bufferN;
         end
         function set.buffersize(me,N)
+           
+           Norig = me.bufferN;
            me.bufferN = N;
            if islogical(me.padN)&& me.padN
                me.fftN = me.bufferN + N;
@@ -455,7 +457,7 @@ classdef hosobject < handle
            me.win = window(me.wintype,N); 
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
            me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
-           if N ~= me.buffersize
+           if N ~= Norig && me.do_indexing_update
                 freqs = {fftfreq(me.fftN)*me.sampling_rate};
                 freqs(1:me.order) = freqs;
                 me.freqs = freqs;
@@ -1251,7 +1253,7 @@ classdef hosobject < handle
                 maxiter = 25;
             end
             if nargin < 5 || isempty(segment)
-                segment = struct('Trange',[0 me(1).buffersize],'wint',[],'fs',1);
+                segment = struct('Trange',[0 me(1).buffersize-1],'wint',[],'fs',1);
             end
 %             if ~iscell(xin)
 %                 xin = {xin};
