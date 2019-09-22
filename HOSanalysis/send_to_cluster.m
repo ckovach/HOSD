@@ -34,6 +34,9 @@ if isa(files,'xargon')
     if ~exist(mdlfile,'file')        
         mdlfile = fullfile(xne.local_save_dir,'options.mat');
     end
+    if ~exist(mdlfile,'file')        
+        mdlfile = fullfile(xne.local_save_dir,'model.mat');
+    end
     ld = load(mdlfile,'opts','model');
     if nargin < 3 || isempty(optsin)
         optsin = ld.opts;
@@ -97,22 +100,34 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
     outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
     outfiles = cat(1,outfiles{:});
 %     donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
+    if ~isempty(infiles)||isempty(outfiles)
     [ism,ismi]= ismember(infiles(:,2),outfiles(:,2));
-    donefiles = infiles(ism);
-    pdffiles = outfiles(contains(outfiles(:,1),'pdf'));
-    pdfch = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
-    pdfch = cellfun(@str2num,[pdfch{:}]);
-    [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
-    [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
-    donech = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
-    donech = unique(cellfun(@str2double,[donech{ismi(ism)}]),'stable');
-%     files = files(~ismember(strcat(ff,ext),donefiles));
-    missing = ~ismember(strcat(ff,ext),donefiles);
-    
+    if any(ism)
+        ddat = dir(fullfile(existing_dir,'*hos.mat'));
+        lddat = load(fullfile(existing_dir,ddat(1).name));
+        donefiles = infiles(ism);
+        pdffiles = outfiles(contains(outfiles(:,1),'pdf'));
+        pdfco = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
+        pdfco = cellfun(@str2num,[pdfco{:}]);
+        [~,c2ci] = ismember(pdfco,[lddat.block.lozchannels.contact]);
+        pdfch = [lddat.block.lozchannels(c2ci).channel];
+        [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
+        [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
+        donech = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
+         [donech,~,unqi] = unique(cellfun(@str2double,[donech{ismi(ism)}]),'stable');
+%         donech = cellfun(@str2double,[donech{ismi(ism)}]);
+    %     files = files(~ismember(strcat(ff,ext),donefiles));
+        missing = ~ismember(strcat(ff,ext),donefiles);
+    else
+        missing = true(size(files));
+    end
+    else
+        missing = true(size(files));
+    end        
     if any(missing)
         xne.jobindices=find( missing );
     else
-       donech(~missing) =donech(ford(~missing));
+       donech(~missing) =donech(unqi(ford(~missing)));
  
         xne.jobindices = find(~isempty(pdfch) & ~ismember(donech,pdfch));
     end
@@ -174,6 +189,11 @@ end
 xne.finish = @(varargin)finish(xne,varargin{:});
 
 function finish(xne,varargin)
+
+optsfile = fullfile(xne.subpaths.assets.local,'model.mat');
+if exist(optsfile)
+    copyfile(optsfile,xne.local_save_dir);
+end
 
 xne.default_finish();
 
