@@ -270,7 +270,14 @@ for bsdi = 1:length(bsidin.result)
             X(:,end)= [];
         end
 %         X = X(T(round(end/2),:),all(dm(1).levmat(end,:)==1,1));
-         [a2,b2,c2] = complexglm(bsidin.dat(T)',X);
+        
+         if size(X,2) ==0
+             X = ones(size(X,1),1);
+             add_intcpt = false;
+         else
+             add_intcpt = true;
+         end
+         [a2,b2,c2] = complexglm(bsidin.dat(T)',X,'intercept',add_intcpt);
 %              if length(regopts.eReg)>1
 %                 [a20,b20,c20] = complexglm(ld.dat(T)',[regopts.eReg(end).value]);
 %              else
@@ -317,7 +324,7 @@ for bsdi = 1:length(bsidin.result)
         grid on
         [A2,att2] = choptf(mdl.event(1).Trange,mdl.event(1).times(:)',dbx,mdl.event(1).Trange);       
         AA  = reshape(20*log10(abs(A2)),numel(A2(:,:,1)),size(A2,3));
-        [a3,b3,c3] = complexglm(AA',X,'diagonly',false);
+        [a3,b3,c3] = complexglm(AA',X,'diagonly',false,'intercept',add_intcpt);
 %             if length(regopts.eReg)>1
 %             [a30,b30,c30] = complexglm(AA',[regopts.eReg(end).value]);
 %             else
