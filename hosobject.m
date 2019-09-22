@@ -301,6 +301,11 @@ classdef hosobject < handle
             me(1).Imats = {};
             me(1).Iconjmats = {};
             me(1).waveftlag=z;
+%             me(1).win = window(me.window,me.bufferN);
+            if me.fftN< me.bufferN
+                me.buffersize = me.bufferN;
+%                 me.fftN = me.bufferN;
+            end
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
