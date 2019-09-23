@@ -456,7 +456,7 @@ for bsdi = 1:length(bsidin.result)
         title(sprintf('Component %i Normalized FFT',bsdi))
        grid on
 
-       if isfield(bsidin,'COM') &&  regexp(bsidin.COM,'Deflation is done on the entire record') %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
+       if isfield(bsidin,'COM') &&  ~isempty(regexp(bsidin.COM,'Deflation is done on the entire record')) %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
            wintadj = (bsidin.segment(bsdi).wintadj-bsidin.segment(bsdi).Trange(1))*bsidin.segment(bsdi).fs/bsidin.fs;
        else
            wintadj = bsidin.segment(bsdi).wintadj*bsidin.segment(bsdi).fs/bsidin.fs;

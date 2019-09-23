@@ -63,12 +63,12 @@ else
     xne = xargon(which('run_hos_analysis'));
 end
 if ~isempty(model) 
-    if isstruct(optsin)
+    if nargin > 2 && isstruct(optsin)
         fldn = fieldnames(optsin);
         for k = 1:length(fldn)
             opts.(fldn{k}) = optsin.(fldn{k});
         end
-    else
+    elseif ischar(optsin)
         opts.savedir=optsin;
         xne.local_save_dir = opts.savedir;
     end
@@ -99,6 +99,12 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
     infiles = cat(1,infiles{:});
     outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
     outfiles = cat(1,outfiles{:});
+    missing_files = cellfun(@(x)~exist(fullfile(existing_dir,x),'file')&~exist(fullfile(existing_dir,'figs',x),'file'),outfiles(:,1));
+    if exist('xne','var') && isa(xne,'xargon') && exist(xne.local_save_dir,'dir')
+        missing_files = missing_files & cellfun(@(x)~exist(fullfile(xne.local_save_dir,x),'file')&~exist(fullfile(xne.local_save_dir,'figs',x),'file'),outfiles(:,1));        
+    end
+        
+    outfiles(missing_files,:)={'xxxx'};
 %     donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
     if ~isempty(infiles)||isempty(outfiles)
     [ism,ismi]= ismember(infiles(:,2),outfiles(:,2));
@@ -110,7 +116,7 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
         pdfco = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
         pdfco = cellfun(@str2num,[pdfco{:}]);
         [~,c2ci] = ismember(pdfco,[lddat.block.lozchannels.contact]);
-        pdfch = [lddat.block.lozchannels(c2ci).channel];
+        pdfch = [lddat.block.lozchannels(c2ci(c2ci~=0)).channel];
         [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
         [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
         donech = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
