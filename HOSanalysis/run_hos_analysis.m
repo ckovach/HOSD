@@ -25,7 +25,7 @@ opts.hos_order=3;
 opts.nperm = 5e3;
 opts.hosargs = {};
 opts.make_plots = true;
-opts.redo_hosd = true;
+opts.redo_hosd = false;
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
 t0=tic;
@@ -174,6 +174,8 @@ hos(opts.ncomp) = hosobject(opts.hos_order);
 z = zscore(double(dat.dat));
 if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
     load(outputfile,'hos','segment')
+    segment = segment(1);
+    segment.wintadj=[];
 else
      hos.initialize(size(T,1),dat.fs(1),opts.lowpass,[],[],opts.hosargs{:});
     if apply_to_chopped_data
