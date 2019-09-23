@@ -1273,8 +1273,9 @@ classdef hosobject < handle
             
             if ~isfield(segment,'Trange')||isempty(segment.Trange)
                 segment.Trange = [0 me(1).buffersize-1]./segment.fs;
+                tindx = (0:me(1).buffersize-1)';
             else
-                 tindx = (segment.Trange(1):1/segment.fs:segment.Trange(2));
+                 tindx = round((segment.Trange(1):1/segment.fs:segment.Trange(2))*segment.fs)';
                  if length(tindx) ~= me(1).bufferN
                      me(1).buffersize = length(tindx);
                  end
@@ -1291,7 +1292,7 @@ classdef hosobject < handle
                     else
                         wint = round(segment.wint*segment.fs);
                     end
-                    tindx = (0:me(1).bufferN-1)';
+
                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
                     T(T<1) = 1;
                     T(T>length(xin))=length(xin);

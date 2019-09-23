@@ -456,7 +456,13 @@ for bsdi = 1:length(bsidin.result)
         title(sprintf('Component %i Normalized FFT',bsdi))
        grid on
 
-       [A,att] = choptf(bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs,bsidin.segment(bsdi).wintadj*bsidin.segment(bsdi).fs/bsidin.fs,dbx,bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs);
+       if regexp(bsidin.COM,'Deflation is done on the entire record') %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
+           wintadj = (bsidin.segment(bsdi).wintadj-bsidin.segment(bsdi).Trange(1))*bsidin.segment(bsdi).fs/bsidin.fs;
+       else
+           wintadj = bsidin.segment(bsdi).wintadj*bsidin.segment(bsdi).fs/bsidin.fs;
+       
+       end
+       [A,att] = choptf(bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs,wintadj ,dbx,bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs);
         ax6=subplot(4,3,12);
        getfr = find(dbx.frequency>0);
        wintp =10.^(linspace(log10(dbx.frequency(getfr(1))),log10(dbx.frequency(end)),length(dbx.frequency)));   

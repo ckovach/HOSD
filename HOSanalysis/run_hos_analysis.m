@@ -25,7 +25,7 @@ opts.hos_order=3;
 opts.nperm = 5e3;
 opts.hosargs = {};
 opts.make_plots = true;
-opts.redo_hosd = false;
+opts.redo_hosd = true;
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
 t0=tic;
@@ -173,13 +173,13 @@ hos(1) = hosobject(opts.hos_order);
 hos(opts.ncomp) = hosobject(opts.hos_order);
 z = zscore(double(dat.dat));
 if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
-    load(outputfile,'hos')
+    load(outputfile,'hos','segment')
 else
      hos.initialize(size(T,1),dat.fs(1),opts.lowpass,[],[],opts.hosargs{:});
     if apply_to_chopped_data
         hos.get_block(z(T));  % Deflation is done on the chopped data
     else
-        hos.get_block(z,[],[],segment);  % Deflation is done on the entire record. 
+        hos.get_block(z,[],[],segment);  % This allows the entire record to be used in the deflation step.
     end
 end
 % xrec = hos.xrec(z); % Get the reconstruction
