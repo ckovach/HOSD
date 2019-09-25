@@ -302,9 +302,9 @@ classdef hosobject < handle
             me(1).Iconjmats = {};
             me(1).waveftlag=z;
 %             me(1).win = window(me.window,me.bufferN);
-            if me.fftN< me.bufferN
-                me.buffersize = me.bufferN;
-%                 me.fftN = me.bufferN;
+            if me(1).fftN< me(1).bufferN
+                me(1).buffersize = me(1).bufferN;
+%                 me(1).fftN = me(1).bufferN;
             end
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
@@ -462,7 +462,7 @@ classdef hosobject < handle
            me.win = window(me.wintype,N); 
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
            me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
-           if N ~= Norig && me.do_indexing_update
+           if (N ~= Norig || length(me.freqs{1})~=me.fftN) && me.do_indexing_update
                 freqs = {fftfreq(me.fftN)*me.sampling_rate};
                 freqs(1:me.order) = freqs;
                 me.freqs = freqs;
