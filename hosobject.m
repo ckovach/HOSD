@@ -227,6 +227,7 @@ classdef hosobject < handle
              end
              if nargin >1 && ~isempty(N)
                 me(1).bufferN = N;
+                me(1).fftN = N;
              end
             if nargin < 6
                 freqindex = [];
@@ -279,6 +280,8 @@ classdef hosobject < handle
         end
         function reset(me)
             
+            me(1).radw = ifftshift((0:me(1).fftN - 1 )' - floor((me(1).fftN)/2))/(me(1).fftN)*2*pi;
+            me(1).sampt = ifftshift((0:me(1).fftN - 1 ) - floor((me(1).fftN)/2)'); 
             me(1).window_number = 0;
             me(1).sumlr =0;
             me(1).sumlr2 = 0;
@@ -286,7 +289,6 @@ classdef hosobject < handle
             z2=zeros(me(1).fftN,1);
             me(1).inputbuffer = z;
             me(1).outputbuffer = z;
-            me(1).waveform = z2;
             me(1).shiftbuffer = z2;
             me(1).thresholdbuffer=z;
             me(1).PSD = [z;0];
@@ -301,14 +303,18 @@ classdef hosobject < handle
             me(1).Imats = {};
             me(1).Iconjmats = {};
             me(1).waveftlag=z;
+            
 %             me(1).win = window(me.window,me.bufferN);
-            if me(1).fftN< me(1).bufferN
+            if me(1).fftN< me(1).bufferN || length(me(1).keepfreqs{1})~=me(1).bufferN
                 me(1).buffersize = me(1).bufferN;
 %                 me(1).fftN = me(1).bufferN;
             end
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
+      
+            me(1).waveform = z2;
+
             if length(me)>1
                 me(2:end).reset();
             end
@@ -1288,7 +1294,7 @@ classdef hosobject < handle
                     if ~isfield(segment,'wint') || isempty(segment.wint)
                         stepn = round(me(1).poverlap*me(1).bufferN);
                         nget = nxin - me(1).bufferN+1;
-                        wint = (1:stepn:nget)./segment.fs;
+                        wint = (1:stepn:nget);%./segment.fs;
                     else
                         wint = round(segment.wint*segment.fs);
                     end
