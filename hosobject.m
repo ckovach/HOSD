@@ -304,7 +304,7 @@ classdef hosobject < handle
             me(1).Iconjmats = {};
             me(1).waveftlag=z;
             
-%             me(1).win = window(me.window,me.bufferN);
+            me(1).win = window(me.window,me.fftN);
             if me(1).fftN< me(1).bufferN || length(me(1).keepfreqs{1})~=me(1).bufferN
                 me(1).buffersize = me(1).bufferN;
 %                 me(1).fftN = me(1).bufferN;
