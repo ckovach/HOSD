@@ -9,7 +9,7 @@ function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
 % obtain a surrogate sample bispectral estimate.
 %
 % For the sake of efficiency, the kth permutation is computed only at
-% coefficients for which the permutation P-value lies within 2 standard
+% coefficients for which the current permutation P-value lies within 2 standard
 % errors of the Bonferroni correction threshold and continues until all
 % coefficients meet the stopping criterion or until maxperm is reached.
 %
@@ -31,8 +31,8 @@ function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
 alpha = .05;
 if nargin < 3 || isempty(maxperm)
     maxperm = 25e3; %%% Maximum number of permutations. If set to Inf, then will
-                   %%% continue until all P-values are 2 std errors outsid
-                   %%% of the bonferonni threshold.
+                   %%% continue until all P-values are 2 std errors away
+                   %%% from the Bonferonni threshold.
 end
 
 stop_threshold = 2; %%% For the sake of efficiency, exclude coefficients after
@@ -63,7 +63,7 @@ for k = hos(1).order-1:-1:1
    FFX = FFX.*FX(hos(1).freqindx.Is(:,k),:);
 end
 
-B0 = abs(mean(FFX,2));
+B0 = abs(mean(FFX,2)); %%% Bispectral estimate
 
 pbonf =alpha./size(B0,1); %Bonferroni threshold will be used in the stopping criterion.
                         %Permutations will continue only for points that
@@ -81,15 +81,20 @@ reseed
 
 keep0=true;
 while any(keep) &&  permi<maxperm
-
+    
+    %%% Surrogate estimate for which phase has been randomized
     Bperm = mean(abs(FFX(keep,:)).*exp(2*pi*1i.*rand(size(FFX(keep,:)))),2);
     
+    %%% Number of permutations equal or greater than the original estimate
     nsig(keep) = nsig(keep)+(abs(Bperm)>=B0(keep));
     
+    %%% Total number of permutations
     ntot = ntot+keep;
     
+    %%% Regularized permutation p-value
     pperm = (nsig+.5)./(ntot+1); % Regularize the pvalue estimate so that it is never 1 or 0.
     
+    %%% Find coefficients that require no further testing.
     keep = abs((pperm-pbonf).*sqrt(ntot./(pperm.*(1-pperm))))<stop_threshold;
 %    keep = nsig<stop_threshold;
     fpn = fprintf([repmat('\b',1,fpn),'\nperm %i (N remaining = %i)'],permi,sum(keep))-fpn;
@@ -98,7 +103,8 @@ while any(keep) &&  permi<maxperm
     
     keep0=keep;
 end
-    
+
+%%% Reshape 
 permP = pperm;
 permP(end+1) = nan;
 permP = permP(hos(1).fullmap);
