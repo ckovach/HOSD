@@ -6,7 +6,7 @@ function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
 % Permutation test on bispectral phase. 
 % At each permutation, the phase of the deterministic bispectrum for each
 % window in the estimator is randomized and the the result is averaged to
-% obtain a surrogate sample bispecral estimate.
+% obtain a surrogate sample bispectral estimate.
 %
 % For the sake of efficiency, the kth permutation is computed only at
 % coefficients for which the permutation P-value lies within 2 standard
