@@ -139,7 +139,7 @@ if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
         else
            donech(~missing) =donech(unqi(ford(~missing)));
 
-            xne.jobindices = find(~isempty(pdfch) & ~ismember(donech,pdfch));
+            xne.jobindices = find(~isempty(pdfco) & ~ismember(donech,pdfco));
         end
 
     %    donef = dir(fullfile(existing_dir,'*_hos.mat'));
