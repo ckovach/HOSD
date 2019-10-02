@@ -1135,17 +1135,19 @@ classdef hosobject < handle
                    mph = mph./(abs(mph)+eps);
                    me.lag = mph; % Circularshift to keep filter energy centered on the window
                    
-                   %%% Also need to make sure that the output of thefilter applied to
-                   %%% the feature waveform is centered at the peak!
-                   [~,mxi] = max(real(ifft(me.filterftlag.*me.waveftlag+eps)));
-                   if mxi~=1 && ~isnan(mxi)
-                        me.filterfun = circshift(me.filterfun,-me.sampt(mxi));
-                   end
-                   
+               
 %                    dt = atan2(imag(mph),real(mph))/(2*pi)*me.bufferN;
 %                    delt = me.radw*dt;
 %                     me.filterfft= exp(1i*delt).*me.filterfft;
                 end
+                
+               %%% Also need to make sure that the output of the filter applied to
+               %%% the feature waveform is centered with respect to the maximum!
+               [~,mxi] = max(real(ifft(me.filterftlag.*me.waveftlag+eps)));
+               if mxi~=1 && ~isnan(mxi)
+                    me.filterfun = circshift(me.filterfun,-me.sampt(mxi));
+               end
+                   
         end
         
         function update_waveform(me,FXsh,initialize)
