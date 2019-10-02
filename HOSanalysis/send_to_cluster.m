@@ -218,6 +218,7 @@ if exist(manfile,'file')
     fclose(fid);
     re = regexp(txt,'([^\n\s]*[.]pdf)[^\n]','tokens');
     re =[re{:}];
+    re = unique(re);
     re2 = regexp(re,'contact_(\d*)_','tokens','once');
     cnum = cellfun(@(x)str2num(['0',x{:}]),re2);
     [srt,srti] = sort(cnum);
