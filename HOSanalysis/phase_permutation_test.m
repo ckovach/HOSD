@@ -1,7 +1,7 @@
-function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
+function [permP,Ntot,Q] = phase_permutation_test(hos,x,maxperm,stop_threshold)
 
 %
-% [permP,ntot]= phase_permutation_test(hos, x, maxperm)
+% [permP,ntot]= phase_permutation_test(hos, x, [maxperm],[stop_threshold)
 %
 % Permutation test on bispectral phase. 
 % At each permutation, the phase of the deterministic bispectrum for each
@@ -19,7 +19,13 @@ function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
 %  x   : data in the form of a column vector or N x M matrix
 %         where N = hos.buffersize
 %  maxperm : maximum number of permutations (default = 25e3)
-%          
+%  stop_threshold:
+%            if 0<  . <1     :        the p-value threshold used in place of
+%                                     bonferroni for stopping.
+%            if . > 1        :        the number of std errors from the Bonferroni
+%                                     threshold to tolerate. 
+%            if . =[pthresh, sdetol] : first value is p threshold, second is
+%                                     std err tolerance. 
 %   Outputs: 
 %
 %  permP : Permutation p-value. This has a minimum value of 0.5/maxperm.
@@ -29,16 +35,19 @@ function [permP,Ntot] = phase_permutation_test(hos,x,maxperm)
 
 %C. Kovach 2019
 alpha = .05;
+default_stop_threshold = 2;
 if nargin < 3 || isempty(maxperm)
     maxperm = 25e3; %%% Maximum number of permutations. If set to Inf, then will
                    %%% continue until all P-values are 2 std errors away
                    %%% from the Bonferonni threshold.
 end
 
-stop_threshold = 2; %%% For the sake of efficiency, exclude coefficients after
+if nargin < 4 || isempty(stop_threshold)
+    stop_threshold = default_stop_threshold; %%% For the sake of efficiency, exclude coefficients after
                         %%% permutation P value differs from the bonferroni threshold by this many
                         %%% std. errors.
-
+end
+    
 if size(x,1)~=hos(1).buffersize
     X = hos(1).chop_input(x);
 end
@@ -63,12 +72,18 @@ for k = hos(1).order-1:-1:1
    FFX = FFX.*FX(hos(1).freqindx.Is(:,k),:);
 end
 
-B0 = abs(mean(FFX,2)); %%% Bispectral estimate
+B0 = abs(mean(FFX,2)); %%% Magnitude of the bispectral estimate
 
-pbonf =alpha./size(B0,1); %Bonferroni threshold will be used in the stopping criterion.
-                        %Permutations will continue only for points that
-                        %are within 3 std err of the Bonferroni threshold
-                        %(until maxperm is reached).
+if stop_threshold(1) < 1
+    pbonf = stop_threshold;
+    if length(stop_threshold)>1
+        stop_threshold(2)=1;
+    else
+        stop_threshold=default_stop_threshold;
+    end 
+else
+    pbonf =alpha./size(B0,1); %Bonferroni threshold will be used in the stopping criterion.
+end                        
                         
 nsig = zeros(size(B0,1),1);
 ntot = nsig;
@@ -79,13 +94,12 @@ fpn = 0;
 
 reseed
 
-keep0=true;
 while any(keep) &&  permi<maxperm
     
     %%% Surrogate estimate for which phase has been randomized
     Bperm = mean(abs(FFX(keep,:)).*exp(2*pi*1i.*rand(size(FFX(keep,:)))),2);
     
-    %%% Number of permutations equal or greater than the original estimate
+    %%% Number of surrogate sample estimates with magnitude equal or greater than the original estimate
     nsig(keep) = nsig(keep)+(abs(Bperm)>=B0(keep));
     
     %%% Total number of permutations
@@ -93,7 +107,11 @@ while any(keep) &&  permi<maxperm
     
     %%% Regularized permutation p-value
     pperm = (nsig+.5)./(ntot+1); % Regularize the pvalue estimate so that it is never 1 or 0.
-    
+                                 % This is done here by adding 0.5 to the
+                                 % numerator and 1 to the denominator.
+                                 % The minimum p-value will therefore be
+                                 % 0.5/(maxperm + 1).
+                                 
     %%% Find coefficients that require no further testing.
     keep = abs((pperm-pbonf).*sqrt(ntot./(pperm.*(1-pperm))))<stop_threshold;
 %    keep = nsig<stop_threshold;
@@ -101,7 +119,6 @@ while any(keep) &&  permi<maxperm
     
     permi = permi+1;
     
-    keep0=keep;
 end
 
 %%% Reshape 
@@ -113,4 +130,9 @@ if nargout > 1
     Ntot = ntot;
     Ntot(end+1) = 0;
     Ntot = Ntot(hos(1).fullmap);
+end
+if nargout > 2
+    q = fdr(pperm);
+    q(end+1)=nan;
+    Q = q(hos(1).fullmap);
 end
