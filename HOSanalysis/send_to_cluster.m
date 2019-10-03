@@ -90,80 +90,122 @@ else
 end
 
 
-if ~isempty(existing_dir) && exist(fullfile(existing_dir,'manifest.txt'),'file')
-    manfile = fullfile(existing_dir,'manifest.txt');
-    fid = fopen(manfile,'r');
-    txt = fread(fid,'uchar=>char')';
-    fclose(fid);
-    infiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*INPUT\t*([\w-]*)','tokens');
-    infiles = cat(1,infiles{:});
-    outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
-    outfiles = cat(1,outfiles{:});
-    if isempty(outfiles)
-                missing = true(size(files));
-    else
-
-        missing_files = cellfun(@(x)~exist(fullfile(existing_dir,x),'file')&~exist(fullfile(existing_dir,'figs',x),'file'),outfiles(:,1));
-        if exist('xne','var') && isa(xne,'xargon') && exist(xne.local_save_dir,'dir')
-            missing_files = missing_files & cellfun(@(x)~exist(fullfile(xne.local_save_dir,x),'file')&~exist(fullfile(xne.local_save_dir,'figs',x),'file'),outfiles(:,1));        
+if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file')
+     manfile = fullfile(existing_dir,'manifest.txt');
+%     fid = fopen(manfile,'r');
+%     txt = fread(fid,'uchar=>char')';
+%     fclose(fid);
+%     infiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*INPUT\t*([\w-]*)','tokens');
+%     infiles = cat(1,infiles{:});
+%      outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
+%      outfiles = cat(1,outfiles{:});
+    for kch = 1:length(files)
+        ldchin(kch) = load(files{kch},'chan');   
+        if ~isfield(ldchin(kch).chan,'code')
+            ldchin(kch).chan.code = '';
         end
-
-        outfiles(missing_files,:)={'xxxx'};
-    %     donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
-        if ~isempty(infiles)||isempty(outfiles)
-        [ism,ismi]= ismember(infiles(:,2),outfiles(:,2));
-        if any(ism)
-            ddat = dir(fullfile(existing_dir,'*hos.mat'));
-            lddat = load(fullfile(existing_dir,ddat(1).name));
-            donefiles = infiles(ism);
-            pdffiles = outfiles(contains(outfiles(:,1),'pdf'));
-            pdfco = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
-            pdfco = cellfun(@str2num,[pdfco{:}]);
-            [~,c2ci] = ismember(pdfco,[lddat.block.lozchannels.contact]);
-            pdfch = [lddat.block.lozchannels(c2ci(c2ci~=0)).channel];
-            [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
-            [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
-            donech = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
-             [donech,~,unqi] = unique(cellfun(@str2double,[donech{ismi(ism)}]),'stable');
-    %         donech = cellfun(@str2double,[donech{ismi(ism)}]);
-        %     files = files(~ismember(strcat(ff,ext),donefiles));
-            missing = ~ismember(strcat(ff,ext),donefiles);
-        else
-            missing = true(size(files));
-        end
-        else
-            missing = true(size(files));
-        end        
-        if any(missing)
-            xne.jobindices=find( missing );
-        else
-           donech(~missing) =donech(unqi(ford(~missing)));
-
-            xne.jobindices = find(~isempty(pdfco) & ~ismember(donech,pdfco));
-        end
-
-    %    donef = dir(fullfile(existing_dir,'*_hos.mat'));
-    %    donech = regexp({donef.name},'_(\d*)_hos[.]mat','tokens','once');
-    %    donech = cellfun(@str2double,donech);
-    % %    chs = [opts.block.lozchannels,opts.block.hizchannels];
-    %    [~,fns] = cellfun(@fileparts,files,'uniformoutput',false);
-    %    availch = regexp(fns,'(\d*)$','tokens','once');
-    %    availch = cellfun(@str2double,[availch{:}]);
-    %    undoneidx = find(~ismember(availch,donech));
-       if isempty(xne.jobindices)
-           fprintf('\nAll channels finished')
-           if ~strcmp(xne.jobindices,'none')
-               xne.finish();
-           end
-           return
-       elseif xne.nparallel <length(infiles)
-           fprintf('\n%i channels remaining of %i in %s',xne.nparallel,length(infiles),existing_dir);
-       end
+        
     end
-%     xne.jobindices=undoneidx;  
+    availch = [ldchin.chan];
+   
+%     co2ch([lddat.block.lozchannels.contact]) = [lddat.block.lozchannels.channel];
+%     ch2co([lddat.block.lozchannels.channel]) = [lddat.block.lozchannels.contact];
+    
+    ddat = dir(fullfile(existing_dir,'*hos.mat'));
+    dfig = dir(fullfile(existing_dir,'figs'));
+    if exist('xne','var') && isa(xne,'xargon') && exist(xne.local_save_dir,'dir') && ~isequal(xne.local_save_dir,existing_dir)
+        ddat = [ddat;dir(fullfile(xne.local_save_dir,'*hos.mat'))];
+        dfig = [dfig;dir(fullfile(xne.local_save_dir,'figs'))];
+    end
+    re = regexp({ddat.name},'_(\d*)_hos.*mat','tokens','once');
+    doneco = cellfun(@str2double,[re{:}]);
+    
+    re = regexp({dfig.name},'contact_(\d*)_bispect.*[.]pdf','tokens','once');
+    figco = cellfun(@str2double,[re{:}]);
+
+    missing = ~ismember([availch.contact],doneco);
+    
+    if ~all(missing)
+        lddat = load(fullfile(ddat(1).folder,ddat(1).name),'block','opts','COM');
+        if ~isempty(strfind(lddat.COM,'.mat'',ld.blkdat.block,ld.chan.channel);'))
+%              ch2co([lddat.block.lozchannels.channel]) = [lddat.block.lozchannels.contact];
+%              doneco = ch2co(doneco);
+             missing = ~ismember([availch.channel],doneco);
+        end
+
+        if ~all(missing) && lddat.opts.make_plots && lddat.opts.do_regression
+            missing = missing | arrayfun(@(x)sum([x.contact]==figco),availch)<lddat.opts.ncomp;
+        end
+    end
+%     if ~all(missing)
+% 
+%         missing_files = cellfun(@(x)~exist(fullfile(existing_dir,x),'file')&~exist(fullfile(existing_dir,'figs',x),'file'),outfiles(:,1));
+%         if exist('xne','var') && isa(xne,'xargon') && exist(xne.local_save_dir,'dir')
+%             missing_files = missing_files & cellfun(@(x)~exist(fullfile(xne.local_save_dir,x),'file')&~exist(fullfile(xne.local_save_dir,'figs',x),'file'),outfiles(:,1));        
+%         end
+% 
+%         outfiles(missing_files,:)={'xxxx'};
+%     %     donefiles = infiles(ismember(infiles(:,2),outfiles(:,2)),1);
+%         if ~isempty(infiles)||isempty(outfiles)
+%             [ism,ismi]= ismember(infiles(:,2),outfiles(:,2));
+%             if any(ism)
+%                 ddat = dir(fullfile(existing_dir,'*hos.mat'));
+%                 lddat = load(fullfile(existing_dir,ddat(1).name));
+%                 donefiles = infiles(ism);
+%                 pdffiles = outfiles(contains(outfiles(:,1),'pdf'));
+%                 pdfco = regexp(pdffiles,'contact_(\d*)_bispectral','tokens','once');
+%                 pdfco = cellfun(@str2num,[pdfco{:}]);
+%                 co2ch([lddat.block.lozchannels.contact]) = [lddat.block.lozchannels.channel];
+%                 ch2co([lddat.block.lozchannels.channel]) = [lddat.block.lozchannels.contact];
+%     %             [~,c2ci] = ismember(pdfco,[lddat.block.lozchannels.contact]);
+%     %             pdfch = [lddat.block.lozchannels(c2ci(c2ci~=0)).channel];
+%                 [~,ff,ext] = cellfun(@fileparts,files,'uniformoutput',false);
+%                 [fism,ford] = ismember(strcat(ff,ext),infiles(ism,1));
+%                 doneco = regexp(outfiles(:,1),'_(\d*)_hos','tokens','once');
+%                  [doneco,~,unqi] = unique(cellfun(@str2double,[doneco{ismi(ism)}]),'stable');
+%         %         donech = cellfun(@str2double,[donech{ismi(ism)}]);
+%             %     files = files(~ismember(strcat(ff,ext),donefiles));
+%                 missing = ~ismember(strcat(ff,ext),donefiles);
+%             else
+%                 missing = true(size(files));
+%             end
+%         else
+%             missing = true(size(files));
+%         end       
 else
-    manfile = '';
+     missing = true(size(files));
+     manfile = '';
 end
+% if any(missing)
+    xne.jobindices=find( missing );
+% else
+%    doneco(~missing) =doneco(unqi(ford(~missing)));
+% 
+%     xne.jobindices = find(~isempty(pdfco) & ~ismember(doneco,pdfco));
+% end
+
+%    donef = dir(fullfile(existing_dir,'*_hos.mat'));
+%    donech = regexp({donef.name},'_(\d*)_hos[.]mat','tokens','once');
+%    donech = cellfun(@str2double,donech);
+% %    chs = [opts.block.lozchannels,opts.block.hizchannels];
+%    [~,fns] = cellfun(@fileparts,files,'uniformoutput',false);
+%    availch = regexp(fns,'(\d*)$','tokens','once');
+%    availch = cellfun(@str2double,[availch{:}]);
+%    undoneidx = find(~ismember(availch,donech));
+if isempty(xne.jobindices)
+   fprintf('\nAll channels finished')
+   if ~strcmp(xne.status,'none')
+       xne.finish();
+   end
+   return
+elseif xne.nparallel <length(files)
+   fprintf('\n%i channels remaining of %i in %s',xne.nparallel,length(files),existing_dir);
+end
+% end
+%     xne.jobindices=undoneidx;  
+% else
+%     manfile = '';
+% end
 if isempty(xne.jobindices)
     xne.nparallel = length(files);
 end
