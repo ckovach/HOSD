@@ -95,7 +95,7 @@ blk = bsidin.block;
 
 xrec = bsidin.hos.xrec(bsidin.dat);
 ximp = full(bsidin.hos.ximp(bsidin.dat));
-xrec(isnan(xrerc))=0;
+xrec(isnan(xrec))=0;
 ximp(isnan(ximp))=0;
 x = bsidin.dat;
 x(isnan(x))=0;
