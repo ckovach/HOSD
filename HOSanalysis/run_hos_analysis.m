@@ -26,6 +26,7 @@ opts.nperm = 5e3;
 opts.hosargs = {};
 opts.make_plots = true;
 opts.redo_hosd = false;
+opts.dbt_denoise = true;
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
 t0=tic;
@@ -55,6 +56,12 @@ if ischar(dat)
             end
             if isfield(ld,'blkdat')
                 dat.block = ld.blkdat;
+            end
+             if isfield(ld,'block')
+                dat.block = ld.block;
+             end
+            if ~isfield(dat.block,'subprotocol')
+                dat.block.subprotocol='';
             end
         case '.ncs'
             dat = readncs([fn,ext],inputdir);
@@ -115,7 +122,7 @@ elseif length(opts.resamp)==1  % Scalar value for resampling is treated as decim
     opts.resamp = [1 opts.resamp];
 end
 
-if ~isfield(dat,'denoised')  ||  ~dat.denoised
+if opts.dbt_denoise && (~isfield(dat,'denoised')  ||  ~dat.denoised)
 %     fig = figure;
     xdn = dbtDenoise(dat.dat,dat.fs(1),.1,'make plot',false,'spike window',.01);
 %     fr = getframe(fig);
@@ -162,6 +169,12 @@ end
 
 [T,~] = chopper(segment.Trange,segment.wint,segment.fs);
 T(T<1)=1;T(T>n)=n;
+
+zscore = @(x)(x-nanmean(x))./nanstd(x);
+
+segment.wint(any(isnan(dat.dat(T))))=[];
+T(:,any(isnan(dat.dat(T))))=[];
+
 if opts.zthresh<Inf
    z = zscore(dat.dat);
    discard = any(z(T)>opts.zthresh);
@@ -190,11 +203,13 @@ end
 xthresh = hos.xthresh(z);
 
 if ~isfield(opts,'no_anls') || ~opts.no_anls
+    x = dat.dat;
+    x(isnan(x))=0;
     for compi = 1:length(hos)
         segment.wintadj = hos(compi).delay + segment.wint;
         for bi = 1:size(opts.bands,1)   
 
-           dbx = dbt(dat.dat,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
+           dbx = dbt(x,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
             %%% envelope smoothing
 
             dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));

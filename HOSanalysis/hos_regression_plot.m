@@ -95,6 +95,10 @@ blk = bsidin.block;
 
 xrec = bsidin.hos.xrec(bsidin.dat);
 ximp = full(bsidin.hos.ximp(bsidin.dat));
+xrec(isnan(xrerc))=0;
+ximp(isnan(ximp))=0;
+x = bsidin.dat;
+x(isnan(x))=0;
 
 for bsdi = 1:length(bsidin.result)
         
@@ -186,7 +190,7 @@ for bsdi = 1:length(bsidin.result)
         xi = ximp(:,bsdi);
         fig = figure;
         
-        dbx = dbt(bsidin.dat,bsidin.fs,4,'upsample',2);
+        dbx = dbt(x,bsidin.fs,4,'upsample',2);
 
         if isfield(bsidin.result(bsdi),'fit') && ~isempty(bsidin.result(bsdi).fit)
             mdl=bsidin.result(bsdi).fit.model;
