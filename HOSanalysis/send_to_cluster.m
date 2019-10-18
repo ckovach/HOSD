@@ -56,13 +56,16 @@ else
 
     if isstruct(files)
        block = locateNlx(files);
-       files = fullfile(block.blkfiles.path,block.blkfiles.lfp);
+       files = {};
+       for bk = 1:length(block.blkfiles)
+           files = [files,fullfile(block.blkfiles(bk).path,block.blkfiles(bk).lfp)];
+       end
        opts.block = block;
     end
 
     xne = xargon(which('run_hos_analysis'));
 end
-if ~isempty(model) 
+if nargin > 2 &&~isempty(optsin) 
     if nargin > 2 && isstruct(optsin)
         fldn = fieldnames(optsin);
         for k = 1:length(fldn)
@@ -99,14 +102,19 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
 %     infiles = cat(1,infiles{:});
 %      outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
 %      outfiles = cat(1,outfiles{:});
-    for kch = 1:length(files)
-        ldchin(kch) = load(files{kch},'chan');   
-        if ~isfield(ldchin(kch).chan,'code')
-            ldchin(kch).chan.code = '';
-        end
-        
-    end
-    availch = [ldchin.chan];
+      try
+         for kch = 1:length(files)
+   
+           ldchin(kch) = load(files{kch});   
+            if ~isfield(ldchin(kch).chan,'code')
+                ldchin(kch).chan.code = '';
+            end
+         end
+          availch = [ldchin.chan];
+       catch
+            ldmod = load(fullfile(existing_dir,'../assets','model.mat'));
+            availch = ldmod.opts.block.lozchannels;
+      end
    
 %     co2ch([lddat.block.lozchannels.contact]) = [lddat.block.lozchannels.channel];
 %     ch2co([lddat.block.lozchannels.channel]) = [lddat.block.lozchannels.contact];
@@ -121,8 +129,11 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
     doneco = cellfun(@str2double,[re{:}]);
     
     re = regexp({dfig.name},'contact_(\d*)_bispect.*[.]pdf','tokens','once');
-    figco = cellfun(@str2double,[re{:}]);
-
+    if ~isempty(re)
+        figco = cellfun(@str2double,[re{:}]);
+    else
+        figco=[];
+    end
     missing = ~ismember([availch.contact],doneco);
     
     if ~all(missing)
@@ -133,7 +144,7 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
              missing = ~ismember([availch.channel],doneco);
         end
 
-        if ~all(missing) && lddat.opts.make_plots && lddat.opts.do_regression
+        if ~all(missing) && lddat.opts.make_plots && (~isfield(lddat.opts,'do_regression')||lddat.opts.do_regression)
             missing = missing | arrayfun(@(x)sum([x.contact]==figco),availch)<lddat.opts.ncomp;
         end
     end

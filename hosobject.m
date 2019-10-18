@@ -848,6 +848,7 @@ classdef hosobject < handle
                apply_window = false;
            end
            out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+           out(isnan(out)) = 0;
            if length(me)>1
                out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
            end
@@ -1805,3 +1806,4 @@ end
 function out = fftfreq(N)
     out = ifftshift((0:N-1)-floor(N/2))/N;
 end 
+  
