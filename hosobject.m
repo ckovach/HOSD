@@ -1260,7 +1260,7 @@ classdef hosobject < handle
             end
              
         end
-        function [Xsh,Xwin,T,wint] = get_block(me,xin,maxiter,makeplot,segment,compno)
+        function  varargout = get_block(me,xin,maxiter,makeplot,segment,compno)
            
             % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
@@ -1484,6 +1484,9 @@ classdef hosobject < handle
                else
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
                end
+            end
+            if nargout > 1
+                varargout = {Xsh,Xwin,T,wint};
             end
         end
         
