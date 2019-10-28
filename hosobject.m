@@ -1014,9 +1014,10 @@ classdef hosobject < handle
 %             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
 %             delt = me.radw*dt;
 %             delt(isnan(delt))=0;
-            delt = 0;
+%             delt = 0;
             for k = 1:length(Xs)
-                FXs{k} = repmat(exp(-1i*delt),1,size(Xs{k},2)).*fft(Xs{k});
+%                 FXs{k} = repmat(exp(-1i*delt),1,size(Xs{k},2)).*fft(Xs{k});
+                FXs{k} = fft(Xs{k});
             end
             
             if length(FXs) == me.order
