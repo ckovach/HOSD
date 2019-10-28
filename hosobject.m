@@ -1078,7 +1078,7 @@ classdef hosobject < handle
                     me.Imats{k}= I;
                     me.Iconjmats{k} = Iconj;
                 end
-                HF = H(1:end-1).*FFXpart{k};
+                HF = repmat(H(1:end-1),1,size(FFXpart{k},2)).*FFXpart{k};
                
                 Gpart = Gpart + I*HF + Iconj*conj(HF);
 %                 Bcheck = Bcheck + I*HFcheck + Iconj*conj(HFcheck);
