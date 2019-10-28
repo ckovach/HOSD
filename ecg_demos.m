@@ -192,7 +192,7 @@ end
 cr = corr([components,sum_components],[ecgz_noise,recovered_ecg,sum_recovered]);
     
     
-snr_improvement = lodDB(cr)-lodDB(cr(:,1));
+snr_improvement = lodDB(cr)-repmat(lodDB(cr(:,1)),1,size(cr,2));
 [mxcr,mxi] = max(cr(:,2:end));
 [srt,srti] = sort(max(cr(:,2:end-~isempty(sum_components)),[],1),'descend');
 
