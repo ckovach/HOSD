@@ -259,7 +259,7 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
                 mdl.addregressor(opts.regressors);
             end
 
-            if ~all(isnan(imp))
+            if ~all(isnan(imp)) && any(imp)
                 fit = fitmod(mdl);            
                 res(compi).fit = fit;
             else
