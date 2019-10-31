@@ -65,8 +65,8 @@ else
 
     xne = xargon(which('run_hos_analysis'));
 end
-if nargin > 2 &&~isempty(optsin) 
-    if nargin > 2 && isstruct(optsin)
+if exist('optsin','var') &&~isempty(optsin) 
+    if  isstruct(optsin)
         fldn = fieldnames(optsin);
         for k = 1:length(fldn)
             opts.(fldn{k}) = optsin.(fldn{k});
@@ -126,8 +126,11 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
         dfig = [dfig;dir(fullfile(xne.local_save_dir,'figs'))];
     end
     re = regexp({ddat.name},'_(\d*)_hos.*mat','tokens','once');
-    doneco = cellfun(@str2double,[re{:}]);
-    
+    if isempty(re)
+        doneco = [];
+    else
+        doneco = cellfun(@str2double,[re{:}]);
+    end    
     re = regexp({dfig.name},'contact_(\d*)_bispect.*[.]pdf','tokens','once');
     if ~isempty(re)
         figco = cellfun(@str2double,[re{:}]);
@@ -203,6 +206,10 @@ end
 %    availch = regexp(fns,'(\d*)$','tokens','once');
 %    availch = cellfun(@str2double,[availch{:}]);
 %    undoneidx = find(~ismember(availch,donech));
+blkname = opts.block.block;
+summaryfile = [blkname,'_',regexprep(regexp(xne.local_save_dir,['[^',filesep,']*$'],'match','once'),blkname,'')];
+xne.finish = @(varargin)finish(xne,summaryfile,varargin{:});
+
 if isempty(xne.jobindices)
    fprintf('\nAll channels finished')
    if ~strcmp(xne.status,'none')
@@ -250,9 +257,8 @@ if ~isempty(manfile)
     end
 end
 
-xne.finish = @(varargin)finish(xne,varargin{:});
 
-function finish(xne,varargin)
+function finish(xne,summaryfile,varargin)
 
 optsfile = fullfile(xne.subpaths.assets.local,'model.mat');
 if exist(optsfile)
@@ -277,7 +283,7 @@ if exist(manfile,'file')
     [srt,srti] = sort(cnum);
         
     fns = fullfile(xne.local_save_dir,'figs',re(srti(srt>0)));
-    com = sprintf('gs -sDEVICE=pdfwrite -dEPSCrop  -dMaxInlineImageSize=100000 -o%s%s%s_summary.pdf %s',xne.local_save_dir,filesep,regexp(xne.local_save_dir,['[^',filesep,']*$'],'match','once'),sprintf(' %s ',fns{:}));
+    com = sprintf('gs -sDEVICE=pdfwrite -dEPSCrop  -dMaxInlineImageSize=100000 -o%s%s%s_summary.pdf %s',xne.local_save_dir,filesep,summaryfile,sprintf(' %s ',fns{:}));
     [err,out]=system(com);
  
     fprintf('%s',out)
