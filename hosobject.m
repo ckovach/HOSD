@@ -1483,6 +1483,8 @@ classdef hosobject < handle
                    Xwin = cat(3,Xwin,Xwin2);
                    T = cat(3,T,T2);
                else
+                    me(2).Imats = me(1).Imats;
+                    me(2).Iconjmats = me(1).Iconjmats;                    
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
                end
             end
