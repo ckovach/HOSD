@@ -29,6 +29,7 @@ opts.redo_hosd = false;
 opts.dbt_denoise = true;
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
+reseed;
 t0=tic;
 if ischar(dat)
     inputdir = dat;
@@ -259,7 +260,7 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
                 mdl.addregressor(opts.regressors);
             end
 
-            if ~all(isnan(imp)) && any(imp)
+            if ~all(isnan(imp)) && any(imp(mdl.get_event_window.T(:)))
                 fit = fitmod(mdl);            
                 res(compi).fit = fit;
             else
