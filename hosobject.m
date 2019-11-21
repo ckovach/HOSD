@@ -1316,6 +1316,7 @@ classdef hosobject < handle
                         stepn = round(me(1).poverlap*me(1).bufferN);
                         nget = nxin - me(1).bufferN+1;
                         wint = (1:stepn:nget);%./segment.fs;
+                        segment.wint=wint/segment.fs;
                     else
                         wint = round(segment.wint*segment.fs);
                     end
@@ -1509,7 +1510,7 @@ classdef hosobject < handle
                end
             end
             if nargout > 1
-                varargout = {Xsh,Xwin,T,wint};
+                varargout = {Xsh,Xwin,T,wint,segment};
             end
         end
         
