@@ -40,6 +40,7 @@ classdef model
        fact2reg_args = {};
        intercept=true;
        codeincr = 0;
+       do_llr_tests=false;
     end
 
     properties( Dependent = true)

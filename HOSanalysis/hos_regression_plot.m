@@ -100,6 +100,8 @@ ximp(isnan(ximp))=0;
 x = bsidin.dat;
 x(isnan(x))=0;
 
+dbx = dbt(x,bsidin.fs,4,'upsample',2);
+
 for bsdi = 1:length(bsidin.result)
         
 %         bsid = bsids(bsdi);
@@ -190,9 +192,9 @@ for bsdi = 1:length(bsidin.result)
         xi = ximp(:,bsdi);
         fig = figure;
         
-        dbx = dbt(x,bsidin.fs,4,'upsample',2);
+    
 
-        if isfield(bsidin.result(bsdi),'fit') && ~isempty(bsidin.result(bsdi).fit)
+        if isfield(bsidin.result(bsdi),'fit') && ~isempty(bsidin.result(bsdi).fit) && ~isempty(bsidin.result(bsdi).fit.model.event)
             mdl=bsidin.result(bsdi).fit.model;
             evw = mdl.get_event_window;
             tt = evw.tt;
@@ -374,7 +376,7 @@ for bsdi = 1:length(bsidin.result)
               set(ax5,'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
 
     %       imagesc(att2,dbx.frequency,mean(20*log(abs(A2)),3)')
-          caxis([-1 1]*min(abs(caxis)))
+          caxis([-1 1]*max(abs(caxis)))
               hold on
             [~,ch] =contour(att2,log10(dbx.frequency(getfr)),-log(qtrans3(:,getfr)'),-log([.05 .05])); 
     %         [~,ch(2)] =contour(att2,dbx.frequency,-log(qtrans3'),-log([ .05 ])); 
@@ -461,12 +463,12 @@ for bsdi = 1:length(bsidin.result)
        grid on
 
        if isfield(bsidin,'COM') &&  ~isempty(regexp(bsidin.COM,'Deflation is done on the entire record')) %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
-           wintadj = (bsidin.segment(bsdi).wintadj-bsidin.segment(bsdi).Trange(1))*bsidin.segment(bsdi).fs/bsidin.fs;
+           wintadj = (bsidin.result(bsdi).segment.wintadj-bsidin.result(bsdi).segment.Trange(1))*bsidin.result(bsdi).segment.fs/bsidin.fs;
        else
-           wintadj = bsidin.segment(bsdi).wintadj*bsidin.segment(bsdi).fs/bsidin.fs;
+           wintadj = bsidin.result(bsdi).segment.wintadj*bsidin.result(bsdi).segment.fs/bsidin.fs;
        
        end
-       [A,att] = choptf(bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs,wintadj ,dbx,bsidin.segment(bsdi).Trange*bsidin.segment(bsdi).fs/bsidin.fs);
+       [A,att] = choptf(bsidin.result(bsdi).segment.Trange*bsidin.result(bsdi).segment.fs/bsidin.fs,wintadj ,dbx,bsidin.result(bsdi).segment.Trange*bsidin.result(bsdi).segment.fs/bsidin.fs);
         ax6=subplot(4,3,12);
        getfr = find(dbx.frequency>0);
        wintp =10.^(linspace(log10(dbx.frequency(getfr(1))),log10(dbx.frequency(end)),length(dbx.frequency)));   
@@ -478,7 +480,7 @@ for bsdi = 1:length(bsidin.result)
         set(ax6,'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
          axis xy
         title('Feat. induced ')
-         caxis([-1 1]*min(abs(caxis)))
+         caxis([-1 1]*max(abs(caxis)))
          xlabel('(s)')
          
          

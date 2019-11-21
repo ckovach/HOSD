@@ -2,6 +2,7 @@
 
 
 
+
 function bsidout=run_hos_analysis(dat, outputdir,inputfiles,jobindex)
 
 opts.lowpass = 200;
@@ -30,6 +31,17 @@ opts.dbt_denoise = true;
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
 reseed;
+
+sl = license('checkout','signal_toolbox');
+atn=1;
+while isequal(sl,0)
+    fprintf('\nFailed to checout the signal processing toolbox. Attempt %i',atn);
+    atn=atn+1;
+    
+    sl = license('checkout','signal_toolbox');
+    pause(1)
+end
+
 t0=tic;
 if ischar(dat)
     inputdir = dat;
@@ -138,20 +150,20 @@ dat.dat = resample(double(dat.dat),opts.resamp(1),opts.resamp(2));
 dat.fs = dat.fs(1)*opts.resamp(1)./opts.resamp(2);
 
 n = length(dat.dat);
-
-if isfield(opts,'modelopts') && ~isempty(opts.modelopts)
-    mdl = model(opts.modelopts);
-   mdl.event = opts.modelopts.event;
-    mdl.sampling_rate=dat.fs(1);
-
-elseif isfield(opts,'event')
-        
-    mdl = model;
-    mdl.event = opts.event;
-    mdl.sampling_rate=dat.fs(1);
-else
-    mdl = [];
-end
+% 
+% if isfield(opts,'modelopts') && ~isempty(opts.modelopts)
+%     mdl = model(opts.modelopts);
+%    mdl.event = opts.modelopts.event;
+%     mdl.sampling_rate=dat.fs(1);
+% 
+% elseif isfield(opts,'event')
+%         
+%     mdl = model;
+%     mdl.event = opts.event;
+%     mdl.sampling_rate=dat.fs(1);
+% else
+%     mdl = [];
+% end
 
 
 apply_to_chopped_data = isstruct(opts.windur);
@@ -186,7 +198,7 @@ end
 hos(1) = hosobject(opts.hos_order);
 hos(opts.ncomp) = hosobject(opts.hos_order);
 z = zscore(double(dat.dat));
-if nargin > 1 && exist(outputfile,'file') && ~opts.redo_hosd
+if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd
     load(outputfile,'hos','segment')
     segment = segment(1);
     segment.wintadj=[];
@@ -201,96 +213,120 @@ end
 % xrec = hos.xrec(z); % Get the reconstruction
 % ximp = hos.ximp(z);
 % xfilt = hos.xfilt(z);
-xthresh = hos.xthresh(z);
 
-if ~isfield(opts,'no_anls') || ~opts.no_anls
-    x = dat.dat;
-    x(isnan(x))=0;
-    for compi = 1:length(hos)
-        segment.wintadj = hos(compi).delay + segment.wint;
-        for bi = 1:size(opts.bands,1)   
-
-           dbx = dbt(x,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
-            %%% envelope smoothing
-
-            dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
-           [As{bi},attsb] = choptf(segment.Trange*segment.fs/dat.fs(1),segment.wintadj*segment.fs/dat.fs(1),dbx,segment.Trange*segment.fs/dat.fs(1)); %#ok<*AGROW>
-           atts{bi} = attsb-mean(segment.Trange(:)*segment.fs/dat.fs(1));
-           Mbi{bi} = mean(20*log10(abs(As{bi})),3)';
-        %    Mevbi{bi} = 20*log10(abs(mean(As{bi},3)))';
-           frqs{bi}=dbx.frequency;
-        end           
-        [~,pks] = getpeak2(xthresh(:,compi));
-         imp = full(pks==1);
-
-    %      opts.autodep = struct('order',{0 8},'tau',{0 , median(diff(find(imp)))/dat.fs});
-
-        if isfield(opts,'inpt')
-           inpt = opts.inpt;
-           dbinpt = dbt(inpt.dat,inpt.fs,20,'lowpass',min(inpt.fs/2,4e3));
-    %        imp = full(ximp(:,compi));
-
-           dbsnd = dbt(abs(dbinpt.blrep),dbinpt.sampling_rate,.25);
-%            sndY = reshape(dbsnd.blrep,length(dbsnd.time),numel(dbsnd.blrep(1,:,:)));
-           dbimp = dbt(imp,dat.fs(1),.25,'lowpass', dbsnd.lowpass);
-%            impX = reshape(dbimp.blrep,length(dbimp.time),numel(dbimp.blrep(1,:,:)));
-
-           coh = dbtcoh(dbimp,dbsnd);
-           C = squeeze(coh);
-           C(:,2*end+1) = 0;
-           CTF = fftshift(real(ifft(C,[],2)),2);
-           res.CTF = CTF;
-
-           res.ctft = ((0:size(C,2)-1)-floor(size(C,2)/2))./size(C,2)./diff(dbimp.frequency(1:2));
-            res.ctftfrq = dbinpt.frequency';
-         end
-
-
-        res(compi).atts=atts;
-        res(compi).Mbi=Mbi;
-        res(compi).afrqs = frqs;
-
-        if ~isempty(mdl)
-             opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs(1)});
-             mdl.autodep = opts.autodep;
-
-            mdl.response = imp;
-
-            if isfield(opts,'regressors')
-                mdl.addregressor(opts.regressors);
-            end
-
-            if ~all(isnan(imp)) && any(imp(mdl.get_event_window.T(:)))
-                fit = fitmod(mdl);            
-                res(compi).fit = fit;
-            else
-                res(compi).fit = [];
-            end            
-                res(compi).model = model;
-        end
-        bsidout(1).segment(compi) = segment;
-    end
-    if isfield(opts,'hos_regressor')&& ~isempty(opts.hos_regressor)
-            bsidout.hosregresult = hos.hos_regress(z,opts.hos_regressor);
-    end
-else
-    res=[];
-end
 bsidout.hos= hos;
-bsidout.result = res;
 bsidout(1).dat = z;
-    
-
-    
 bsidout(1).chan = dat.chan;
 bsidout(1).block = dat.block;
 bsidout(1).fs = dat.fs(1);
 % bsidout(1).origdatafile=dat.origdatafile;
 bsidout(1).opts = opts;
+bsidout(1).segment = segment;
+
+if ~isfield(opts,'no_anls') || ~opts.no_anls
+%     res = hos_regression_analysis(bsidout);
+    res = feval(opts.stats_function,bsidout);
+end
+
+if isfield(opts,'hos_regressor')&& ~isempty(opts.hos_regressor)
+        res.hosregresult = hos.hos_regress(bsidin.dat,opts.hos_regressor);
+end
+% xthresh = hos.xthresh(z);
+% 
+% if ~isfield(opts,'no_anls') || ~opts.no_anls
+%     x = dat.dat;
+%     x(isnan(x))=0;
+%     for compi = 1:length(hos)
+%         segment.wintadj = hos(compi).delay + segment.wint;
+%         for bi = 1:size(opts.bands,1)   
+% 
+%            dbx = dbt(x,dat.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
+%             %%% envelope smoothing
+% 
+%             dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
+%            [As{bi},attsb] = choptf(segment.Trange*segment.fs/dat.fs(1),segment.wintadj*segment.fs/dat.fs(1),dbx,segment.Trange*segment.fs/dat.fs(1)); %#ok<*AGROW>
+%            atts{bi} = attsb-mean(segment.Trange(:)*segment.fs/dat.fs(1));
+%            Mbi{bi} = mean(20*log10(abs(As{bi})),3)';
+%         %    Mevbi{bi} = 20*log10(abs(mean(As{bi},3)))';
+%            frqs{bi}=dbx.frequency;
+%         end           
+%         [~,pks] = getpeak2(xthresh(:,compi));
+%          imp = full(pks==1);
+% 
+%     %      opts.autodep = struct('order',{0 8},'tau',{0 , median(diff(find(imp)))/dat.fs});
+% 
+%         if isfield(opts,'inpt')
+%            inpt = opts.inpt;
+%            dbinpt = dbt(inpt.dat,inpt.fs,20,'lowpass',min(inpt.fs/2,4e3));
+%     %        imp = full(ximp(:,compi));
+% 
+%            dbsnd = dbt(abs(dbinpt.blrep),dbinpt.sampling_rate,.25);
+% %            sndY = reshape(dbsnd.blrep,length(dbsnd.time),numel(dbsnd.blrep(1,:,:)));
+%            dbimp = dbt(imp,dat.fs(1),.25,'lowpass', dbsnd.lowpass);
+% %            impX = reshape(dbimp.blrep,length(dbimp.time),numel(dbimp.blrep(1,:,:)));
+% 
+%            coh = dbtcoh(dbimp,dbsnd);
+%            C = squeeze(coh);
+%            C(:,2*end+1) = 0;
+%            CTF = fftshift(real(ifft(C,[],2)),2);
+%            res.CTF = CTF;
+% 
+%            res.ctft = ((0:size(C,2)-1)-floor(size(C,2)/2))./size(C,2)./diff(dbimp.frequency(1:2));
+%             res.ctftfrq = dbinpt.frequency';
+%          end
+% 
+% 
+%         res(compi).atts=atts;
+%         res(compi).Mbi=Mbi;
+%         res(compi).afrqs = frqs;
+% 
+%         if ~isempty(mdl)
+%              opts.autodep = struct('order',{ 8},'tau',{ median(diff(find(imp)))/dat.fs(1)});
+%              mdl.autodep = opts.autodep;
+% 
+%             mdl.response = imp;
+% 
+%             if isfield(opts,'regressors')
+%                 mdl.addregressor(opts.regressors);
+%             end
+% 
+%             if ~all(isnan(imp)) &&( ~isempty(mdl.regressors) || any(imp(mdl.get_event_window.T(:))))
+%                 fit = fitmod(mdl);            
+%                 res(compi).fit = fit;
+%             else
+%                 res(compi).fit = [];
+%             end            
+%                 res(compi).model = model;
+%         end
+%         bsidout(1).segment(compi) = segment;
+%     end
+%     if isfield(opts,'hos_regressor')&& ~isempty(opts.hos_regressor)
+%             bsidout.hosregresult = hos.hos_regress(z,opts.hos_regressor);
+%     end
+% else
+%     res=[];
+% end
+% bsidout.hos= hos;
+bsidout.result = res;
+bsidout(1).dat = z;
+    
+
+    
+% bsidout.hos= hos;
+% bsidout(1).dat = z;
+% bsidout(1).chan = dat.chan;
+% bsidout(1).block = dat.block;
+% bsidout(1).fs = dat.fs(1);
+% % bsidout(1).origdatafile=dat.origdatafile;
+% bsidout(1).opts = opts;
 
 
 if isfield(opts,'make_plots') && opts.make_plots
-   bsidout(1).res = hos_regression_plot(bsidout,useclust,outputdir);
+    if ~isfield(opts,'plot_function')
+       bsidout(1).res = hos_regression_plot(bsidout,useclust,outputdir);
+    else
+        bsidout(1).res = feval(opts.plot_function,bsidout,useclust,outputdir);
+    end
 end
 
 try

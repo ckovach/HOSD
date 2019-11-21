@@ -3,7 +3,7 @@ function out = fitmod(mdl)
 
 % Fit the model
 
-do_llr_tests = false;
+% do_llr_tests = false;
 use_glmfit = false;
 out.model = mdl;
 
@@ -66,7 +66,7 @@ for k = 1:length(codes)
     regs(regi).waldstat = waldstat;
     regs(regi).waldpval = 1-chi2cdf(full(waldstat),length(bsub));
         
-    if do_llr_tests
+    if mdl.do_llr_tests
         
         if use_glmfit
              [~,devred] = glmfit(X(: ,[regs.codevec]~=codes(k)),mdl.response,mdl.modelType); 

@@ -1,3 +1,4 @@
+
 function xne = send_to_cluster(files, model,optsin)
 
 % xne = send_to_cluster(files, model,opts)
@@ -19,11 +20,13 @@ opts.skipdone = true;
 opts.nslots = 4;
 opts.concatenate = [];
 opts.window = 'hann';
+opts.plot_function = 'hos_regression_plot';
+opts.stats_function = 'hos_regression_plot';
 
 if nargin < 2
     model = [];
 end
-if isa(files,'xargon') || isa(files,'xneon')
+if  isa(files,'xargon') || isa(files,'xneon')
     xne = files;
     files = {xne.datafiles(1:end-1).orig};
 %     mdlfile = xne.datafiles(end).orig;
@@ -37,13 +40,16 @@ if isa(files,'xargon') || isa(files,'xneon')
     if ~exist(mdlfile,'file')        
         mdlfile = fullfile(xne.local_save_dir,'model.mat');
     end
-    ld = load(mdlfile,'opts','model');
-    if nargin < 3 || isempty(optsin)
-        optsin = ld.opts;
-    end
-    if nargin < 2 || isempty(model)
-        model = ld.model;
-    end
+    if exist(mdlfile,'file')
+        ld = load(mdlfile,'opts','model');
+  
+        if nargin < 3 || isempty(optsin)
+            optsin = ld.opts;
+        end
+        if nargin < 2 || isempty(model)
+            model = ld.model;
+        end
+   end
 else
     if ischar(files)
         [~,fn,ext] = fileparts(files);
@@ -76,6 +82,7 @@ if exist('optsin','var') &&~isempty(optsin)
         xne.local_save_dir = opts.savedir;
     end
 end
+
 
 fldn = fieldnames(opts);
 for k = 1:length(fldn)
@@ -111,9 +118,17 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
             end
          end
           availch = [ldchin.chan];
-       catch
-            ldmod = load(fullfile(existing_dir,'../assets','model.mat'));
+      catch
+          floc = fullfile(existing_dir,'model.mat');
+           if ~exist(floc,'file')
+                    floc = fullfile(existing_dir,'../assets','model.mat');
+           end
+            ldmod = load(floc);
             availch = ldmod.opts.block.lozchannels;
+            flnum = regexp(files,'LFPx(\d*)','tokens','once');
+            flnum = cellfun(@str2num,[flnum{:}]);
+            files = files(ismember(flnum,[availch.channel]));
+            
       end
    
 %     co2ch([lddat.block.lozchannels.contact]) = [lddat.block.lozchannels.channel];
@@ -247,7 +262,15 @@ end
 
 xne.rerun_if_aborted='yes';
 
+xne.scandep;
+xne.dependencies{end+1}=which(opts.stats_function);
+xne.dependencies{end+1}=which(opts.plot_function);
+deps = [xne.dependencies,matlab.codetools.requiredFilesAndProducts(opts.stats_function)];
+deps = [deps,matlab.codetools.requiredFilesAndProducts(opts.plot_function)];
+xne.dependencies = unique(deps);
 xne.create_job;
+% copyfile(which(opts.plot_function),xne.subpaths.mfiles.local)
+
 xne.make_bash_script;
 xne.make_matlab_wrapper;
 
