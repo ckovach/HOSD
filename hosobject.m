@@ -1692,7 +1692,7 @@ classdef hosobject < handle
 %             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
             if size(X,1) == me.bufferN
-                 Xfilt = ifftshift(Xfilt,1);
+                 Xfilt = fftshift(Xfilt,1);
              
 %                 win = me.win;
 %               
