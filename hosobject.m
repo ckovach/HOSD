@@ -854,7 +854,7 @@ classdef hosobject < handle
            out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            out(isnan(out)) = 0;
            if length(me)>1
-               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
+               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
            elseif all(out(:)==0)
                sz = num2cell(size(in));
                sz{sum(size(in)>1)+1}=length(me);
@@ -1348,6 +1348,7 @@ classdef hosobject < handle
                 else
                     Xchop = xin;
                     T=0;
+                    wint=[];
                 end
                 del = Inf;
 %                 tol =1; % Stop when the average shift is less than 1 sample
