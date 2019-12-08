@@ -3,6 +3,7 @@
 
 
 
+
 function bsidout=run_hos_analysis(dat, outputdir,inputfiles,jobindex)
 
 opts.lowpass = 200;
@@ -114,6 +115,7 @@ if ischar(dat)
     
 else
     useclust = false;
+    inputdir='';
 end
 if nargin > 1 && isstruct(outputdir)
     optsin = outputdir;
@@ -189,8 +191,10 @@ segment.wint(any(isnan(dat.dat(T))))=[];
 T(:,any(isnan(dat.dat(T))))=[];
 
 if opts.zthresh<Inf
-   z = zscore(dat.dat);
-   discard = any(z(T)>opts.zthresh);
+%    z = zscore(dat.dat);
+%    discard = any(z(T)>opts.zthresh);
+    z = iterz(dat.dat,opts.zthresh);
+   discard = any(isnan(z(T)));
    segment.wint(discard)=[];
 end
 
@@ -223,9 +227,11 @@ bsidout(1).fs = dat.fs(1);
 bsidout(1).opts = opts;
 bsidout(1).segment = segment;
 
-if ~isfield(opts,'no_anls') || ~opts.no_anls
+if exist(inputdir,'dir')&& (~isfield(opts,'no_anls') || ~opts.no_anls)
 %     res = hos_regression_analysis(bsidout);
-    res = feval(opts.stats_function,bsidout);
+    res = feval(opts.stats_function,bsidout,inputdir);
+else
+    res=[];
 end
 
 if isfield(opts,'hos_regressor')&& ~isempty(opts.hos_regressor)
