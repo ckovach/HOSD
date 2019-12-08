@@ -19,19 +19,21 @@ else
     [b,H,LL] = vectorglm(X,mdl.response,[],mdl.modelType,'gaussreg',1e-6); 
     devfull = -2*LL;
     stat.covb = -H^-1;
+
 end
 codes = [regs.code];
 
-out.intercept = b(1);
 out.b = b;
 out.devfull = devfull;
 out.stat = stat;
 if use_glmfit
     out.yfit = [ones(size(X,1),1),X]*b;
      out.ysd = sum(X.*(X*stat.covb(2:end,2:end)));
+    out.intercept = b(1);
 else
     out.yfit = X*b;
     out.ysd = sum(X.*(X*stat.covb));
+    out.intercept = b(end);
 end
 out.aic = devfull + 2*length(b);
 out.bic = devfull + length(b)*log(size(X,1));
@@ -65,17 +67,21 @@ for k = 1:length(codes)
     waldstat = bsub'*covbsub^-1*bsub;
     regs(regi).waldstat = waldstat;
     regs(regi).waldpval = 1-chi2cdf(full(waldstat),length(bsub));
+    if islogical(mdl.do_llr_tests) && mdl.do_llr_tests
+        mdl.do_llr_tests = 1:length(regs);
+    end
         
-    if mdl.do_llr_tests
+    if ismember(k,mdl.do_llr_tests)
         
         if use_glmfit
-             [~,devred] = glmfit(X(: ,[regs.codevec]~=codes(k)),mdl.response,mdl.modelType); 
+             [bexcl,devred] = glmfit(X(: ,[1,find([regs.codevec]~=codes(k))]),mdl.response,mdl.modelType); 
         else
-            [~,~,LL] = vectorglm(X(: ,[regs.codevec]~=codes(k)),mdl.response,[],mdl.modelType);
+            [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],mdl.modelType);
             devred = full(-2*LL);
         end    
         regs(regi).llrpval= 1-chi2cdf(devred-devfull,length(subi));
         regs(regi).ddev= devred-devfull;
+        regs(regi).bexcl=bexcl;
     end
 
 end
