@@ -204,6 +204,7 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
 else
      missing = true(size(files));
      manfile = '';
+  
 end
 % if any(missing)
     xne.jobindices=find( missing );
@@ -293,8 +294,15 @@ end
 
 xne.default_finish();
 
-manfile = fullfile(xne.local_save_dir,'manifest.txt');
-if exist(manfile,'file')
+d = dir(fullfile(xne.local_save_dir,'figs','*contact*cmp*.pdf'));
+if ~isempty(d)
+      re = regexp({d.name},'contact_(\d*)_.*cmp(\d*)[.]pdf','tokens','once');
+      re = cat(1,re{:});
+      cc = cellfun(@str2double,re);
+      [srt,srti] = sortrows(cc);
+      fns = fullfile(xne.local_save_dir,'figs',{d(srti).name});
+elseif exist(manfile,'file')
+    manfile = fullfile(xne.local_save_dir,'manifest.txt');
     fid = fopen(manfile,'r');
     txt = fread(fid,'uchar=>char')';
     fclose(fid);
@@ -306,6 +314,10 @@ if exist(manfile,'file')
     [srt,srti] = sort(cnum);
         
     fns = fullfile(xne.local_save_dir,'figs',re(srti(srt>0)));
+else
+    fns={};
+end
+if ~isempty(fns)
     com = sprintf('gs -sDEVICE=pdfwrite -dEPSCrop  -dMaxInlineImageSize=100000 -o%s%s%s_summary.pdf %s',xne.local_save_dir,filesep,summaryfile,sprintf(' %s ',fns{:}));
     [err,out]=system(com);
  
