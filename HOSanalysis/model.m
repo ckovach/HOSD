@@ -36,7 +36,7 @@ classdef model
        Tstart=0;
        timeBasis = 'polynomial';
        timeOrder = 16;
-       regressors;
+       regressors=regressor([]);
        fact2reg_args = {};
        intercept=true;
        codeincr = 0;
@@ -111,6 +111,12 @@ classdef model
         function out=get.designMtx(me)
             %%% Get the design matrix
             
+            if ~isempty(me.regressors)
+                codeincr = max([me.regressors.code]);
+            else
+                codeincr = me.codeincr;
+            end
+
             %%% History regressor
             out = regressor([]);
             out(:) = [];
@@ -157,8 +163,7 @@ classdef model
 %                 Fs(:,k) = F;
                 
                 
-                
-                Freg = fact2reg(F,'center',center,'ignore',mask,'labels',label,'fullintxn',fact2reg_args{:});
+                Freg = fact2reg(F,'center',center,'ignore',mask,'labels',label,'fullintxn',fact2reg_args{:},'codeincr',codeincr);
                 
                 for kk = 1:length(Freg)
                     Freg(kk).value = fft(Freg(kk).value);
@@ -166,10 +171,10 @@ classdef model
                 if center
                     trintcpt = zeros(size(Fs,1),1);
                     trintcpt(trts) = 1;
-                    Freg(end+1) = regressor(fft(trintcpt),'label','trial intcpt');
+                    Freg(end+1) = regressor(fft(trintcpt),'label','trial intcpt','codeincr',Freg(end).code);
                 end 
                 Freg = Freg(arrayfun(@(x)~isempty(x.value),Freg));
-
+                codeincr = Freg(end).code;
                 %%%
                 switch lower(me.timeBasis)
                     case {'polynomial','chebyt','bernstein'}
@@ -191,11 +196,11 @@ classdef model
 %                         TP(evw.T(:),:) = P;
 % %                         TPintcpt = zeros(size(TP,1),1);
 % %                         TPintcpt(evw.T(:),:)=1;
-                        if isempty(out)
-                            codeincr=1;
-                        else
-                            codeincr = out(end).code;
-                        end
+%                         if isempty(out)
+%                             codeincr=me.codeincr;
+%                         else
+                              codeincr = max([codeincr,out.code]);
+%                         end
 %                         Treg = regressor(TP,'label',sprintf('Window%i',k(k>1)),'codeincr',codeincr);
                         Treg = regressor(fft(TP),'label',sprintf('Window%i',k(k>1)),'codeincr',codeincr);
 %                         Treg(2) = regressor(TPintcpt,'label',sprintf('Window%i intcpt',k(k>1)),'codeincr',Treg(end).code);
@@ -215,11 +220,11 @@ classdef model
             
             if ~isempty(me.autodep)  %%% Autoregressive component
                 for k = 1:length(me.autodep)
-                    if isempty(out)
-                        codeincr=1;
-                    else
-                        codeincr = max([out.code]);
-                    end
+%                     if isempty(out)
+%                         codeincr=me.codeincr;
+%                     else
+                           codeincr = max([codeincr,out.code]);
+%                     end
 
                      histreg = regressor(laguerreFilt(me.response,me.autodep(k),me.sampling_rate),'label',sprintf('historyLaguerre%i',k(k>1)),'codeincr',codeincr);
                     out(end+1) = histreg;
@@ -227,11 +232,11 @@ classdef model
 
             end
             if ~isempty(me.baseline)  %%% Autoregressive component
-                if isempty(out)
-                    codeincr=1;
-                else
-                    codeincr = max([out.code]);
-                end
+%                 if isempty(out)
+%                     codeincr=me.codeincr;
+%                 else
+                    codeincr = max([codeincr,out.code]);
+%                 end
                 
                 baseP = chebyT(length(me.response),me.baseline.order);
                 basereg = regressor(baseP(:,2:end),'label',sprintf('Baseline'),'codeincr',codeincr);
@@ -241,7 +246,8 @@ classdef model
    
            if ~isempty(me.regressors)
                 out = [me.regressors,out];
-            end
+           end
+            me.codeincr=max([out.code]);
             %%% Factorial model
             
 %             if me.intercept
