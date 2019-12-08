@@ -725,6 +725,9 @@ classdef hosobject < handle
         %%%%%%%
         function set.regressor(me,xin)
             if isa(xin,'regressor')
+                if isempty(xin)
+                    return
+                end
                 R = xin;
                 xin = R.value;
             else
