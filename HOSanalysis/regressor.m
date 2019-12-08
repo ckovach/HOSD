@@ -15,16 +15,16 @@ classdef regressor
         fs     % Underlying sample rate
         Trange % Time range
         code   % Numeric identifier
-        codevec
-        factmat
-        levmat
+        codevec % Numeric identifier for each column
+        factmat % Factor IDs for each column
+        levmat  % Level IDs for each column
         info
-        fixed 
-        value
-        nsamples
+        fixed % Fixed term
+        value % The data
+        nsamples 
 %         noptions=[];
         normconst=1;
-        noptions
+        noptions  %For conditional logit, vector containing the number of rows alloted to each trial.
         Npar = 0;
         colLabels;  
         beta
@@ -37,6 +37,7 @@ classdef regressor
         windowest 
         ddev
         fun
+        bexcl % Beta values for the reference model which excludes this regressor when doing the LLR test.
     end
    
     properties( Dependent = true)
@@ -182,6 +183,7 @@ classdef regressor
                         [],'pooled_labels',{{}},'contrasts',{{}},'parentindex',[],'functionInputCodes',[],'factorlabels',[],'COMMAND',[]);
         R.Npar = 0;
         if isempty(X) %Initializes an empty regressor if X is empty
+            R = R([]);
             return
         end
 
@@ -285,7 +287,7 @@ classdef regressor
         % sumvec = sign(rand(nnz(R.value),1)-.5);
         % R.info.hashcode = sum(  nzv(sumvec>0,:), 'native' )./2 + sum( nzv(sumvec<0,:), 'native' )./2;
 
-
+     
 
         
         end
