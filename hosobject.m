@@ -1338,6 +1338,7 @@ classdef hosobject < handle
                         elseif any(hasnans)
                             fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
                             T = T(:,~hasnans);
+                            segment.wint = segment.wint(~hasnans);
                             Xchop = xin(T);
                         end
                         
