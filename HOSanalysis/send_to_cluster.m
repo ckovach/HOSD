@@ -21,7 +21,7 @@ opts.nslots = 4;
 opts.concatenate = [];
 opts.window = 'hann';
 opts.plot_function = 'hos_regression_plot';
-opts.stats_function = 'hos_regression_plot';
+opts.stats_function = 'hos_regression_analysis';
 
 if nargin < 2
     model = [];
@@ -112,10 +112,16 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
       try
          for kch = 1:length(files)
    
-           ldchin(kch) = load(files{kch});   
-            if ~isfield(ldchin(kch).chan,'code')
-                ldchin(kch).chan.code = '';
+            ldd = load(files{kch});   
+            if ~isfield(ldd,'dat')
+                continue
             end
+            if ~isfield(ldd.chan,'code')
+                ldd.chan.code = '';
+            end
+          
+            ldchin(kch)=ldd;
+            
          end
           availch = [ldchin.chan];
       catch
@@ -295,6 +301,7 @@ end
 xne.default_finish();
 
 d = dir(fullfile(xne.local_save_dir,'figs','*contact*cmp*.pdf'));
+manfile = fullfile(xne.local_save_dir,'manifest.txt');
 if ~isempty(d)
       re = regexp({d.name},'contact_(\d*)_.*cmp(\d*)[.]pdf','tokens','once');
       re = cat(1,re{:});
@@ -302,7 +309,6 @@ if ~isempty(d)
       [srt,srti] = sortrows(cc);
       fns = fullfile(xne.local_save_dir,'figs',{d(srti).name});
 elseif exist(manfile,'file')
-    manfile = fullfile(xne.local_save_dir,'manifest.txt');
     fid = fopen(manfile,'r');
     txt = fread(fid,'uchar=>char')';
     fclose(fid);
