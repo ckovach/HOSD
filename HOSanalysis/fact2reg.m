@@ -41,7 +41,7 @@ classdef fact2reg < regressor
     methods
         function me = fact2reg(F,varargin)
             
-            me = me@regressor([]); 
+            me = me@regressor(0); 
             if isa(F,'regressor')
                 me(1)=set(me(1),F(1));
                 if length(F)>1
