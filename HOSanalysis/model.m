@@ -215,7 +215,6 @@ classdef model
                         error('%s is an unrecognized option for the time basis.')
                 end
                 out = [FTreg,out]; %#ok<*AGROW>
-             
             end   
             
             if ~isempty(me.autodep)  %%% Autoregressive component
@@ -247,6 +246,11 @@ classdef model
            if ~isempty(me.regressors)
                 out = [me.regressors,out];
            end
+            for k = 1:length(out) %% Just force the codes to be unique and sequential
+                out(k).code = k;
+                out(k).codevec(:)=k;
+            end
+
             me.codeincr=max([out.code]);
             %%% Factorial model
             
