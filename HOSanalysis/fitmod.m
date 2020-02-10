@@ -14,16 +14,18 @@ X =[regs.value];
 
 if use_glmfit
     [b,devfull,stat] = glmfit(X,mdl.response,mdl.modelType); 
+	out.b = b([2:end,1]);
 else
     X(:,end+1)=1;
     [b,H,LL] = vectorglm(X,mdl.response,[],mdl.modelType,'gaussreg',1e-6); 
     devfull = -2*LL;
     stat.covb = -H^-1;
-
+    stat.beta = b;
+    out.b = b;
+    
 end
 codes = [regs.code];
 
-out.b = b;
 out.devfull = devfull;
 out.stat = stat;
 if use_glmfit
@@ -38,6 +40,16 @@ end
 out.aic = devfull + 2*length(b);
 out.bic = devfull + length(b)*log(size(X,1));
 
+if islogical(mdl.do_llr_tests) 
+    if mdl.do_llr_tests
+        mdl.do_llr_tests = num2cell(1:length(regs));        
+    else
+        mdl.do_llr_tests = {};
+    end
+elseif isnumeric(mdl.do_llr_tests)
+    mdl.do_llr_tests = num2cell(mdl.do_llr_tests);
+end
+single_reg_tests = cellfun(@(x)length(x)==1,mdl.do_llr_tests);
 for k = 1:length(codes)
 
     if use_glmfit  
@@ -67,24 +79,43 @@ for k = 1:length(codes)
     waldstat = bsub'*covbsub^-1*bsub;
     regs(regi).waldstat = waldstat;
     regs(regi).waldpval = 1-chi2cdf(full(waldstat),length(bsub));
-    if islogical(mdl.do_llr_tests) && mdl.do_llr_tests
-        mdl.do_llr_tests = 1:length(regs);
-    end
-        
-    if ismember(k,mdl.do_llr_tests)
+    
+    if ismember(k,[mdl.do_llr_tests{single_reg_tests}])
         
         if use_glmfit
-             [bexcl,devred] = glmfit(X(: ,[1,find([regs.codevec]~=codes(k))]),mdl.response,mdl.modelType); 
+             [bexcl,devred] = glmfit(X(: ,find([regs.codevec]~=codes(k))),mdl.response,mdl.modelType); 
+             
         else
             [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],mdl.modelType);
             devred = full(-2*LL);
         end    
+       
         regs(regi).llrpval= 1-chi2cdf(devred-devfull,length(subi));
         regs(regi).ddev= devred-devfull;
-        regs(regi).bexcl=bexcl;
+        regs(regi).bexcl=bexcl([2:end 1]);
+        out.llrtests(k==[mdl.do_llr_tests{single_reg_tests}]) = struct('llrpval', regs(regi).llrpval,'ddev', regs(regi).ddev,'bexcl', regs(regi).bexcl,'regs', k==[mdl.do_llr_tests{single_reg_tests}]);
     end
 
 end
+
+for kk = find(~single_reg_tests)   
+      getreg = find(~ismember([regs.codevec],codes(mdl.do_llr_tests{kk})));
+       if use_glmfit
+             [bexcl,devred] = glmfit(X(: ,[1,getreg]),mdl.response,mdl.modelType); 
+        else
+            [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],mdl.modelType);
+            devred = full(-2*LL);
+        end    
+        
+        subi=find(ismember([regs.codevec],codes(mdl.do_llr_tests{kk})));
+        llrpval= 1-chi2cdf(devred-devfull,length(subi));
+        ddev= devred-devfull;
+        bexcl=bexcl;
+        out.llrtests(kk) = struct('llrpval', llrpval,'ddev', ddev,'bexcl', bexcl,'regs',mdl.do_llr_tests{kk});
+%         out.llrtestss(kk).regs = getreg;
+  
+end
+
 switch mdl.modelType
     case 'binomial'
         pfun=@(x)1./(1+exp(-x));
