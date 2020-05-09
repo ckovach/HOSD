@@ -1398,8 +1398,10 @@ classdef hosobject < handle
                 if me(1).use_partial_delay_method
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                     Gpart = me(1).partial_delay_filt(Xsh,false); 
-		    Gpart(isnan(Gpart))=0;
-                    me(1).G = mean(Gpart,2);
+                    Gpart(isnan(Gpart))=0;
+                    if me(1).do_filter_update
+                        me(1).G = mean(Gpart,2);
+                    end
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
                 end
@@ -1450,9 +1452,13 @@ classdef hosobject < handle
                        Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
                        Gpart(isnan(Gpart))=0;
                        G = mean(Gpart,2);
-                       me(1).G = G;
-                       me(1).feature = mean(Xsh,2);
-                       if me(1).adjust_lag
+                       if me(1).do_filter_update
+                           me(1).G = G;
+                       end
+                       if me(1).do_wave_update
+                        me(1).feature = mean(Xsh,2);
+                       end
+                       if me(1).adjust_lag && me(1).do_filter_update
 %                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
                            ffun = ifftshift(real(ifft((me(1).filterftlag).*abs(me(1).waveftlag+eps))),1);                   
                            mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
@@ -1491,7 +1497,7 @@ classdef hosobject < handle
                 %%% Also need to make sure that the output of the filter applied to
                 %%% the feature waveform is centered with respect to the maximum!
                    [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
-                   if mxi~=1 && ~isnan(mxi)
+                   if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
                         me(1).filterfun = circshift(me(1).filterfun,-me(1).sampt(mxi));
                    end
                 %%% Set the delays to the correct value for the original
