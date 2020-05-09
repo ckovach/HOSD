@@ -262,11 +262,13 @@ classdef hosobject < handle
 %             me.order = order;
             me(1).freqs = freqs;
 %            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
+            me.do_indexing_update = false;
             k = 1;
             while k < length(varargin)    
                 me(1).(varargin{k}) = varargin{k+1};
                 k=k+2;
             end
+            me.do_indexing_update = true;
             me(1).update_frequency_indexing(freqindex)
             me(1).reset();
             

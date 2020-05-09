@@ -166,10 +166,11 @@ NoiseCombined = 10.^(InbandNoise/20)*NoiseInband + 10.^(OutbandNoise/20)*NoiseOu
 
 ecgz_noise = ecgz+NoiseCombined;
 
+%%
 %%% Initialize the HOS object
 clear hos;
 hos(n_components_out) = hosobject(3);
-hos.initialize(N,Fs,lowpass);
+hos.initialize(N,Fs,lowpass,[],[],'window',@sasaki);
 
 %%% Train on the input data through a maximum of 25 iterations
 hos.get_block(ecgz_noise,25);
@@ -198,9 +199,9 @@ snr_improvement = lodDB(cr)-repmat(lodDB(cr(:,1)),1,size(cr,2));
 
 colsi=[];
 colsi(srti) = 1:length(srti);
-cols = 'rmcgby';
+cols = 'rbcgbym';
 cols = cols(mod(colsi-1,length(cols))+1);
-%% Make a plot
+%%% Make a plot
 t = (0:length(ecgz)-1)/Fs;
 
 figure('units','normalized','position',[ 0   0    1    1])
