@@ -543,8 +543,9 @@ classdef hosobject < handle
             if isempty(delt)
                 delt = 0;
             end
-            me.waveftlag = exp(-1i*delt).*F;
-            
+            if ~isempty(F)
+                me.waveftlag = exp(-1i*delt).*F;
+            end        
         end
         function out = get.waveform(me)
            
@@ -698,7 +699,10 @@ classdef hosobject < handle
             end
         end
         function  set.Bpart(me,in)          
-            if isempty(in) || min(size(in{1}))<=1
+            if isnumeric(in)
+                me.Bpartval={};
+            
+            elseif isempty(in) || min(size(in{1}))<=1
                	me.Bpartval=in; 
             else
                 for kk = 1:length(in)
@@ -1535,8 +1539,11 @@ classdef hosobject < handle
             
             if size(yin,2)==1
                 Ychop = me(1).chop_input(yin,true);
+                keep = ~any(isnan(Ychop)); %Discard any samples containing nans
+                Ychop = Ychop(:,keep,:);
                 for k = 1:size(xin,2)
                     Xchop = me(1).chop_input(xin(:,k),true);
+                    Xchop = Xchop(:,keep,:);
                     x(:,k) = sum(Xchop)/sum(me(1).win);                
                 end
                 FY = fft(Ychop);
@@ -1556,7 +1563,8 @@ classdef hosobject < handle
             
             out.sigma(end+1)=nan;
             me(1).regstat=out;
-            
+            se = sqrt(diag(out.iXX)*out.sigma);
+            out.wald = out.beta./se;
             if do_permtest
                permi = 1;
                den = zeros(size(out.pval(1:end-1)));
