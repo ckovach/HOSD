@@ -34,8 +34,8 @@ classdef model
        event = struct('times',[],'evnt',[],'Trange',[]);
        sampling_rate=1;
        Tstart=0;
-       timeBasis = 'aspline';
-       timeOrder = 6;
+       timeBasis = 'polynomial';
+       timeOrder = 16;
        regressors=regressor([]);
        fact2reg_args = {};
        intercept=true;
@@ -177,8 +177,6 @@ classdef model
                 codeincr = Freg(end).code;
                 %%%
                 switch lower(me.timeBasis)
-                    case {'aspline','adaptive spline'}
-                        
                     case {'polynomial','chebyt','bernstein'}
 %                         timeOrder = [];
 %                         if isfield(me.event(k),'timeOrder')
@@ -283,9 +281,6 @@ classdef model
                         evw(k).P = bernsteinp(length(evw(k).tt),timeOrder);
                     case {'chebyt','polynomial'}
                         evw(k).P = chebyT(length(evw(k).tt),timeOrder);
-                    case {'aspline','adaptive spline'}
-                        
-                        
                 end
 %                 evw(k).intercept=evw(k).P(:,1);
 %                 evw(k).P(:,1)=[];    
