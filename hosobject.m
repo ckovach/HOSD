@@ -563,10 +563,11 @@ classdef hosobject < handle
         end
         function set.waveform(me,in)
            
-           in(isnan(in))=0; 
-           F = fft(in);
-           me.wavefft = F;
-            
+            if ~isempty(in)
+               in(isnan(in))=0; 
+               F = fft(in);
+               me.wavefft = F;
+            end   
         end
         
         function set.filterfun(me,in)
