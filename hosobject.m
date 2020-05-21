@@ -1558,7 +1558,11 @@ classdef hosobject < handle
             do_permtest = false; %Do a permutation test to verify significant results
             maxpermn = 5e5; %#ok<NASGU>
             
-            
+            reg_args = {};
+            if nargin < 3 || isempty(x)
+                xin = ones(size(yin,1),1);
+                reg_args = [reg_args,{'intercept',false}];
+            end
             me(1).regressor = xin;
             
             if size(yin,2)==1
@@ -1580,7 +1584,7 @@ classdef hosobject < handle
                 FFY = FFY.*FYk;
             end
 %             [~,out.dev0] = complexglm(FFX',ones(size(x,1),1),'diagonly',false,'intercept',false);
-            [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY',x,'diagonly',false);
+            [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY',x,'diagonly',false,reg_args{:});
             out.beta(:,end+1) = nan;
             out.dev(end+1) = nan;
             out.pval(end+1)=nan;
