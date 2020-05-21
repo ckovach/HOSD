@@ -198,9 +198,15 @@ if opts.zthresh<Inf
    segment.wint(discard)=[];
 end
 
-
 hos(1) = hosobject(opts.hos_order);
 hos(opts.ncomp) = hosobject(opts.hos_order);
+
+fldn = fieldnames(opts);
+fldn = fldn(ismember(fldn,fieldnames(hos)));
+for k = 1:length(fldn)
+    opts.hosargs(end+1:end+2) = [fldn(k),{opts.(fldn{k})}];
+end
+
 z = zscore(double(dat.dat));
 if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd
     load(outputfile,'hos','segment')
