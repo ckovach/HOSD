@@ -181,7 +181,7 @@ classdef hosobject < handle
             end
             if isa(order,mfilename)
                obj = order;
-               fns = setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'});
+               fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'})];
                
                if length(obj)==1
                    obj(2:length(me)) = obj;
@@ -414,6 +414,13 @@ classdef hosobject < handle
         function out = get.BIAS(me)        
           bias = sqrt(me.BIASnum./(me.D.^2+eps));
           out = bias(me.freqindx.remap);
+        end
+        function set.BIAS(me,in)
+             if min(size(in))==1
+                me.BIASnum = in*me.D.^2; 
+            else
+                me.BIASnum = [in(me.freqindx.reduce)*me.D.^2;0];
+             end
         end
         function out = get.fullmap(me)
            out = me.freqindx.remap; 
