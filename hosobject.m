@@ -1506,10 +1506,18 @@ classdef hosobject < handle
                 end
                 %%% Also need to make sure that the output of the filter applied to
                 %%% the feature waveform is centered with respect to the maximum!
-                   [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
-                   if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
-                        me(1).filterfun = circshift(me(1).filterfun,-me(1).sampt(mxi));
-                   end
+                 [~,FXsh] = me(1).apply_filter(Xwin,false,true);
+                 Xsh = real(ifft(FXsh));
+                 me(1).feature = mean(Xsh,2);
+                [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
+                if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
+                    me(1).filterfun = circshift(me(1).filterfun,ceil(-me(1).sampt(mxi)/2));
+                    me(1).feature= circshift(me(1).feature,floor(-me(1).sampt(mxi)/2));
+                end
+               if all(ishandle(makeplot))
+                    set(makeplot(1),'cdata',Xsh');
+                    set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
+               end
                 %%% Set the delays to the correct value for the original
                 %%% data set;
                 [~,~] = me(1).apply_filter(Xwin,apply_window);
