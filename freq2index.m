@@ -1,4 +1,4 @@
-function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass)
+function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass,slowpass,shighpass)
 
 % out = freq2index(freqs,order,lowpass,highpass)
 %
@@ -109,7 +109,7 @@ if ~isscalar(mask)
     mask = mask(keepregion);
 end
 
-[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass);
+[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass);
 Fsum = Ws{end};
 
 %%% Efficiently map the nearest elements of Fsum to elements of frinds{end} with

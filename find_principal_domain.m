@@ -1,4 +1,4 @@
-function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass)
+function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass)
 
 % Find the principal domain in a higher-order spectrum
 %
@@ -143,7 +143,7 @@ for k = 1:nsig
 end
 
 
-if max(highpass) > 0 && order > 3
+if order > 3 && (max(shighpass) > 0 || any(slowpass<lowpass))
     %%% Now we need to account for regions within the principal domain for which some
     %%% subset of the frequencies falls within the highcut range. This is
     %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to
@@ -155,7 +155,7 @@ if max(highpass) > 0 && order > 3
     WPD = [Ws{:}];
     WPD = WPD(PD,:);
     for k = 1:order-1
-        discard(PD) = discard(PD) | any(abs(repmat(WPD(:,k),1,order-k)+WPD(:,k+1:order)) <= max(highpass),2);           
+        discard(PD) = discard(PD) | any(abs(repmat(WPD(:,k),1,order-k)+WPD(:,k+1:order)) <= max(shighpass),2)   | all(abs(repmat(WPD(:,k),1,order)+WPD) >= max(slowpass),2)  ;       
     end
     
     PD(discard) = [];

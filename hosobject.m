@@ -116,6 +116,8 @@ classdef hosobject < handle
        highpassval = 0;
        lowpassval = .5; %%% Lowpass on the edges (max freq)
        glowpassval = .5; %%% Global lowpass
+       slowpassval = .5; %%% freq. pair lowpass
+       shighpassval = 0; %%% freq. pair highpass
        xlowpassval = .5; %%% OR lowpass
        xhighpassval = 0; %%% OR lowpass
       BIASnum = 0;
@@ -156,6 +158,8 @@ classdef hosobject < handle
         highpass  ;
         lowpass ; %%% Lowpass on the edges (max freq)
         glowpass ; %%% Global lowpass
+        shighpass ; %%% Highpass applied to sums of frequency pairs for order > 3.
+        slowpass ; %%% Lowpass applied to sums of frequency pairs for order > 3.
         
         xlowpass ; %%% "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion 
         xhighpass ;%%% This is useful to design filters selective for the interior or exterior regions of
@@ -233,6 +237,7 @@ classdef hosobject < handle
                 freqindex = [];
             end
             me(1).highpassval = 2/N;
+            me(1).shighpassval = 2/N;
             if nargin > 2 && ~isempty(sampling_rate)
                 me(1).sampling_rate=sampling_rate;
 %                 me(1).lowpassval = me(1).lowpassval*sampling_rate;
@@ -264,6 +269,7 @@ classdef hosobject < handle
 %            me(1).G = ones(sum(me(1).keepfreqs{1}),1);
             me(1).do_indexing_update = false;
             k = 1;
+            me(1).do_indexing_update = false;
             while k < length(varargin)    
                 me(1).(varargin{k}) = varargin{k+1};
                 k=k+2;
@@ -340,6 +346,9 @@ classdef hosobject < handle
             if length(xlowpass)< order
                 xlowpass(end+1:order) = xlowpass(end);
             end
+            slowpass = me.slowpassval*me.sampling_rate;
+            shighpass = me.shighpassval*me.sampling_rate;
+            
             xhighpass = me.xhighpassval*me.sampling_rate;
             if length(xhighpass)< order
                 xhighpass(end+1:order) = xhighpass(end);
@@ -361,7 +370,7 @@ classdef hosobject < handle
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
             if nargin < 2 || isempty(freqindx)
-                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass); %#ok<*PROPLC,*PROP>
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass); %#ok<*PROPLC,*PROP>
             end
             
             me.freqindx  = freqindx;
@@ -429,6 +438,14 @@ classdef hosobject < handle
            me.lowpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
         end
+        function set.shighpass(me,a)
+           me.shighpassval = a./me.sampling_rate;
+            me.update_frequency_indexing;
+        end
+        function set.slowpass(me,a)
+           me.slowpassval = a./me.sampling_rate;
+            me.update_frequency_indexing;
+        end
         function set.glowpass(me,a)
            me.glowpassval = a./me.sampling_rate;
             me.update_frequency_indexing;
@@ -453,6 +470,12 @@ classdef hosobject < handle
         end
         function out = get.glowpass(me)
            out = me.glowpassval*me.sampling_rate;
+        end
+         function out = get.shighpass(me)
+           out = me.shighpassval*me.sampling_rate;
+         end
+         function out = get.slowpass(me)
+           out = me.slowpassval*me.sampling_rate;
         end
         function out = get.highpass(me)
           out =  me.highpassval*me.sampling_rate;
