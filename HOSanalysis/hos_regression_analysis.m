@@ -1,4 +1,4 @@
-function res = hos_regression_analysis(bsidin)
+function res = hos_regression_analysis(bsidin,varargin)
 
 opts = bsidin.opts;
 hos = bsidin.hos;
