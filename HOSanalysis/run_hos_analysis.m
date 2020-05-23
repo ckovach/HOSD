@@ -1,9 +1,4 @@
 
-
-
-
-
-
 function bsidout=run_hos_analysis(dat, outputdir,inputfiles,jobindex)
 
 opts.lowpass = 200;

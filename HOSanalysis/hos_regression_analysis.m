@@ -24,7 +24,8 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
     x = bsidin.dat;
     x(isnan(x))=0;
     for compi = 1:length(hos)
-        segment.wintadj = hos(compi).delay + segment.wint;
+        segment = hos(compi).segment;
+%         segment.wintadj = hos(compi).delay + segment.wint;
         for bi = 1:size(opts.bands,1)   
 
            dbx = dbt(x,bsidin.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
