@@ -80,6 +80,7 @@ classdef hosobject < handle
        sampweight = [];
        Imats = {};
        Iconjmats = {};
+       segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
        
      end
   
@@ -1372,6 +1373,7 @@ classdef hosobject < handle
                         Xchop = xin(T);
                     
                         hasnans = any(xisnan(T));
+                        segment.discarded = hasnans;
                         if all(hasnans)
                             fprintf('\nAll segments contain NaN values. Discarding these data')
                             return
@@ -1543,6 +1545,7 @@ classdef hosobject < handle
                if all(ishandle(makeplot))
                     set(makeplot(1),'cdata',Xsh');
                     set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
+                    drawnow
                end
                 %%% Set the delays to the correct value for the original
                 %%% data set;
@@ -1554,7 +1557,8 @@ classdef hosobject < handle
                 me(1).write_buffer(xin);
                 T=[];
             end    
-           
+            me(1).segment = segment;
+            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
