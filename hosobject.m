@@ -1553,6 +1553,8 @@ classdef hosobject < handle
                 T = T+ repmat(me(1).delay,size(T,1),1);
                 T(T<1)=1;
                 T(T>length(xin))=length(xin);
+                
+                segment.wintadj = segment.wint+me(1).delay;
             else
                 me(1).write_buffer(xin);
                 T=[];
