@@ -225,7 +225,7 @@ seed = reseed;
 
 z = zscore(double(dat.dat));
 hosargs = [{size(T,1),dat.fs(1),opts.lowpass,[],[]},opts.hosargs];
-if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd
+if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd && ~opts.save_space
     load(outputfile,'hos','segment')
     segment = segment(1);
     segment.wintadj=[];
@@ -240,8 +240,11 @@ else
     end
     if opts.run_phase_randomized
         hosphaserand = hosobject(hos);
-        zrand = zscore(real(ifft(exp(2*pi*1i*rand(size(z))).*abs(fft(z)))));
-    
+        znz = z;
+        znz(isnan(z))=0;
+        zrand = zscore(real(ifft(exp(2*pi*1i*rand(size(z))).*abs(fft(znz)))));
+        zrand(isnan(z)) = nan;
+        
         if apply_to_chopped_data
             hosphaserand.get_block(zrand(T)); 
         else
@@ -253,11 +256,9 @@ end
 % ximp = hos.ximp(z);
 % xfilt = hos.xfilt(z);
 
-if opts.save_space
-    bsidout(1).hos= hosminimal(hos);
-else
-    bsidout(1).hos= hos;
-end
+bsidout(1).hos= hos;
+
+
 if opts.run_phase_randomized
     bsidout(1).hosphaserand= hosminimal(hosphaserand);
 end
@@ -302,7 +303,9 @@ if isfield(opts,'make_plots') && opts.make_plots && nargin >1
         bsidout(1).res = feval(opts.plot_function,bsidout,useclust,outputdir);
     end
 end
-
+if opts.save_space
+    bsidout(1).hos= hosminimal(hos);
+end
 try
     fid = fopen([mfilename,'.m']);
     bsidout(1).COM = fread(fid,'uchar=>char')';
