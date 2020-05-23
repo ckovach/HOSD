@@ -100,6 +100,7 @@ ximp(isnan(ximp))=0;
 x = bsidin.dat;
 x(isnan(x))=0;
 
+
 dbx = dbt(x,bsidin.fs,4,'upsample',2);
 
 for bsdi = 1:length(bsidin.result)
@@ -206,9 +207,11 @@ for bsdi = 1:length(bsidin.result)
             end
             fit = bsidin.result(bsdi).fit;
             windest = [fit.regressors.windowest];
+            smoothing_window = round(size(T,1)/100);
     %         smwin = hann(round(.1*bsidin.fs));
     %         smwin = smwin./sum(smwin);
-            xism = convn(xi,ones(round(.05*bsidin.fs)),'same')>0;
+%             xism = convn(xi,ones(round(.05*bsidin.fs,1)),'same')>0;
+            xism = convn(xi,ones(smoothing_window,1),'same')>0;
     %         xism2 = convn(xi,smwin,'same');
             for evk = 1:length(unqev)
                       res.Mevk(:,evk,bsdi) = mean(xism(T(:,evk==unqevi)),2);
