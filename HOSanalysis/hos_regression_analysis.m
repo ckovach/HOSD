@@ -25,7 +25,7 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
     x(isnan(x))=0;
     for compi = 1:length(hos)
         segment = hos(compi).segment;
-        if isempty(hos(compi).wint)
+        if isempty(hos(compi).segment.wint)
             continue
         end
 %         segment.wintadj = hos(compi).delay + segment.wint;
