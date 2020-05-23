@@ -51,6 +51,7 @@ classdef hosminimal < handle
        regstat = [];
        regweight=[];
        sampweight = [];
+       segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
        
      end
   
@@ -1050,6 +1051,7 @@ classdef hosminimal < handle
                         Xchop = xin(T);
                     
                         hasnans = any(xisnan(T));
+                        segment.discarded = hasnans;
                         if all(hasnans)
                             fprintf('\nAll segments contain NaN values. Discarding these data')
                             return
@@ -1218,7 +1220,8 @@ classdef hosminimal < handle
                 me(1).write_buffer(xin);
                 T=[];
             end    
-           
+            me(1).segment = segment;
+            
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
