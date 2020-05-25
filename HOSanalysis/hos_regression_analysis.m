@@ -5,6 +5,7 @@ hos = bsidin.hos;
 segment = bsidin.segment(1);
 xthresh = bsidin.hos.xthresh(bsidin.dat);
 
+res = struct('atts',[],'Mbi',[],'afrqs',[],'segment',[],'fit',[],'model',[]);
 
 if isfield(opts,'modelopts') && ~isempty(opts.modelopts)
     mdl = model(opts.modelopts);
