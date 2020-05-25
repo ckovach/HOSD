@@ -464,7 +464,16 @@ for bsdi = 1:length(bsidin.result)
         set(gca,'xscale','log','xtick',2.^(0:log2(max(wwin))))
         title(sprintf('Component %i Normalized FFT',bsdi))
        grid on
-
+        if isempty(bsidin.result(bsdi).segment)
+           if useclust % Save just to prove we here
+              figdir = fullfile(outputdir,'figs');
+             wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan.contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
+             wfn = fullfile(figdir,wfnpart);
+              pdflink(fig,[],[],wfn)
+             res.pdfpages{bsdi}=wfn;
+           end
+           continue
+       end
        if isfield(bsidin,'COM') &&  ~isempty(regexp(bsidin.COM,'Deflation is done on the entire record')) %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
            wintadj = (bsidin.result(bsdi).segment.wintadj-bsidin.result(bsdi).segment.Trange(1))*bsidin.result(bsdi).segment.fs/bsidin.fs;
        else
