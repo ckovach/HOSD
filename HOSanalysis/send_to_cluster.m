@@ -111,9 +111,10 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
 %      outfiles = cat(1,outfiles{:});
       try
          for kch = 1:length(files)
-   
-            ldd = load(files{kch});   
-            if ~isfield(ldd,'dat')
+            
+%             wh= whos('-file',files{kch});
+            ldd = load(files{kch},'chan','code');   
+            if ~isfield(ldd,'chan')
                 continue
             end
             if ~isfield(ldd.chan,'code')
@@ -278,6 +279,11 @@ xne.dependencies = unique(deps);
 xne.create_job;
 % copyfile(which(opts.plot_function),xne.subpaths.mfiles.local)
 
+fid = fopen(fullfile(xne.tempdir,'dependency.m'),'w');
+fprintf(fid,'\n%s;',opts.stats_function);
+fprintf(fid,'\n%s;',opts.plot_function);
+xne.dependencies{end+1} =fullfile(xne.tempdir,'dependency.m'); 
+
 xne.make_bash_script;
 xne.make_matlab_wrapper;
 
@@ -286,6 +292,7 @@ if ~isempty(manfile)
         copyfile(manfile,xne.subpaths.output.local);
     end
 end
+
 
 
 function finish(xne,summaryfile,varargin)
@@ -333,6 +340,7 @@ if ~isempty(fns)
     end
      
 end
+
 
      
      
