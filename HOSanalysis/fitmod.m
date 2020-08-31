@@ -84,7 +84,7 @@ for k = 1:length(codes)
         
         if use_glmfit
              [bexcl,devred] = glmfit(X(: ,find([regs.codevec]~=codes(k))),mdl.response,mdl.modelType); 
-             
+             bexcl=bexcl([2:end 1]);
         else
             [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],mdl.modelType);
             devred = full(-2*LL);
@@ -92,7 +92,7 @@ for k = 1:length(codes)
        
         regs(regi).llrpval= 1-chi2cdf(devred-devfull,length(subi));
         regs(regi).ddev= devred-devfull;
-        regs(regi).bexcl=bexcl([2:end 1]);
+        regs(regi).bexcl=bexcl;
         out.llrtests(k==[mdl.do_llr_tests{single_reg_tests}]) = struct('llrpval', regs(regi).llrpval,'ddev', regs(regi).ddev,'bexcl', regs(regi).bexcl,'regs', k==[mdl.do_llr_tests{single_reg_tests}]);
     end
 
@@ -102,6 +102,7 @@ for kk = find(~single_reg_tests)
       getreg = find(~ismember([regs.codevec],codes(mdl.do_llr_tests{kk})));
        if use_glmfit
              [bexcl,devred] = glmfit(X(: ,[1,getreg]),mdl.response,mdl.modelType); 
+             bexcl=bexcl([2:end 1]);
         else
             [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],mdl.modelType);
             devred = full(-2*LL);
@@ -110,7 +111,7 @@ for kk = find(~single_reg_tests)
         subi=find(ismember([regs.codevec],codes(mdl.do_llr_tests{kk})));
         llrpval= 1-chi2cdf(devred-devfull,length(subi));
         ddev= devred-devfull;
-        bexcl=bexcl;
+%         bexcl=bexcl;
         out.llrtests(kk) = struct('llrpval', llrpval,'ddev', ddev,'bexcl', bexcl,'regs',mdl.do_llr_tests{kk});
 %         out.llrtestss(kk).regs = getreg;
   
