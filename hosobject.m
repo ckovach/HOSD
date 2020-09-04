@@ -1322,6 +1322,10 @@ classdef hosobject < handle
             if nargin < 6
                 compno = 1;
             end
+            Xsh=[];
+            Xwin=[];
+            T=[];
+            wint=[];
             if nargin < 4 || isempty(makeplot)
                 makeplot = true;
             end
@@ -1376,6 +1380,9 @@ classdef hosobject < handle
                         segment.discarded = hasnans;
                         if all(hasnans)
                             fprintf('\nAll segments contain NaN values. Discarding these data')
+                            if nargout > 1
+                                 varargout = {Xsh,Xwin,T,wint,segment};
+                            end
                             return
                         elseif any(hasnans)
                             fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
