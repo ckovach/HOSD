@@ -133,7 +133,7 @@ if nargin > 1 && isstruct(outputdir) || isfield(dat,'opts')
     outputfile = '';
 end
 if isempty(opts.resamp)
-    [a,b] = rat(opts.target_fs/dat.fs(1),.1);
+    [a,b] = rat(opts.target_fs/dat.fs(1),.01);
     if b>a
         opts.resamp = [a b];
     else
@@ -156,7 +156,11 @@ if opts.dbt_denoise && (~isfield(dat,'denoised')  ||  ~dat.denoised)
     dat.denoised=1;
 end
 
-dat.dat = resample(double(dat.dat),opts.resamp(1),opts.resamp(2));
+dat.dat = double(dat.dat);
+isn = isnan(dat.dat);
+dat.dat(isn) = 0;
+% fprintf('\ndat.dat type is: %s, size:[%i %i]',class(dat.dat),size(dat.dat));
+dat.dat = resample(dat.dat,opts.resamp(1),opts.resamp(2)) + 0./(resample(double(isn),opts.resamp(1),opts.resamp(2))==0);
 dat.fs = dat.fs(1)*opts.resamp(1)./opts.resamp(2);
 
 n = length(dat.dat);
