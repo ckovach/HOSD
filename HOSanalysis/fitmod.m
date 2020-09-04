@@ -51,7 +51,7 @@ elseif isnumeric(mdl.do_llr_tests)
 end
 single_reg_tests = cellfun(@(x)length(x)==1,mdl.do_llr_tests);
 for k = 1:length(codes)
-
+%%
     if use_glmfit  
         subi=find([regs.codevec]==codes(k))+1;
     else
@@ -93,7 +93,8 @@ for k = 1:length(codes)
         regs(regi).llrpval= 1-chi2cdf(devred-devfull,length(subi));
         regs(regi).ddev= devred-devfull;
         regs(regi).bexcl=bexcl;
-        out.llrtests(k==[mdl.do_llr_tests{single_reg_tests}]) = struct('llrpval', regs(regi).llrpval,'ddev', regs(regi).ddev,'bexcl', regs(regi).bexcl,'regs', k==[mdl.do_llr_tests{single_reg_tests}]);
+        geti = cellfun(@(x)isequal(k,x),mdl.do_llr_tests);
+        out.llrtests(geti) = struct('llrpval', regs(regi).llrpval,'ddev', regs(regi).ddev,'bexcl', regs(regi).bexcl,'regs', mdl.do_llr_tests{geti});
     end
 
 end
