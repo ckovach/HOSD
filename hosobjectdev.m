@@ -184,7 +184,7 @@ classdef hosobjectdev < handle
             if nargin ==0
                 return
             end
-            if isa(order,mfilename) || isa(order,'hosminimal')
+            if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'hosobject')
                obj = order;
                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'})];
                
@@ -510,7 +510,9 @@ classdef hosobjectdev < handle
                 me.freqs = freqs;
                 me.update_frequency_indexing;
            end
-           me.reset;
+           if me.do_indexing_update
+               me.reset;
+           end
         end
         function out = get.window(me)
            out =  me.wintype;
@@ -1443,6 +1445,7 @@ classdef hosobjectdev < handle
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
                 end
+                dT = 0;
                 while del >tol && k < maxiter                    
                     if all(ishandle(makeplot))
                         set(makeplot(1),'cdata',Xsh');
@@ -1462,6 +1465,7 @@ classdef hosobjectdev < handle
                         subplot(2,1,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs),ifftshift(abs(me(1).filterfft))*ones(1,5));
                          plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature*ones(1,5));
+                         xlim([min(me(1).sampt) max(me(1).sampt)]/me(1).sampling_rate);
 %                          cmap = hsv(length(plh));
                          for pli = 1:length(plh)
                          
@@ -1480,12 +1484,17 @@ classdef hosobjectdev < handle
                     end
 
 
-             
+                    
                    if me(1).use_partial_delay_method
                        [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
 %                        Xsh = real(ifftshift(ifft(FXsh),1));
-                       Xsh = real(ifft(FXsh));
                        newdt = me(1).delay;
+                       dT = dT+newdt;
+%                        Xsh = real(ifft(FXsh));
+                        TT = T+dT;
+                        TT(TT<1) = 1;
+                        TT(TT>length(xin)) = length(xin);
+                       Xsh = xin(TT).*me(1).win;
                        delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                        Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
                        Gpart(isnan(Gpart))=0;
@@ -1535,7 +1544,12 @@ classdef hosobjectdev < handle
                 %%% Also need to make sure that the output of the filter applied to
                 %%% the feature waveform is centered with respect to the maximum!
                  [~,FXsh] = me(1).apply_filter(Xwin,false,true);
-                 Xsh = real(ifft(FXsh));
+%                  Xsh = real(ifft(FXsh));
+%                  dT = dT+me(1).delay;
+                 TT = T+me(1).delay;
+                 TT(TT<1) = 1;
+                 TT(TT>length(xin)) = length(xin);
+                 Xsh = xin(TT).*me(1).win;
                  me(1).feature = mean(Xsh,2);
                 [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
                 if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
