@@ -243,7 +243,7 @@ for bsdi = 1:length(bsidin.result)
                 rg = fit.regressors(windowreg(k));
                 if isempty(rg.windowest.intensity)
                     continue
-                end 
+                end
                 plot(tt([1 end]),[0 0],'k')
                 hold on
                 plot(tt,rg.windowest.wald);
@@ -464,7 +464,8 @@ for bsdi = 1:length(bsidin.result)
         set(gca,'xscale','log','xtick',2.^(0:log2(max(wwin))))
         title(sprintf('Component %i Normalized FFT',bsdi))
        grid on
-        if isempty(bsidin.result(bsdi).segment)
+
+       if isempty(bsidin.result(bsdi).segment)
            if useclust % Save just to prove we here
               figdir = fullfile(outputdir,'figs');
              wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan.contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
@@ -497,83 +498,108 @@ for bsdi = 1:length(bsidin.result)
          
          
         
-          
-        
-       wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
-       wb2 = fftshift(bsidin.hos(1).freqindx.Bfreqs{2});
-        BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
-        szBB = size(BB);
-        PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
-        for bk = 4:bsidin.hos(bsdi).order %%% Gives something to plot for orders > 3
-            BB = mean(BB,bk-1);
-            PB = mean(PB,bk-1);
-        end
-        BB(wb<=0,:)=[];
-        BB(:,wb2<=0)=[];
-        PB(wb<=0,:)=[];
-        PB(:,wb2<=0)=[];
-        
-        wb(wb<=0)=[];
-        wb2(wb2<=0)=[];
-         wintp =10.^(linspace(log10(wb(2)),log10(wb(end)),length(wb)));
-        [mm1,mm2] = meshgrid(wb,wb2);
-        mmintp = meshgrid(wintp,wintp);
-        BBintp = interp2(mm2',mm1',BB,mmintp,mmintp');
-        PBintp = interp2(mm2',mm1',PB,mmintp,mmintp');
-        
-        BBintp(mmintp<mmintp')=PBintp(mmintp<mmintp');
-        ax4 = subplot(2,3,2);
+       if ~isempty(bsidin.result(bsdi).segment)
+           if isfield(bsidin,'COM') &&  ~isempty(regexp(bsidin.COM,'Deflation is done on the entire record')) %Correct for a bug in the specification of window times by checking for a comment that was only in the buggy versions.
+               wintadj = (bsidin.result(bsdi).segment.wintadj-bsidin.result(bsdi).segment.Trange(1))*bsidin.result(bsdi).segment.fs/bsidin.fs;
+           else
+               wintadj = bsidin.result(bsdi).segment.wintadj*bsidin.result(bsdi).segment.fs/bsidin.fs;
 
-%        imagesc(wb,wb,abs(ld.bsid(1).B))
-       imagesc(log10(wintp),log10(wintp),BBintp)
-          set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
-                  'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
-       axis image xy
-       cbar = colorbar('SouthOutside','position',[  0.4303    0.5488    0.1767    0.0200]);
-%           axis([0 1 0 1]*max(wb))
-%          ax4.Position = [.71 .53 .188 .4];
-      if bsidin.hos(bsdi).order ==3
-          title('Part/Full Bicoherence');
-      elseif bsidin.hos(bsdi).order ==4
-          title('Part/Full tricoherence avgd. over 3rd dim');
-      else
-          title('Part/Full polycoherence avgd. over dims');
-      end       
-      xlabel Hz
-      ylabel Hz
-%       if bsdi==1
-          cax = caxis;
-%       else
-%           caxis(cax);
-%       end
-      set(ax4,'xtick',get(ax4,'ytick'))
-      
-%         ax4 = subplot(4,3,5);
-%        imagesc(log10(wintp),log10(wintp),PBintp)
-%           set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
-%                   'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
-%        axis image xy
-%        cbar = colorbar;
-%        caxis(cax);
-% %           axis([0 1 0 1]*max(wb))
-% %          ax4.Position = [.71 .53 .188 .4];
-%       title('Partial Bicoherence');
-%       xlabel Hz
-%       ylabel Hz
-%       set(ax4,'xtick',get(ax4,'ytick'))
-% %           caxis([0 1])
+           end
+           [A,att] = choptf(bsidin.result(bsdi).segment.Trange*bsidin.result(bsdi).segment.fs/bsidin.fs,wintadj ,dbx,bsidin.result(bsdi).segment.Trange*bsidin.result(bsdi).segment.fs/bsidin.fs);
+            ax6=subplot(4,3,12);
+           getfr = find(dbx.frequency>0);
+           wintp =10.^(linspace(log10(dbx.frequency(getfr(1))),log10(dbx.frequency(end)),length(dbx.frequency)));   
+           MA = mean(20*log(abs(A)),3)';
+           Aintrp = interp2(att,dbx.frequency(getfr),MA(getfr,:),att,wintp);    
 
-      ax0 = axes;axis off
-       tth = text(.728,.975,sprintf('Contact %i:%s %i\nComponent: %i',bsidin.chan.contact,regexprep(bsidin.chan.label,'_','\\_'),bsidin.chan.number,bsdi));
-%             tth.Positin = [-2 .05
-       %        tth = title(sprintf('Contact %i: %s %i',ld.chan.contact,bsidin.chan.label,bsidin.chan.number));
-       tth(2) = text(.728,1.051,sprintf('Block: %s',bsidin.block.block));
-       tth(3) = text(.728,1.02,sprintf('Protocol: %s',bsidin.block.subprotocol));
-%            axis off
+    %        imagesc(att,dbx.frequency,mean(20*log10(abs(A)),3)')
+            imagesc(att,log10(wintp),Aintrp)
+            set(ax6,'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
+             axis xy
+            title('Feat. induced ')
+             caxis([-1 1]*max(abs(caxis)))
+             xlabel('(s)')
 
-%       c = r.available_contacts([r.available_contacts.Contact_Number]==r.contacts);
 
-%       hl = strcat(sprintf('%sindex.php/',r.url),{c.main,bsidin.block.block,bsidin.block.subprotocol});
+
+
+
+           wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
+           wb2 = fftshift(bsidin.hos(1).freqindx.Bfreqs{2});
+            BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
+            szBB = size(BB);
+            PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
+            for bk = 4:bsidin.hos(bsdi).order %%% Gives something to plot for orders > 3
+                BB = mean(BB,bk-1);
+                PB = mean(PB,bk-1);
+            end
+            BB(wb<=0,:)=[];
+            BB(:,wb2<=0)=[];
+            PB(wb<=0,:)=[];
+            PB(:,wb2<=0)=[];
+
+            wb(wb<=0)=[];
+            wb2(wb2<=0)=[];
+             wintp =10.^(linspace(log10(wb(2)),log10(wb(end)),length(wb)));
+            [mm1,mm2] = meshgrid(wb,wb2);
+            mmintp = meshgrid(wintp,wintp);
+            BBintp = interp2(mm2',mm1',BB,mmintp,mmintp');
+            PBintp = interp2(mm2',mm1',PB,mmintp,mmintp');
+
+            BBintp(mmintp<mmintp')=PBintp(mmintp<mmintp');
+            ax4 = subplot(2,3,2);
+
+    %        imagesc(wb,wb,abs(ld.bsid(1).B))
+           imagesc(log10(wintp),log10(wintp),BBintp)
+              set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
+                      'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
+           axis image xy
+           cbar = colorbar('SouthOutside','position',[  0.4303    0.5488    0.1767    0.0200]);
+    %           axis([0 1 0 1]*max(wb))
+    %          ax4.Position = [.71 .53 .188 .4];
+          if bsidin.hos(bsdi).order ==3
+              title('Part/Full Bicoherence');
+          elseif bsidin.hos(bsdi).order ==4
+              title('Part/Full tricoherence avgd. over 3rd dim');
+          else
+              title('Part/Full polycoherence avgd. over dims');
+          end       
+          xlabel Hz
+          ylabel Hz
+    %       if bsdi==1
+              cax = caxis;
+    %       else
+    %           caxis(cax);
+    %       end
+          set(ax4,'xtick',get(ax4,'ytick'))
+
+    %         ax4 = subplot(4,3,5);
+    %        imagesc(log10(wintp),log10(wintp),PBintp)
+    %           set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
+    %                   'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
+    %        axis image xy
+    %        cbar = colorbar;
+    %        caxis(cax);
+    % %           axis([0 1 0 1]*max(wb))
+    % %          ax4.Position = [.71 .53 .188 .4];
+    %       title('Partial Bicoherence');
+    %       xlabel Hz
+    %       ylabel Hz
+    %       set(ax4,'xtick',get(ax4,'ytick'))
+    % %           caxis([0 1])
+
+          ax0 = axes;axis off
+           tth = text(.728,.975,sprintf('Contact %i:%s %i\nComponent: %i',bsidin.chan.contact,regexprep(bsidin.chan.label,'_','\\_'),bsidin.chan.number,bsdi));
+    %             tth.Positin = [-2 .05
+           %        tth = title(sprintf('Contact %i: %s %i',ld.chan.contact,bsidin.chan.label,bsidin.chan.number));
+           tth(2) = text(.728,1.051,sprintf('Block: %s',bsidin.block.block));
+           tth(3) = text(.728,1.02,sprintf('Protocol: %s',bsidin.block.subprotocol));
+    %            axis off
+
+    %       c = r.available_contacts([r.available_contacts.Contact_Number]==r.contacts);
+
+    %       hl = strcat(sprintf('%sindex.php/',r.url),{c.main,bsidin.block.block,bsidin.block.subprotocol});
+       end
         hl = '';
         if useclust
 %          locfn= fullfile(bsidin.opts.outputdir2,sprintf('temp%icmp%i.pdf',r.contacts,bsdi));
@@ -657,7 +683,6 @@ res.block=bsidin.block;
 res.chan=bsidin.chan;
 fclose(fid);
 
- 
 % if useclust
 %     save(fullfile(outputdir,sprintf('%s_%s_%s_ch%i%s',blk.block,regopts.label,mfilename,bsidin.chan.channel,regopts.sufx)),'-struct','res')
 % end
