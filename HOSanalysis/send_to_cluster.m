@@ -124,7 +124,12 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
             ldchin(kch)=ldd;
             
          end
-          availch = [ldchin.chan];
+         chan = [ldchin.chan];
+%          if isstruct(chan)
+             chann = [chan.channel];
+%          end
+          [~,unqi]= unique(chann,'stable');
+          availch = chan(unqi);
       catch
           floc = fullfile(existing_dir,'model.mat');
            if ~exist(floc,'file')
@@ -170,7 +175,8 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
         end
 
         if ~all(missing) && lddat.opts.make_plots && (~isfield(lddat.opts,'do_regression')||lddat.opts.do_regression)
-            missing = missing | arrayfun(@(x)sum([x.contact]==figco),availch)<lddat.opts.ncomp;
+%             missing = missing | arrayfun(@(x)sum([x.contact]==figco),availch)<lddat.opts.ncomp;
+            missing = missing | arrayfun(@(x)sum([x.contact]==figco),availch)<1;
         end
     end
 %     if ~all(missing)
@@ -322,6 +328,10 @@ elseif exist(manfile,'file')
     re = regexp(txt,'([^\n\s]*[.]pdf)[^\n]','tokens');
     re =[re{:}];
     re = unique(re);
+    if isempty(re)
+        fprintf('\nNo output files found for %s',xne.local_save_dir);
+        return
+    end
     re2 = regexp(re,'contact_(\d*)_','tokens','once');
     cnum = cellfun(@(x)str2num(['0',x{:}]),re2);
     [srt,srti] = sort(cnum);
