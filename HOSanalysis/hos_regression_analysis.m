@@ -82,7 +82,7 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
                 mdl.addregressor(opts.regressors);
             end
 
-            if ~all(isnan(imp)) &&( ~isempty(mdl.regressors) || any(imp(mdl.get_event_window.T(:))))
+            if ~all(isnan(imp)) &&( ~isempty(mdl.regressors) || any(imp(mdl.get_event_window(1).T(:))))
                 fit = fitmod(mdl);            
                 res(compi).fit = fit;
             else
