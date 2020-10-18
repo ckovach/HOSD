@@ -197,10 +197,10 @@ for bsdi = 1:length(bsidin.result)
 
         if isfield(bsidin.result(bsdi),'fit') && ~isempty(bsidin.result(bsdi).fit) && ~isempty(bsidin.result(bsdi).fit.model.event)
             mdl=bsidin.result(bsdi).fit.model;
-            evw = mdl.get_event_window;
+            evw = mdl.get_event_window(1);
             tt = evw.tt;
             T = evw.T;
-            [unqev,~,unqevi] = unique(mdl.event.evnt','rows');
+            [unqev,~,unqevi] = unique(mdl.event(1).evnt','rows');
             [srt,srti] = sort(unqevi);
            if isnumeric(unqev)
                 unqev = arrayfun(@(k)sprintf('%i ',unqev(k,:)),1:size(unqev,1),'uniformoutput',false);
@@ -246,7 +246,7 @@ for bsdi = 1:length(bsidin.result)
                 end
                 plot(tt([1 end]),[0 0],'k')
                 hold on
-                plot(tt,rg.windowest.wald);
+                plh4(:,k) = plot(tt,rg.windowest.wald);
                 axis tight
                 ylim([-1 1]*max([abs(ylim) 4]))
                 tlt = sprintf('%s: ',rg.label);
@@ -357,6 +357,7 @@ for bsdi = 1:length(bsidin.result)
          for lgi = 1:length(plh2)
 %              plh2(lgi).Color=cols(lgi,:);
               plh3(lgi).Color=plh2(lgi).Color;
+              arrayfun(@(x)set(x,'Color',plh2(lgi).Color),plh4(lgi,:));
          end
 %              lg= legend([plh2;th'],{regopts.eReg.label,'Onset'},'position',[ 0.0053    0.5696    0.1652    0.1237]);
 %             elseif length(regopts.eReg)==3
@@ -398,57 +399,7 @@ for bsdi = 1:length(bsidin.result)
           xlabel('trial time (s)')
             ylabel Hz
         end
-%         hold on, plot(tt,0./(qtrans<1),'k','linewidth',.5)
-% 
-%         plot(tt ,0./(qtrans<.05),'k','linewidth',2)
-%         plot(tt  ,0./(qtrans<.01),'k','linewidth',4)
-%         ylim(1.1*[minval 1]*max(ylim))
-% 
-%         hold on, th=plot([0 0],ylim,'k');
 
-%         grid on
-%          ax1.Position(3)=.5;
-
-%         ax= axis;
-
-%         ttl=title(ttlstring);
-
-%            ylabel(ylbl)
-%             ylabel('$\frac{\hat{\beta}}{\mathrm{std.\;err.}}$','fontsize',20,'interpreter','latex')
-%                 cols = jet(length(plh));
-%                 cols = hsv2rgb([(0:length(regopts.unqev)-1)'/4,ones(4,2)*.9]);
-%             cols = hsv2rgb([(0:length(regopts.unqev)-1)'/length(regopts.unqev),ones(length(regopts.unqev),2)*.9]);
-%          for lgi = 1:length(plh)
-%              plh(lgi).Color=cols(lgi,:);
-%          end
-%             xlabel('time (s)')
-%         subi = @(x)x(1:end-1);
-%         sprf =@(x)subi(sprintf('%i,',x));
-%         legend([plh(1:2);th'],{sprf(regopts.eventids(1:2:end)),sprf(regopts.eventids(2:2:end)),'Onset','Transition','End'},'location','northwest')
-
-
-% %%%%%%%%%%%%%% Effect plot
-%         ax3 =subplot(5,3,5);
-% %             plh = plot(tt,squeeze(res.Mevk(:,kk,:,bsdi)));
-%         plh = plot(tt,squeeze(wald));
-% 
-%         hold on, plot(tt,0./(qtrans<1),'k','linewidth',.5)
-%         plot(tt ,0./(qtrans<.05),'k','linewidth',2)
-%         plot(tt  ,0./(qtrans<.01),'k','linewidth',4)
-%           ylim(1.1*[-1 1]* max(max(abs(wald(:))),4))
-%         hold on, th=plot([0 0],ylim,'k');
-%         grid on
-%      ax3.Position(3)=.5;
-%         ax= axis;
-%         ttl=title('Effects (Wald statistic)');
-%         ylabel('$\frac{\hat{\beta}}{\mathrm{std.\;err.}}$','fontsize',16,'interpreter','latex')
-% 
-%         xlabel('time (s)')
-%         subi = @(x)x(1:end-1);
-%         sprf =@(x)subi(sprintf('%i,',x));
-%         lg= legend([plh],{regopts.eReg.label,'Onset'},'position',[ 0.67    0.454    0.233    0.085]);
-
-%%%%%%%%%%%%%%%%%%
 
         subplot(4,3,6);
         plot(ifftshift(bsidin.hos(bsdi).sampt)/bsidin.fs,bsidin.hos(bsdi).feature)
@@ -468,7 +419,7 @@ for bsdi = 1:length(bsidin.result)
        if isempty(bsidin.result(bsdi).segment)
            if useclust % Save just to prove we here
               figdir = fullfile(outputdir,'figs');
-             wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan.contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
+             wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
              wfn = fullfile(figdir,wfnpart);
               pdflink(fig,[],[],wfn)
              res.pdfpages{bsdi}=wfn;
@@ -589,7 +540,13 @@ for bsdi = 1:length(bsidin.result)
     % %           caxis([0 1])
 
           ax0 = axes;axis off
+          if length(bsidin.chan) == 1
            tth = text(.728,.975,sprintf('Contact %i:%s %i\nComponent: %i',bsidin.chan.contact,regexprep(bsidin.chan.label,'_','\\_'),bsidin.chan.number,bsdi));
+          else
+           tth = text(.728,.975,sprintf('Bipolar+ %i:%s %i\nBipolar- %i:%s %i\nComponent: %i',bsidin.chan(1).contact,regexprep(bsidin.chan(1).label,'_','\\_'),bsidin.chan(1).number,...
+                                                                                              bsidin.chan(2).contact,regexprep(bsidin.chan(2).label,'_','\\_'),bsidin.chan(2).number,bsdi));
+             
+          end
     %             tth.Positin = [-2 .05
            %        tth = title(sprintf('Contact %i: %s %i',ld.chan.contact,bsidin.chan.label,bsidin.chan.number));
            tth(2) = text(.728,1.051,sprintf('Block: %s',bsidin.block.block));
@@ -608,7 +565,7 @@ for bsdi = 1:length(bsidin.result)
          if ~exist(figdir,'dir')
              mkdir(figdir)
          end
-         wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan.contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
+         wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
          wfn = fullfile(figdir,wfnpart);
           pdflink(fig,[],[],wfn)
                     
