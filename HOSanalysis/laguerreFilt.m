@@ -63,7 +63,7 @@ for k = 1:length(structin)
 
 %     clear filtcoef
     coli = coli+1;
-    Xfilt(:,coli) = filter([0 sqrt(1-alpha.^2)],[1 -alpha],X);
+    Xfilt(:,coli) = filter([0 sqrt(1-alpha.^2)],[1 -alpha],full(X));
     for i = 1:str.order
         
 
