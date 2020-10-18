@@ -57,7 +57,11 @@ classdef model
             
             if nargin < 1
                 return
-            elseif isa(Y,'model') || isstruct(Y)
+            elseif  isstruct(Y) && isfield(Y,'dat')
+                me.response = Y.dat;
+                me.sampling_rate = Y.fs;
+                me.modelType = Y.type;
+            elseif isa(Y,'model') || isstruct(Y) 
                 fldn = setdiff(fieldnames(Y),{'designMtx'});
                 for k = 1:length(fldn)
                     me.(fldn{k}) = Y.(fldn{k});
@@ -123,11 +127,16 @@ classdef model
             Fs = zeros(size(me.response,1),length(me.event));
             for k = 1:length(me.event)
                 
-                evw = me.get_event_window(me.event(k)); 
 %                 evs = permute(me.event(k).evnt,[3 2 1]);
 %                 evs = repmat(evs,size(evw.T,1),1);
                 F = zeros(size(me.response,1),size(me.event(k).evnt,1));
-                trts = evw.T(round(end/2),:);
+                switch me.event(k).timeBasis
+                    case {'forward_laguerre','backward_laguerre'}
+                        trts = round(me.event(k).times*me.sampling_rate);
+                    otherwise
+                        evw = me.get_event_window(me.event(k)); 
+                        trts = evw.T(round(end/2),:);
+                end
                 for kk = 1:size(F,2)
                     [unq,~,unqi] = unique(me.event(k).evnt(kk,:));
                     F(trts,:) = unqi;
@@ -140,7 +149,7 @@ classdef model
                 if isfield(me.event(k),'center')
                     center = me.event(k).center;
                 else
-                    center = true;
+                    center = length(unique(me.event(k).evnt(kk,:)))>1;
                 end
                 if isfield(me.event(k),'label')
                     label = me.event(k).label;
@@ -176,7 +185,19 @@ classdef model
                 Freg = Freg(arrayfun(@(x)~isempty(x.value),Freg));
                 codeincr = Freg(end).code;
                 %%%
-                switch lower(me.timeBasis)
+                if ~isfield(me.event,'timeBasis')
+                    me.event(k).timeBasis = me.timeBasis;
+                end
+                switch lower(me.event(k).timeBasis)
+                    case {'forward_laguerre','backward_laguerre'}
+                        TP = laguerreFilt((0:length(me.response)-1)'==0,me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate);
+                        TP = circshift(TP,[-1 0]);
+                        Treg = regressor(fft(TP),'label','After','codeincr',codeincr);
+                        if strcmpi(me.event(k).timeBasis,'backward_laguerre')
+                          TP = flipud(TP);
+                          Treg = regressor(fft(TP),'label','Before','codeincr',codeincr);
+                        end
+
                     case {'polynomial','chebyt','bernstein'}
 %                         timeOrder = [];
 %                         if isfield(me.event(k),'timeOrder')
@@ -191,29 +212,22 @@ classdef model
                          TP(size(me.response,1),:) = 0;
                          TP = circshift(TP,[-floor(size(evw.P,1)/2) 0]);
 
-%                         P = repmat(evw.P,size(evw.T,2),1);
-%                         TP = zeros(size(me.response,1),size(P,2));
-%                         TP(evw.T(:),:) = P;
-% %                         TPintcpt = zeros(size(TP,1),1);
-% %                         TPintcpt(evw.T(:),:)=1;
-%                         if isempty(out)
-%                             codeincr=me.codeincr;
-%                         else
+
                               codeincr = max([codeincr,out.code]);
-%                         end
-%                         Treg = regressor(TP,'label',sprintf('Window%i',k(k>1)),'codeincr',codeincr);
                         Treg = regressor(fft(TP),'label',sprintf('Window%i',k(k>1)),'codeincr',codeincr);
-%                         Treg(2) = regressor(TPintcpt,'label',sprintf('Window%i intcpt',k(k>1)),'codeincr',Treg(end).code);
-                        FTreg=interaction(Freg,Treg);
-                        for kk = 1:length(Freg)
-                           FTreg(kk).window = k; 
-                           FTreg(kk).value = ifft(FTreg(kk).value);
-                        end
+             
                     case 'boxcar'
                         error('Boxcar time basis is not implemented yet')
                     otherwise
                         error('%s is an unrecognized option for the time basis.')
                 end
+                FTreg=interaction(Freg,Treg);
+                for kk = 1:length(Freg)
+%                            FTreg(kk).window = k; 
+                   FTreg(kk).window = me.event(k); 
+                   FTreg(kk).value = ifft(FTreg(kk).value);
+                end
+
                 out = [FTreg,out]; %#ok<*AGROW>
             end   
             
@@ -276,11 +290,18 @@ classdef model
                 if isempty(timeOrder) %#ok<*PROP>
                     timeOrder = me.timeOrder;
                 end
-                switch lower(me.timeBasis)
+                if ~isfield(evnt,'timeBasis') || isempty(evnt(k).timeBasis)
+                    evnt(k).timeBasis = me.timeBasis;
+                end
+                switch lower(evnt(k).timeBasis)
                     case 'bernstein'
                         evw(k).P = bernsteinp(length(evw(k).tt),timeOrder);
                     case {'chebyt','polynomial'}
                         evw(k).P = chebyT(length(evw(k).tt),timeOrder);
+                    case {'forward_laguerre'}
+                        evw(k).P = laguerreFilt(evw(k).tt(:)==0,evnt(k).laguerre_ord,evnt(k).laguerre_tau,me.sampling_rate);
+                    case {'backward_laguerre'}
+                        evw(k).P = flipud(laguerreFilt(flipud(evw(k).tt(:)==0),evnt(k).laguerre_ord,evnt(k).laguerre_tau,me.sampling_rate));
                 end
 %                 evw(k).intercept=evw(k).P(:,1);
 %                 evw(k).P(:,1)=[];    
