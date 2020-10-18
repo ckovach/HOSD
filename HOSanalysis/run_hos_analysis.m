@@ -108,9 +108,9 @@ if ischar(dat)
     
     switch opts.version
         case 'hos'
-            outfn = sprintf('%s_%i_hos.mat',ld.blkdat.block,ld.chan.contact);
+            outfn = sprintf('%s_%i_hos.mat',ld.blkdat.block,ld.chan(1).contact);
         otherwise  
-            outfn = sprintf('%s_%i_out.mat',ld.blkdat.block,ld.chan.contact);
+            outfn = sprintf('%s_%i_out.mat',ld.blkdat.block,ld.chan(1).contact);
     end
     outputfile = fullfile(outputdir,outfn);
     
