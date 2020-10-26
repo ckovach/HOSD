@@ -58,7 +58,10 @@ classdef hosobject < handle
 %        learningrate = .02; % Asymptotic learning rate
        burnin = 20;
        window_number = 0;  % Nunmber of window processed
-       poverlap = .5;      % Default overlap between adjacent windows
+       poverlap = .5;      % Default overlap between adjacent windows as the 
+                           % proportion of step size to window width (poverlap = 1 
+                           % is no overlap, poverlap = 2 interleaves a gap of 1
+                           % window duration between windows.)
       
        do_update = true;
        do_bsp_update = true;
@@ -69,6 +72,7 @@ classdef hosobject < handle
        thresh = 0;
        threshtemp = 1;
        threshold_type = 'hard';
+       threshold_order = [];
        keepfreqs
        pdonly = true;
        dat = [];
@@ -317,7 +321,7 @@ classdef hosobject < handle
             me(1).waveftlag=z;
             
             me(1).win = window(me(1).window,me(1).fftN);
-            if me(1).fftN< me(1).bufferN || length(me(1).keepfreqs{1})~=me(1).bufferN
+            if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
                 me(1).buffersize = me(1).bufferN;
 %                 me(1).fftN = me(1).bufferN;
             end
@@ -700,7 +704,8 @@ classdef hosobject < handle
                 else
                      FXshift = FXwin;
                 end
-                FXshift = FXshift*diag(sgn);
+                FXshift = FXshift.*repmat(sgn,size(FXshift,1),1);
+%                 FXshift = FXshift*diag(sgn);
             else
 %                  Xin = X(:);
                 Xin = X;
@@ -1556,12 +1561,19 @@ classdef hosobject < handle
                end
                 %%% Set the delays to the correct value for the original
                 %%% data set;
+               
                 [~,~] = me(1).apply_filter(Xwin,apply_window);
-                T = T+ repmat(me(1).delay,size(T,1),1);
-                T(T<1)=1;
-                T(T>length(xin))=length(xin);
                 
-                segment.wintadj = segment.wint+me(1).delay;
+                if length(segment.wint) == 0
+%                     T = mod(repmat((0:size(Xsh,1)-1)',1,size(Xsh,2))+repmat(me(1).delay,size(Xsh,1),1),size(Xsh,1))+1;
+%                     T = T+ones(size(T,1),1)*(0:size(T,2)-1)*size(T,1);
+                else
+                    T = T+ repmat(me(1).delay,size(T,1),1);
+                    T(T<1)=1;
+                    T(T>length(xin))=length(xin);
+
+                    segment.wintadj = segment.wint+me(1).delay;
+                end
             else
                 me(1).write_buffer(xin);
                 T=[];
@@ -1581,7 +1593,7 @@ classdef hosobject < handle
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
                end
             end
-            if nargout > 1
+            if nargout > 0
                 varargout = {Xsh,Xwin,T,wint,segment};
             end
         end
@@ -1688,13 +1700,15 @@ classdef hosobject < handle
                  Xcent = zsc(Xfilt);
 %             end
             %Xcent = Xfilt;
-            Xmom = Xcent.^me.order;
+            if isempty(me.threshold_order)
+                me.threshold_order = me.order;
+            end
+            Xmom = Xcent.^me.threshold_order;
             
-           
             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
                  trialthresh = me.current_threshold;
                  Xcs = [];
-            elseif me.order == 3
+            elseif me.threshold_order == 3
                 % For the bispectrum compute normalized skewness
 %                 keepsamples = ones(size(Xcent));
                   srt = sort(Xcent(:));
@@ -1713,7 +1727,7 @@ classdef hosobject < handle
           
                 keepsrt = srt>0 & c3>  thresh;
                 detect = any(keepsrt);
-                trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.order;
+                trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.threshold_order;
                 trialthresh(~detect) = Inf;
                 Xcs=[];
             else
@@ -1725,14 +1739,14 @@ classdef hosobject < handle
                 keepsamples = ones(size(Xsrt));
                 Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
                 Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
-                if mod(me.order,2)==0
+                if mod(me.threshold_order,2)==0
                     %%% Correction for power spectral component with even
                     %%% orders
-                    Xbaseline = (me.order-1)*mean(Xcent.^2).^(me.order./2)+thresh;
+                    Xbaseline = (me.threshold_order-1)*nanmean(Xcent.^2).^(me.threshold_order./2)+thresh;
                 else
                     Xbaseline =thresh;
                 end
-                Mstd = Mcs./Powcs.^(me.order/2) - Xbaseline;
+                Mstd = Mcs./Powcs.^(me.threshold_order/2) - Xbaseline;
                 Xthr = Mstd>thresh;
                 Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
                 threshold_crossing = diff(Xthr)>0;
@@ -1741,7 +1755,11 @@ classdef hosobject < handle
                 trialthresh(detect) = Xsrt(threshold_crossing)';
                 trialthresh(~detect) = Inf;
             end
-
+            
+            if mod(me.threshold_order,2) < mod(me.order,2) %If using kurtosis for threshold setting with odd order HOSD, account for sign.
+                Xmom(Xcent<0)=0;
+            end
+            
             switch me.threshold_type
                 case 'hard'
                     THR = Xmom>=trialthresh;%repmat(trialthresh,size(Xmom,1),1);
