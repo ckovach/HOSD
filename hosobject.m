@@ -433,6 +433,7 @@ classdef hosobject < handle
           out = bias(me.freqindx.remap);
         end
         function set.BIAS(me,in)
+             in(isnan(in))=0;
              if min(size(in))==1
                 me.BIASnum = in*me.D.^2; 
             else
@@ -727,6 +728,7 @@ classdef hosobject < handle
            out = me.Bpartval; 
         end
         function set.B(me,in)
+            in(isnan(in))=0;
             if min(size(in))==1
                 me.Bval = in; 
             else
@@ -734,6 +736,7 @@ classdef hosobject < handle
             end
         end
         function set.D(me,in)
+            in(isnan(in))=0;
             if min(size(in))==1
               	me.Dval=in; 
             else
@@ -1851,12 +1854,14 @@ classdef hosobject < handle
             if nargin < 3 || isempty(apply_window)
                 apply_window = true;
             end
+            X(end+1:me.fftN,:)=0;
+            [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
             if ~me.do_update
                warning('Updating is currently disabled. Set do_update = true to enable.') 
                return
             end
-            X(end+1:me.fftN,:)=0;
-            [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
+%             X(end+1:me.fftN,:)=0;
+%             [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
             getwin = me.update_criteria(Xfilt);
            
             if isempty(getwin)
