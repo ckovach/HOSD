@@ -124,14 +124,21 @@ end
 
 
 indx = 1;
+RX=R1([]);
 for intxn = 2:intxnord
     B = chooseperm(length(R1),intxn);
     
+    if isempty(B)
+        break
+    end
     for i = 1:size(B,1)
-        RX(indx) = interaction(R1(B(i,1)), interaction( R1(B(i,2:end)) ) );
-        RX(indx).code = codeincr + indx;
-        RX(indx).codevec(1:RX(indx).Npar) = codeincr + indx;
-        indx = indx+1;
+        RXsub =interaction(R1(B(i,1)), interaction( R1(B(i,2:end)) ) );
+        for k = 1:length(RXsub)
+            RXsub(k).code = codeincr + indx;
+            RXsub(k).codevec(1:RXsub(k).Npar) = codeincr + indx;
+           indx = indx+1;
+        end
+        RX = [RX,RXsub];
     end
     
 end
