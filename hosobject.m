@@ -56,7 +56,8 @@ classdef hosobject < handle
        hos_learning_rate = .01; % Learning rate for online mode
        filter_adaptation_rate = .02; % Filter adaptation rate for online mode
 %        learningrate = .02; % Asymptotic learning rate
-       burnin = 20;
+       filter_burnin = 20;
+       hos_burnin = 20;
        window_number = 0;  % Nunmber of window processed
        poverlap = .5;      % Default overlap between adjacent windows as the 
                            % proportion of step size to window width (poverlap = 1 
@@ -67,6 +68,8 @@ classdef hosobject < handle
        do_bsp_update = true;
        do_wave_update = true;
        do_filter_update = true;
+       do_CDF_update = true;
+
        adjust_lag = true; % Automatically apply a circular shift to the filter and waveforms to center the energy in both
        lag = 1; % A phasor representing the amount of circularshift added to the filter estimate (1 = no shift, +/-1i = max shift)
        thresh = 0;
@@ -85,7 +88,9 @@ classdef hosobject < handle
        Imats = {};
        Iconjmats = {};
        segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
-       
+       CDFupsample = 3; %(inverse) CDF is sampled at CDFupsample.*buffersize quantiles
+       CDFbuffer=[]; %Buffer for the CDF of the filter output and moments up to order
+
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -95,7 +100,6 @@ classdef hosobject < handle
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
-        thresholdbuffer=[];
         freqindx = [];
         bufferPos = 0;
         sumlr=0;
@@ -104,7 +108,9 @@ classdef hosobject < handle
         sampt = []; % Vector of sample indices
         delay = 0;
         waveftlag = [];
-      
+        running_mean=0;
+        running_ssq = 1;
+        running_var = 1;
         win = sasaki(1024);
       G = []; 
 
@@ -173,7 +179,7 @@ classdef hosobject < handle
         BIAS
         fullmap
         feature
-        current_threshold % Current adaptive threshold level
+%         current_threshold % Current adaptive threshold level
         B ;
         Bpart ;
         D ;
@@ -188,11 +194,18 @@ classdef hosobject < handle
             if nargin ==0
                 return
             end
-            if isa(order,mfilename) || isa(order,'hosminimal')
+            if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'})];
                
-               
+               if isa(order,'struct')
+                   fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fieldnames(obj));
+                   for k = 1:length(fnsunset)
+                       for kk = 1:length(obj)
+                           obj(kk).(fnsunset{k})=me(1).(fnsunset{k});
+                       end
+                   end
+               end               
                if length(obj)==1
                    obj(2:length(me)) = obj;
                elseif length(obj)>length(me)
@@ -306,7 +319,6 @@ classdef hosobject < handle
             me(1).inputbuffer = z;
             me(1).outputbuffer = z;
             me(1).shiftbuffer = z2;
-            me(1).thresholdbuffer=z;
             me(1).PSD = [z;0];
 %             me(1).G = ones(size(z));
             me(1).bufferPos = 0;
@@ -319,7 +331,9 @@ classdef hosobject < handle
             me(1).Imats = {};
             me(1).Iconjmats = {};
             me(1).waveftlag=z;
-            
+            me(1).running_var = 1;
+            me(1).running_ssq = 1;
+            me(1).running_mean = 0;
             me(1).win = window(me(1).window,me(1).fftN);
             if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
                 me(1).buffersize = me(1).bufferN;
@@ -331,6 +345,11 @@ classdef hosobject < handle
       
             me(1).waveform = z2;
 
+            if isempty(me(1).threshold_order)
+                me(1).threshold_order = me(1).order;
+            end
+            me(1).CDFbuffer=repmat(z(:,ones(1,me(1).threshold_order)),me(1).CDFupsample,1);
+            
             if length(me)>1
                 me(2:end).reset();
             end
@@ -1004,7 +1023,7 @@ classdef hosobject < handle
                 me.sumlr2 = 1/size(FX,2);
 
             else
-                [lradj,lr] = me.learningfunction(me.hos_learning_rate,m);
+                [lradj,lr] = me.learningfunction(me.hos_learning_rate,m,me.hos_burnin);
                  fflr = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
 %               fflr = (1-(1-me.filter_adaptation_rate)^m);
                 %%% Adjust the learning rate according to the number of samples
@@ -1565,9 +1584,31 @@ classdef hosobject < handle
                 %%% Set the delays to the correct value for the original
                 %%% data set;
                
-                [~,~] = me(1).apply_filter(Xwin,apply_window);
+                [Xfilt,~] = me(1).apply_filter(Xwin,apply_window);
+                 me(1).running_mean = nanmean(Xfilt(:));
+                  me(1).running_ssq = nanmean(Xfilt(:).^2);
+                  me(1).running_var = me(1).running_ssq-me(1).running_mean.^2;
+%                   Xfilt = (Xfilt-me(1).running_mean)./sqrt(me(1).running_var);
+%                  Xfilt = (Xfilt-nanmean(Xfilt))./nanstd(Xfilt);
                 
-                if length(segment.wint) == 0
+                %%% Update CDF buffer
+                    xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
+                if size(xin)>me(1).buffersize
+                    Tcdf = chopper(me(1).segment.Trange*me(1).CDFupsample,me(1).segment.wint(1:me(1).CDFupsample:end));
+                    Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
+                    Xfilt = sort(xfilt(Tcdf));
+                else
+                    nw = floor(numel(xfilt)./(size(xfilt,1)*me(1).CDFupsample));
+                    
+                    Xfilt = reshape(xfilt(1:nw*(size(xfilt,1)*me(1).CDFupsample)),(size(xfilt,1)*me(1).CDFupsample),nw);
+                    Xfilt = sort(Xfilt);
+                end
+                
+                for k = 1:me(1).threshold_order
+                    me(1).CDFbuffer(:,k) = nanmean(Xfilt.^k,2);
+                end
+                
+                if isempty(segment.wint)
 %                     T = mod(repmat((0:size(Xsh,1)-1)',1,size(Xsh,2))+repmat(me(1).delay,size(Xsh,1),1),size(Xsh,1))+1;
 %                     T = T+ones(size(T,1),1)*(0:size(T,2)-1)*size(T,1);
                 else
@@ -1686,7 +1727,7 @@ classdef hosobject < handle
             
         
         
-        function [Xthresh,Xcs,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
+        function [Xthresh,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
             
             % Apply a moment-based threshold
             if nargin < 3 || isempty(thresh)
@@ -1696,12 +1737,10 @@ classdef hosobject < handle
                 use_adaptive_threshold = true;
             end
             
-%             if size(Xfilt,2)==1
-%                 Xcent = zscore(Xfilt(~isnan(Xfilt)));
-%             else
-                 zsc = @(x)(x-nanmean(x))./nanstd(x);
-                 Xcent = zsc(Xfilt);
-%             end
+%                   zsc = @(x)(x-nanmean(x))./nanstd(x);
+%                   Xcent = zsc(Xfilt);
+                 
+                 Xcent = (Xfilt-me.running_mean)./sqrt(me.running_var);
             %Xcent = Xfilt;
             if isempty(me.threshold_order)
                 me.threshold_order = me.order;
@@ -1709,54 +1748,11 @@ classdef hosobject < handle
             Xmom = Xcent.^me.threshold_order;
             
             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
-                 trialthresh = me.current_threshold;
-                 Xcs = [];
-            elseif me.threshold_order == 3
-                % For the bispectrum compute normalized skewness
-%                 keepsamples = ones(size(Xcent));
-                  srt = sort(Xcent(:));
-%                 outlier_threshold = 5;
-                if me.outlier_threshold~=0
-                   keepsamples = ~isnan(iterz(srt,me.outlier_threshold,-1)); % Suppress extreme negative outliers           
-                else
-                    keepsamples = ~isnan(srt);
-                end
-                srt(isnan(srt))=0;
-                m1 = cumsum(srt.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
-                m2 = cumsum(srt.^2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
-                m3 = cumsum(srt.^3.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
-                %  Third cumulant
-                c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
-          
-                keepsrt = srt>0 & c3>  thresh;
-                detect = any(keepsrt);
-                trialthresh = sum ((diff(keepsrt)>0).*srt(2:end,:)).^me.threshold_order;
-                trialthresh(~detect) = Inf;
-                Xcs=[];
+                 trialthresh = me.current_threshold([],thresh);
+%                  Xcs = [];
             else
-                % For now, apply a simple threshold on the standardized moment for
-                % orders > 3. This should be improved to use the proper
-                % cumulant.
-                [Xsrt,srti] = sort(Xmom);
-                Xpow = Xcent(srti).^2;
-                keepsamples = ones(size(Xsrt));
-                Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
-                Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
-                if mod(me.threshold_order,2)==0
-                    %%% Correction for power spectral component with even
-                    %%% orders
-                    Xbaseline = (me.threshold_order-1)*nanmean(Xcent.^2).^(me.threshold_order./2)+thresh;
-                else
-                    Xbaseline =thresh;
-                end
-                Mstd = Mcs./Powcs.^(me.threshold_order/2) - Xbaseline;
-                Xthr = Mstd>thresh;
-                Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
-                threshold_crossing = diff(Xthr)>0;
-                detect =any(threshold_crossing);
-                
-                trialthresh(detect) = Xsrt(threshold_crossing)';
-                trialthresh(~detect) = Inf;
+                trialthresh = me.current_threshold(Xcent,thresh);
+
             end
             
             if mod(me.threshold_order,2) < mod(me.order,2) %If using kurtosis for threshold setting with odd order HOSD, account for sign.
@@ -1872,10 +1868,18 @@ classdef hosobject < handle
             end
             if me.do_filter_update
                me.update_filter; 
-               Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
-               lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin));
-               me.thresholdbuffer = me.thresholdbuffer*(1-lradj) + lradj*cumsum(Xsrt);
-
+    
+               lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin),me.filter_burnin);
+               me.running_mean = me.running_mean*(1-lradj) + nanmean(Xfilt(:))*lradj;
+               me.running_ssq = me.running_ssq*(1-lradj) + nanmean(Xfilt(:).^2)*lradj;
+               
+                me.running_var = me.running_ssq-me.running_mean.^2;
+               
+%                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);
+%                Xsrt = mean(sort(((Xfilt(:,getwin)-me.running_mean)./sqrt(me.running_var)).^me.order),2);
+%                  Xfilt = sort(Xfilt-me.running_mean)./sqrt(me.running_var);
+%                Xfilt = sort((Xfilt-nanmean(Xfilt(:)))./nanstd(Xfilt(:)));
+%                Xsrt = mean(sort(Xfilt(:,getwin)),2);
             end
             if me.do_wave_update
               %  Xsh = real(ifft(FXsh(:,getwin)));
@@ -1885,20 +1889,95 @@ classdef hosobject < handle
             me.window_number = me.window_number+sum(getwin);
             me.outputbuffer = mean(Xfilt,2);
             me.shiftbuffer = real(ifft(mean(FXsh,2)));
-           
+            if me.do_CDF_update
+                Xfsrt = (sort(Xfilt)-me.running_mean)./sqrt(me.running_var);
+                for k = 1:me(1).threshold_order
+                    cdfb(:,k) = mean(Xfsrt.^k,2);
+                end
+                cdfb = cat(1,me.CDFbuffer,cdfb);
+                [~,srti] = sort(cdfb(:,1));
+                cdfb = cdfb(srti,:);
+                cdfb(mod(me(1).window_number-1,me.CDFupsample+1)+1:me.CDFupsample+1:end,:) = []; %Keep size by decimating but avoid biased sampling of quantiles by cycling which quantiles are discarded
+                
+               if ~isempty(getwin) && any(getwin)
+                   lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin),me.filter_burnin);
+                   me.CDFbuffer = me.CDFbuffer*(1-lradj) + lradj*cdfb;
+
+               end
+            end
         end
         
         function out = update_criteria(me,Xfilt) %#ok<INUSL>
             out = true(1,size(Xfilt,2)); % Placeholder for now
         end
         
-        function out =get.current_threshold(me)
-           xsrt = diff(me.thresholdbuffer);
-           threshi = find(diff(me.thresholdbuffer>me.thresh));
-           if isempty(threshi)
-               threshi=length(xsrt);
-           end
-           out = xsrt(threshi);
+        function out =current_threshold(me,Xcent,thresh)
+            
+            if nargin < 2 || isempty(Xcent) %||true % Find threshold based on empirical CDF
+                Xcent =  me.CDFbuffer(:,1);
+                Xcent2 = me.CDFbuffer(:,2);
+                XcentK = me.CDFbuffer(:,me(1).threshold_order);
+            else %Find threshold based on input moment
+                Xcent = sort(Xcent);
+                
+                
+                Xcent2 = Xcent.^2;
+                XcentK = Xcent.^me.threshold_order;
+            end
+            if nargin<3 || isempty(thresh)
+                thresh = me.thresh;
+            end
+            if isempty(me.threshold_order)
+                me.threshold_order=me.order;
+            end
+             if me.threshold_order == 3
+                % For the bispectrum compute normalized skewness
+%                 keepsamples = ones(size(Xcent));
+
+%                   srt = sort(Xcent(:));
+%                  outlier_threshold = 5;
+                 if me.outlier_threshold~=0
+                    keepsamples = ~isnan(iterz(Xcent,me.outlier_threshold,-1)); % Suppress extreme negative outliers           
+                 else
+                     keepsamples = ~isnan(Xcent);
+                 end
+                Xcent(isnan(Xcent))=0;
+
+                m1 = cumsum(Xcent.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
+                m2 = cumsum(Xcent2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
+                m3 = cumsum(XcentK.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
+                %  Third cumulant
+                c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+          
+                keepsrt = Xcent>0 & c3>  thresh;
+                out = sum ((diff(keepsrt)>0).*XcentK(2:end,:));
+                if ~any(out)
+                    out=Inf;
+                end
+            else
+                % For now, apply a simple threshold on the standardized moment for
+                % orders > 3. This should be improved to use the proper
+                % cumulant.
+%                 Xmom = Xcent.^me.order;
+                Xmom = XcentK;
+                Xsrt = sort(Xmom);
+%                 Xpow = Xcent(srti).^2;
+                Xpow = Xcent2;
+                keepsamples = ones(size(Xsrt));
+                Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
+                Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
+                if mod(me.threshold_order,2)==0
+                    %%% Correction for power spectral component with even
+                    %%% orders
+                    Xbaseline = (me.threshold_order-1)*nanmean(Xcent.^2).^(me.threshold_order./2)+thresh;
+                else
+                    Xbaseline =thresh;
+                end
+                Mstd = Mcs./Powcs.^(me.threshold_order/2) - Xbaseline;
+                Xthr = Mstd>thresh;
+                Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
+                out = sum(Xmom.*diff(Xthr)>0,1);
+            end
         end
         
         %%%%
