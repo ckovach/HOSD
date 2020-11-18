@@ -42,27 +42,37 @@ classdef hosobject < handle
     % Copyright Christopher K. Kovach, University of Iowa 2018
     
     properties
+        
+       % HOS order (3=bispectrum, 4=trispectrum, etc.)
        order = 3;
+       
+       % Axis frequencies
        freqs       
-%        B = 0;
-%        Bpart = 0;
-%        D = 1;
+       
+       % Power spectral density estimate
        PSD = 0;
       
        
+       % Sampling rate of the input data
+       sampling_rate = 1; 
+
+       % Normalization used in computing bi-(or poly-)coherence
+       normalization = 'awplv'; 
        
-       sampling_rate = 1; % Sampling rate of the input data
-       normalization = 'awplv'; % Normalization used in computing bi-(or poly-)coherence
-       hos_learning_rate = .01; % Learning rate for online mode
-       filter_adaptation_rate = .02; % Filter adaptation rate for online mode
+       %HOS learning rate for online mode
+       hos_learning_rate = .01; 
+       
+       % Filter adaptation rate for online mode
+       filter_adaptation_rate = .02; 
 %        learningrate = .02; % Asymptotic learning rate
        filter_burnin = 20;
        hos_burnin = 20;
-       window_number = 0;  % Nunmber of window processed
-       poverlap = .5;      % Default overlap between adjacent windows as the 
-                           % proportion of step size to window width (poverlap = 1 
-                           % is no overlap, poverlap = 2 interleaves a gap of 1
-                           % window duration between windows.)
+       
+        % Nunmber of window processed
+       window_number = 0; 
+       
+       % Default overlap between adjacent windows as the  proportion of step size to window width (poverlap = 1  is no overlap, poverlap = 2 interleaves a gap of 1 window duration between windows, etc.)
+       poverlap = .5;    
       
        do_update = true;
        do_bsp_update = true;
@@ -70,42 +80,67 @@ classdef hosobject < handle
        do_filter_update = true;
        do_CDF_update = true;
 
-       adjust_lag = true; % Automatically apply a circular shift to the filter and waveforms to center the energy in both
-       lag = 1; % A phasor representing the amount of circularshift added to the filter estimate (1 = no shift, +/-1i = max shift)
+       % Automatically apply a circular shift to the filter and waveforms to center the energy in both
+       adjust_lag = true; 
+       
+       % A phasor representing the amount of circular shift added to the filter estimate according to angle (1 = no shift, +/-1i = max shift = buffersize/2)
+       lag = 1; 
        thresh = 0;
        threshtemp = 1;
        threshold_type = 'hard';
        threshold_order = [];
        keepfreqs
+       
+       % Use only the principal domain in the estimates
        pdonly = true;
        dat = [];
-       avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
+       
+       %For odd orders, reject negative outliers beyond this value. This improves the ability to recover features in the presence of noise and interference from similar features with opposite sign.
        outlier_threshold = 5;
        fftN = 1024;
        regstat = [];
        regweight=[];
        sampweight = [];
+       
+       %Matrices to integrate over all but 1st dimension of square form bicoherence, from the reduced form.
        Imats = {};
        Iconjmats = {};
+       
+       %Structure describing the segmentation of the input signal (if applicable)
        segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
-       CDFupsample = 3; %(inverse) CDF is sampled at CDFupsample.*buffersize quantiles
-       CDFbuffer=[]; %Buffer for the CDF of the filter output and moments up to order
-
+       
+       %(inverse) CDF is sampled at evenly spaced CDFupsample.*buffersize quantiles
+       CDFupsample = 4; 
+       
+        %Buffer for the CDF of the filter output and moments up to order
+       CDFbuffer=[];
+        use_adaptive_threshold = true;
      end
   
     properties (GetAccess = public, SetAccess=protected)
        
-        inputbuffer = []; % Current input buffer
-        outputbuffer = []; % Current outputbuffer
+        % Current input buffer
+        inputbuffer = []; 
+        
+         % Current outputbuffer
+        outputbuffer = [];
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
+        
+        % Structure containing information on frequency indexing
         freqindx = [];
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
-        radw = [];  % Vector of sample frequencies in radian units
-        sampt = []; % Vector of sample indices
+        
+        % Vector of sample frequencies in radian units
+        radw = [];  
+        
+        % Vector of sample indices
+        sampt = []; 
+        
+        % Vector of feature delays in the most recent input windows
         delay = 0;
         waveftlag = [];
         running_mean=0;
@@ -139,14 +174,14 @@ classdef hosobject < handle
        padN = 0;       
        regval=[];
        
-       use_partial_delay_method = true;
-            %%% If false, uses the older method which computed HOS  before
-            %%% filer estimation, which is unnecessary in iterated estimation.
-            %%% If true, then the partial_delay_filters are estimated for each
-            %%% segment and the detection filter is obtained by shifting and 
-            %%% averaging the segment filters. This option is included for the 
-            %%% sake of debugging and will be removed eventually. 
-        
+        %%% If false, uses the older method which computed HOS  before
+        %%% filer estimation, which is unnecessary in iterated estimation.
+        %%% If true, then the partial_delay_filters are estimated for each
+        %%% segment and the detection filter is obtained by shifting and 
+        %%% averaging the segment filters. This option is included for the 
+        %%% sake of debugging and will be removed eventually. 
+         use_partial_delay_method = true;
+       
        do_indexing_update = true;
     end
     properties (Dependent = true)
@@ -154,33 +189,60 @@ classdef hosobject < handle
 %         inputfft
 %         inputfiltered  
 %         input_shifted
+        % Size of the input window
         buffersize
-        waveform; %% The feature waveform
+        
+        % The feature waveform
+        waveform; 
+        %FFT of the feature waveform
         wavefft;
-        filterfun %% The ifftshifted filter function 
-        filterfft %% FFT of the filterfunction
-%         current_learning_rate;
+        
+        % The ifftshifted filter function 
+        filterfun %
+        
+        % FFT of the filterfunction
+        filterfft %
+        
         filterftlag;
-        window %% Window used prior to calculating estimates
-        bicoh
+        
+        % Window applied to sample intervals
+        window 
+        
+        %Bicoherence (or polycoherence) in square form
+        bicoh 
+        
+        %Bicoherece (or polycoherence) in reduced form, as vector of non-redundant coefficients
+        bicohreduced 
         partialbicoh
         H
         EDF
         highpass  ;
-        lowpass ; %%% Lowpass on the edges (max freq)
-        glowpass ; %%% Global lowpass
-        shighpass ; %%% Highpass applied to sums of frequency pairs for order > 3.
-        slowpass ; %%% Lowpass applied to sums of frequency pairs for order > 3.
         
-        xlowpass ; %%% "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion 
-        xhighpass ;%%% This is useful to design filters selective for the interior or exterior regions of
-                   %%% the bispectrum.
-        Bfull
+        % Lowpass on the edges (max freq); exclude regions in which the frequency axes exceeds this value
+        lowpass ; %
+        
+        % Global lowpass: Exclude regions for which any frequency exceeds this value.
+        glowpass ; %%
+        
+        % Highpass applied to sums of frequency pairs for order > 3.
+        shighpass ; %%
+        
+        % Lowpass applied to sums of frequency pairs for order > 3.        
+        slowpass ; %%
+        
+       % "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion 
+       xlowpass ; 
+       
+       % "OR" highpass.This is useful to design filters selective for the interior or exterior regions of the bispectrum.
+       xhighpass ;
+       %Bispectrum (unnormalized) in square form
+        Bfull 
         BIAS
         fullmap
         feature
-%         current_threshold % Current adaptive threshold level
-        B ;
+        
+        % Bispectrum (unnormalized) in reduced form, as vector of non-redundant coefficients.
+        B 
         Bpart ;
         D ;
         pad; %
@@ -190,13 +252,15 @@ classdef hosobject < handle
     methods
        
         function me = hosobject(order,varargin)
-            
+            % Hosobject contructor
+            %
+            %
             if nargin ==0
                 return
             end
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
-               fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun'})];
+               fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
                
                if isa(order,'struct')
                    fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fieldnames(obj));
@@ -242,7 +306,9 @@ classdef hosobject < handle
         
       function initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
       
-          
+        %%% hos.initialize(buffer_size,sampling_rate,lowpass,freqs,freqindex,varargin)
+        %%% Initialize properties for all elements in a hosobject array.
+        
             if ~isscalar(N)
                 X = N;
                 N = size(X,1);
@@ -283,7 +349,7 @@ classdef hosobject < handle
             end
             
             if me(1).order > length(freqs)
-                freqs(end+1:me(1).order) = freqs;
+                freqs(end+1:me(1).order) = freqs(end);
             end
 %             me.order = order;
             me(1).freqs = freqs;
@@ -326,7 +392,6 @@ classdef hosobject < handle
             me(1).G(:)=1;
             me(1).D(:)=1;          
             me(1).window_number=0;
-            me(1).avg_delay = 1;
             me(1).lag=1;
             me(1).Imats = {};
             me(1).Iconjmats = {};
@@ -334,7 +399,7 @@ classdef hosobject < handle
             me(1).running_var = 1;
             me(1).running_ssq = 1;
             me(1).running_mean = 0;
-            me(1).win = window(me(1).window,me(1).fftN);
+            me(1).win = window(me(1).window,me(1).fftN); %#ok<CPROP>
             if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
                 me(1).buffersize = me(1).bufferN;
 %                 me(1).fftN = me(1).bufferN;
@@ -428,12 +493,20 @@ classdef hosobject < handle
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
         end
         function BC = get.bicoh(me)
-            
+           %%% Bicoherence in square form
           BC = me.B./me.D;
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           BC = BC(me.freqindx.remap);
           BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
+          
+        end
+        function BC = get.bicohreduced(me)
+            %%% Bicoherence (or polycoherence) in reduced form (non-redundat coefficients as a
+            %%% vector)
+          BC = me.B./me.D;
+           bias = sqrt(me.BIASnum./(me.D.^2+eps));
+          BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           
         end
          function pBC = get.partialbicoh(me)
@@ -711,13 +784,7 @@ classdef hosobject < handle
                      dt = samptc(mxi);
         
                      me.delay = dt;             
-%                      %%% Center the delays
-%                      if center_delays
-%                          
-%                          mph = me.avg_delay;
-%                          mdt = atan2(imag(mph),real(mph))*me.bufferN/(2*pi);
-%                          dt = dt-mdt;
-%                      end
+
                     delt = me.radw*dt;
                     FXshift = exp(1i*delt).*FXwin;
        
@@ -1311,7 +1378,7 @@ classdef hosobject < handle
             end    
             out = Xchop;
             if length(me)>1
-               xrec = me(1).reconstruct(xin);
+               xrec = me(1).reconstruct(xin,[],[],true);
                xrec(isnan(xrec)&~isnan(xin))=0;
                
                out = [out,me(2:end).get_input(xin-xrec,apply_window,use_shifted,initialize)];
@@ -1351,7 +1418,7 @@ classdef hosobject < handle
             end
             Xsh=[];
             Xwin=[];
-            T=[];
+          
             wint=[];
             if nargin < 4 || isempty(makeplot)
                 makeplot = true;
@@ -1593,8 +1660,8 @@ classdef hosobject < handle
                 
                 %%% Update CDF buffer
                     xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
-                if size(xin)>me(1).buffersize
-                    Tcdf = chopper(me(1).segment.Trange*me(1).CDFupsample,me(1).segment.wint(1:me(1).CDFupsample:end));
+                if size(xin,1)>me(1).buffersize
+                    Tcdf = chopper([0 me(1).buffersize*me(1).CDFupsample-1],segment.wint(1:me(1).CDFupsample:end),segment.fs);
                     Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
                     Xfilt = sort(xfilt(Tcdf));
                 else
@@ -1654,7 +1721,7 @@ classdef hosobject < handle
             maxpermn = 5e5; %#ok<NASGU>
             
             reg_args = {};
-            if nargin < 3 || isempty(x)
+            if nargin < 3 || isempty(xin)
                 xin = ones(size(yin,1),1);
                 reg_args = [reg_args,{'intercept',false}];
             end
@@ -1734,7 +1801,7 @@ classdef hosobject < handle
                 thresh= me.thresh;
             end
             if nargin < 4 || isempty(use_adaptive_threshold)
-                use_adaptive_threshold = true;
+                use_adaptive_threshold = me.use_adaptive_threshold;
             end
             
 %                   zsc = @(x)(x-nanmean(x))./nanstd(x);
@@ -1747,7 +1814,8 @@ classdef hosobject < handle
             end
             Xmom = Xcent.^me.threshold_order;
             
-            if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
+%             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
+            if use_adaptive_threshold %|| size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold([],thresh);
 %                  Xcs = [];
             else
@@ -1773,7 +1841,7 @@ classdef hosobject < handle
         end
         
         %%%%%%
-        function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
+        function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold)
             
             if nargin < 2
                 X = me.inputbuffer;
@@ -1783,6 +1851,9 @@ classdef hosobject < handle
             end
             if nargin < 4 
                 apply_window = [];
+            end
+            if nargin < 5 || isempty(use_adaptive_threshold)
+                use_adaptive_threshold=me.use_adaptive_threshold;
             end
             xisnan = isnan(X);
 %             X(xisnan)=0; 
@@ -1799,7 +1870,7 @@ classdef hosobject < handle
             end
 
             % Xfilt = Xfilt(floor(me.bufferN/2):end-ceil(me.bufferN/2));
-            Xthr=me.filter_threshold(Xfilt,threshold);
+            Xthr=me.filter_threshold(Xfilt,threshold,use_adaptive_threshold);
             
 %             wf = fftshift(me.waveform);
             wf = me.waveform;
@@ -1918,7 +1989,7 @@ classdef hosobject < handle
                 Xcent2 = me.CDFbuffer(:,2);
                 XcentK = me.CDFbuffer(:,me(1).threshold_order);
             else %Find threshold based on input moment
-                Xcent = sort(Xcent);
+                Xcent = sort(Xcent(:));
                 
                 
                 Xcent2 = Xcent.^2;
@@ -1960,24 +2031,30 @@ classdef hosobject < handle
                 % cumulant.
 %                 Xmom = Xcent.^me.order;
                 Xmom = XcentK;
-                Xsrt = sort(Xmom);
+                [Xsrt,srti] = sort(Xmom);
 %                 Xpow = Xcent(srti).^2;
-                Xpow = Xcent2;
+                Xpow = Xcent2(srti,:);
+                Xmean = Xcent(srti,:);
                 keepsamples = ones(size(Xsrt));
                 Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
                 Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
+                Mncs = cumsum(Xmean.*keepsamples)./cumsum(keepsamples);
                 if mod(me.threshold_order,2)==0
                     %%% Correction for power spectral component with even
                     %%% orders
-                    Xbaseline = (me.threshold_order-1)*nanmean(Xcent.^2).^(me.threshold_order./2)+thresh;
+                    Xbaseline = (me.threshold_order-1)*(Powcs -   Mncs).^(me.threshold_order./2) +  Mncs.^me.threshold_order + thresh;
                 else
                     Xbaseline =thresh;
                 end
-                Mstd = Mcs./Powcs.^(me.threshold_order/2) - Xbaseline;
+                Mstd = (Mcs- Xbaseline)./Powcs.^(me.threshold_order/2) ;
                 Xthr = Mstd>thresh;
-                Xthr = cumsum(diff([zeros(1,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
-                out = sum(Xmom.*diff(Xthr)>0,1);
-            end
+                Xthr = cumsum(diff([zeros(2,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
+                if all(Xthr)
+                    out = Inf;
+                else
+                    out = sum(Xmom.*(diff(Xthr)>0),1);
+                end
+             end
         end
         
         %%%%
