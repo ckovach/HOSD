@@ -260,7 +260,10 @@ classdef hosobject < handle
             end
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
-               fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
+%                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
+               fns = [{'BIASnum'};setdiff(fieldnames(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
+               
+               fns = intersect(fns,fieldnames(me(1))); %This ensures that only public fields are set.
                
                if isa(order,'struct')
                    fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fieldnames(obj));
@@ -282,8 +285,11 @@ classdef hosobject < handle
                
                me(1).do_indexing_update = false;
                for k = 1:length(fns)  
-                   if isprop(obj(1),fns{k})
+                   if isprop(me(1),fns{k})
+                       try
                        me(1).(fns{k}) = obj(1).(fns{k});
+                       catch
+                       end
                    end
                end
                me(1).do_indexing_update = true;
@@ -1091,7 +1097,7 @@ classdef hosobject < handle
 
             else
                 [lradj,lr] = me.learningfunction(me.hos_learning_rate,m,me.hos_burnin);
-                 fflr = me.learningfunction(me.filter_adaptation_rate,m,1./me.filter_adaptation_rate);
+                 fflr = me.learningfunction(me.filter_adaptation_rate,m,me.filter_burnin);
 %               fflr = (1-(1-me.filter_adaptation_rate)^m);
                 %%% Adjust the learning rate according to the number of samples
                 %%% in Xin, giving the sample weight the same total as if it
@@ -1409,7 +1415,7 @@ classdef hosobject < handle
             end
              
         end
-        function  varargout = get_block(me,xin,maxiter,makeplot,segment,compno)
+        function  varargout = get_block(me,xin,maxiter,makeplot,segment,compno,initialize)
            
             % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
@@ -1428,6 +1434,9 @@ classdef hosobject < handle
             end
             if nargin < 5 || isempty(segment)
                 segment = struct('Trange',[0 me(1).buffersize-1],'wint',[],'fs',1);
+            end
+            if nargin < 7 || isempty(initialize)
+                initialize = true;
             end
 %             if ~iscell(xin)
 %                 xin = {xin};
@@ -1533,7 +1542,7 @@ classdef hosobject < handle
                  end
                 apply_window = false;
                 use_shifted=false;
-                initialize = true;
+%                 initialize = true;
                 if me(1).use_partial_delay_method
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                     Gpart = me(1).partial_delay_filt(Xsh,false); 
@@ -1694,14 +1703,14 @@ classdef hosobject < handle
             if length(me)>1
                xrec = me(1).reconstruct(xin);
                if nargout > 0
-                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
+                   [Xsh2,Xwin2,T2] = me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1,initialize);
                    Xsh = cat(3,Xsh,Xsh2);
                    Xwin = cat(3,Xwin,Xwin2);
                    T = cat(3,T,T2);
                else
                     me(2).Imats = me(1).Imats;
                     me(2).Iconjmats = me(1).Iconjmats;                    
-                    me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1);
+                    me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1,initialize);
                end
             end
             if nargout > 0
@@ -2013,6 +2022,8 @@ classdef hosobject < handle
                      keepsamples = ~isnan(Xcent);
                  end
                 Xcent(isnan(Xcent))=0;
+                Xcent2(isnan(Xcent2))=0;
+                XcentK(isnan(XcentK))=0;
 
                 m1 = cumsum(Xcent.*keepsamples)./cumsum(keepsamples); % cumulative mean on sorted peaks
                 m2 = cumsum(Xcent2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
@@ -2035,6 +2046,10 @@ classdef hosobject < handle
 %                 Xpow = Xcent(srti).^2;
                 Xpow = Xcent2(srti,:);
                 Xmean = Xcent(srti,:);
+                Xcent(isnan(Xcent))=0;
+                Xcent2(isnan(Xcent2))=0;
+                XcentK(isnan(XcentK))=0;
+
                 keepsamples = ones(size(Xsrt));
                 Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
                 Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
