@@ -261,12 +261,14 @@ classdef hosobject < handle
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-               fns = [{'BIASnum'};setdiff(fieldnames(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
+              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
                
-               fns = intersect(fns,fieldnames(me(1))); %This ensures that only public fields are set.
+               props = metaclass(me).PropertyList;
+               getprops = strcmp({props.SetAccess},'public');
+               fns = intersect(fns,{props(getprops).Name}); %This ensures that only fields with public set access are set to avoid unexpected behavior.
                
                if isa(order,'struct')
-                   fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fieldnames(obj));
+                   fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
                    for k = 1:length(fnsunset)
                        for kk = 1:length(obj)
                            obj(kk).(fnsunset{k})=me(1).(fnsunset{k});
@@ -286,10 +288,10 @@ classdef hosobject < handle
                me(1).do_indexing_update = false;
                for k = 1:length(fns)  
                    if isprop(me(1),fns{k})
-                       try
+                        try
                        me(1).(fns{k}) = obj(1).(fns{k});
-                       catch
-                       end
+                        catch
+                        end
                    end
                end
                me(1).do_indexing_update = true;
@@ -406,10 +408,10 @@ classdef hosobject < handle
             me(1).running_ssq = 1;
             me(1).running_mean = 0;
             me(1).win = window(me(1).window,me(1).fftN); %#ok<CPROP>
-            if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
-                me(1).buffersize = me(1).bufferN;
-%                 me(1).fftN = me(1).bufferN;
-            end
+%             if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
+%                 me(1).buffersize = me(1).bufferN;
+% %                 me(1).fftN = me(1).bufferN;
+%             end
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0;
             end
@@ -432,7 +434,11 @@ classdef hosobject < handle
             end
             order = me.order;
             freqs=me.freqs;
-            
+            if  isempty(freqs) || length(me.freqs{1})~=me.fftN
+                freqs = fftfreq(me(1).fftN)*me(1).sampling_rate;
+                me(1).freqs = repmat({freqs},1,me(1).order);
+            end
+               
             lowpass = me.lowpassval*me.sampling_rate;
             if length(lowpass)< order-1
                 lowpass(end+1:order-1) = lowpass(end);
