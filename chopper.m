@@ -40,6 +40,15 @@ function [T,t,Err] = chopper(rg,evtt,fs)
 % $Author$
 % ------------------------------------------------
 
+if isstruct(rg)
+    if isfield(rg,'fs')
+        fs = rg.fs;
+    end
+    if isfield(rg,'wint')
+        evtt = rg.wint;
+    end
+    rg = rg.Trange;
+end    
 
 t = (rg(1):1/fs:rg(2))';
 
