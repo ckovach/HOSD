@@ -261,7 +261,7 @@ classdef hosobject < handle
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
+              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
                
                props = metaclass(me).PropertyList;
                getprops = strcmp({props.SetAccess},'public');
@@ -286,10 +286,18 @@ classdef hosobject < handle
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
                me(1).do_indexing_update = false;
+               priority = intersect({'order','buffersize','pad','lag'},fns);% These fields should be set first
+               for k = 1:length(priority)
+                   me(1).(priority{k}) = obj(1).(priority{k});
+               end
+               fns = setdiff(fns,priority);
                for k = 1:length(fns)  
                    if isprop(me(1),fns{k})
                         try
                        me(1).(fns{k}) = obj(1).(fns{k});
+                       if me(1).lag~=obj(1).lag
+                           keyboard
+                       end
                         catch
                         end
                    end
