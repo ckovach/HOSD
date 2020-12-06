@@ -115,6 +115,10 @@ classdef hosobject < handle
         %Buffer for the CDF of the filter output and moments up to order
        CDFbuffer=[];
         use_adaptive_threshold = true;
+          running_mean=0;
+        running_ssq = 1;
+        running_var = 1;
+      
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -143,9 +147,6 @@ classdef hosobject < handle
         % Vector of feature delays in the most recent input windows
         delay = 0;
         waveftlag = [];
-        running_mean=0;
-        running_ssq = 1;
-        running_var = 1;
         win = sasaki(1024);
       G = []; 
 
@@ -261,7 +262,7 @@ classdef hosobject < handle
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
+              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
                
                props = metaclass(me).PropertyList;
                getprops = strcmp({props.SetAccess},'public');
@@ -286,7 +287,7 @@ classdef hosobject < handle
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
                me(1).do_indexing_update = false;
-               priority = intersect({'order','buffersize','pad','lag'},fns);% These fields should be set first
+               priority = intersect({'order','buffersize','pad','lag','sampling_rate'},fns);% These fields should be set first
                for k = 1:length(priority)
                    me(1).(priority{k}) = obj(1).(priority{k});
                end
@@ -1063,6 +1064,7 @@ classdef hosobject < handle
            % FFX = 1;
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
             FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+            
             FFXpart = {};
             FFXpart(1:me.order-1) = {FFX};
             FFXpart{me.order} = ones(size(FFX));
@@ -1081,10 +1083,15 @@ classdef hosobject < handle
             end
             
             if isempty(me.sampweight)
-                wgt = ones(size(FFX,2),1)/size(FFX,2);
+%                 wgt = ones(size(FFX,2),1)/size(FFX,2);
+                wgt = ~any(isnan(FFX))'/sum(~any(isnan(FFX)));
             else
                 wgt = me.sampweight;
             end
+            for kk =1:me.order
+                    FFXpart{kk}(isnan(FFXpart{kk})) = 0;
+            end
+            FFX(isnan(FFX)) = 0;
             
 %             BX = mean(FFX,2);
             BX = FFX*wgt;
@@ -1301,7 +1308,7 @@ classdef hosobject < handle
                    mph = sum(exp(-1i*2*pi*me.sampt(:)./me.fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                    mph = mph./(abs(mph)+eps);
                    if ~isnan(mph)
-                      me.lag = mph; % Circularshift to keep filter energy centered on the window
+                      me.lag = mph; % Circular shift to keep filter energy centered on the window
                    end
                
 %                    dt = atan2(imag(mph),real(mph))/(2*pi)*me.bufferN;
@@ -1418,9 +1425,9 @@ classdef hosobject < handle
             stepn = round(me(1).poverlap*me(1).bufferN);
             nget = nxin - me(1).bufferN+1;
             tindx = (0:me(1).bufferN-1)';
-            wint = (1:stepn:nget)+delay;
+            wint = (0:stepn:nget-1)+delay;
 
-            T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+            T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1)+1;
             T(T>length(xin))=length(xin);
             T(T<1)=length(xin);
             Xchop = xin(T);
@@ -1480,13 +1487,13 @@ classdef hosobject < handle
                     if ~isfield(segment,'wint') || isempty(segment.wint)
                         stepn = round(me(1).poverlap*me(1).bufferN);
                         nget = nxin - me(1).bufferN+1;
-                        wint = (1:stepn:nget);%./segment.fs;
+                        wint = (0:stepn:nget-1);%./segment.fs;
                         segment.wint=wint/segment.fs;
                     else
                         wint = round(segment.wint*segment.fs);
                     end
 
-                    T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
+                    T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1)+1;
                     T(T<1) = 1;
                     T(T>length(xin))=length(xin);
                     
@@ -1495,13 +1502,13 @@ classdef hosobject < handle
                     
                         hasnans = any(xisnan(T));
                         segment.discarded = hasnans;
-                        if all(hasnans)
+                        if all(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
                             fprintf('\nAll segments contain NaN values. Discarding these data')
                             if nargout > 1
                                  varargout = {Xsh,Xwin,T,wint,segment};
                             end
                             return
-                        elseif any(hasnans)
+                        elseif any(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
                             fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
                             T = T(:,~hasnans);
                             segment.wint = segment.wint(~hasnans);
@@ -1533,7 +1540,9 @@ classdef hosobject < handle
                 Xsh = Xwin;
                 Xfilt=Xsh;
 %                 end
-                fprintf('\nComponent %3i Iter %3i',compno,0)
+                if   double( makeplot(1))>=0                     
+                    fprintf('\nComponent %3i Iter %3i',compno,0)
+                end
                 color_cycle = 10;
                 if all(ishandle(makeplot))
                     set(makeplot(1:end-1),'ydata',zeros(me(1).bufferN,1));
@@ -1578,7 +1587,7 @@ classdef hosobject < handle
 %                          end
                         set(makeplot(mod(k,5)+2),'ydata',me(1).feature,'Color',hsv2rgb([mod(k,color_cycle)/color_cycle 1 .8]));
                         drawnow
-                    elseif islogical(makeplot) && makeplot
+                    elseif double(makeplot) > 0
                         figure,
                         subplot(2,1,1)
                         makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
@@ -1597,7 +1606,9 @@ classdef hosobject < handle
                     end
                     
                     k=k+1;
-                    fprintf('\b\b\b%03i',compno,k)
+                    if  double( makeplot(1))>=0
+                        fprintf('\b\b\b%03i',compno,k)
+                    end
                     
                     if k >2
                       olddt = me(1).delay;
