@@ -1320,7 +1320,8 @@ classdef hosobject < handle
                %%% the feature waveform is centered with respect to the maximum!
                [~,mxi] = max(real(ifft(me.filterftlag.*me.waveftlag+eps)));
                if mxi~=1 && ~isnan(mxi)
-                    me.filterfun = circshift(me.filterfun,-me.sampt(mxi));
+%                     me.filterfun = circshift(me.filterfun,-me.sampt(mxi));
+                    me.waveform = circshift(me.waveform,me.sampt(mxi));
                end
                    
         end
@@ -1971,6 +1972,11 @@ classdef hosobject < handle
             if me.do_bsp_update
                me.update_bispectrum(FXsh(:,getwin),initialize); 
             end
+            if me.do_wave_update
+              %  Xsh = real(ifft(FXsh(:,getwin)));
+              
+                me.update_waveform(FXsh(:,getwin),initialize); 
+            end
             if me.do_filter_update
                me.update_filter; 
     
@@ -1986,11 +1992,7 @@ classdef hosobject < handle
 %                Xfilt = sort((Xfilt-nanmean(Xfilt(:)))./nanstd(Xfilt(:)));
 %                Xsrt = mean(sort(Xfilt(:,getwin)),2);
             end
-            if me.do_wave_update
-              %  Xsh = real(ifft(FXsh(:,getwin)));
-              
-                me.update_waveform(FXsh(:,getwin),initialize); 
-            end
+            
             me.window_number = me.window_number+sum(getwin);
             me.outputbuffer = mean(Xfilt,2);
             me.shiftbuffer = real(ifft(mean(FXsh,2)));
