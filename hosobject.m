@@ -287,7 +287,7 @@ classdef hosobject < handle
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
                me(1).do_indexing_update = false;
-               priority = intersect({'order','buffersize','pad','lag','sampling_rate'},fns);% These fields should be set first
+               priority = intersect({'order','buffersize','pad','lag','sampling_rate','keepfreqs'},fns);% These fields should be set first
                for k = 1:length(priority)
                    me(1).(priority{k}) = obj(1).(priority{k});
                end
