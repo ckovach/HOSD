@@ -1697,7 +1697,8 @@ classdef hosobject < handle
                     xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
                 if size(xin,1)>me(1).buffersize
                     Tcdf = chopper([0 me(1).buffersize*me(1).CDFupsample-1],segment.wint(1:me(1).CDFupsample:end),segment.fs);
-                    Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
+%                     Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
+                    Tcdf = mod(Tcdf-1,length(xfilt))+1;
                     Xfilt = sort(xfilt(Tcdf));
                 else
                     nw = floor(numel(xfilt)./(size(xfilt,1)*me(1).CDFupsample));
