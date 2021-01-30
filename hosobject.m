@@ -263,8 +263,8 @@ classdef hosobject < handle
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
               fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
-               
-               props = metaclass(me).PropertyList;
+               metac = metaclass(me);
+               props = metac.PropertyList;
                getprops = strcmp({props.SetAccess},'public');
                fns = intersect(fns,{props(getprops).Name}); %This ensures that only fields with public set access are set to avoid unexpected behavior.
                
