@@ -28,6 +28,10 @@ if nargin < 2
 end
 if  isa(files,'xargon') || isa(files,'xneon')
     xne = files;
+    opts.queue = xne.queue;
+    opts.profile = xne.profile;
+    opts.nslots = xne.nslots;
+    
     files = {xne.datafiles(1:end-1).orig};
 %     mdlfile = xne.datafiles(end).orig;
 %     mdlfile = fullfile(xne.datafiles(end).orig;
@@ -113,10 +117,11 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
          for kch = 1:length(files)
             
 %             wh= whos('-file',files{kch});
-            ldd = load(files{kch},'chan','code');   
+            ldd = load(files{kch},'chan','code'); 
             if ~isfield(ldd,'chan')
                 continue
             end
+            ldd.chan=ldd.chan(1);
             if ~isfield(ldd.chan,'code')
                 ldd.chan.code = '';
             end
