@@ -263,8 +263,15 @@ if opts.run_phase_randomized
 end
 bsidout(1).hosargs = [{opts.hos_order},hosargs];
 bsidout(1).dat = z;
-bsidout(1).chan = dat.chan;
+if ~isfield(dat,'chan')
+    dat.chan = struct('label','Channel','number',dat.ChannelNumber(1)+1,'channel',dat.ChannelNumber(1)+1,'contact',dat.ChannelNumber(1)+1);
+end
+if ~isfield(dat,'block')
+    dat.block = struct('block','???-???','subprotocol','????');
+end
+
 bsidout(1).block = dat.block;
+bsidout(1).chan = dat.chan;
 bsidout(1).fs = dat.fs(1);
 % bsidout(1).origdatafile=dat.origdatafile;
 bsidout(1).opts = opts;
