@@ -230,13 +230,13 @@ if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.re
     segment.wintadj=[];
 else
      hos.initialize(hosargs{:});
-    if apply_to_chopped_data
-        hos.get_block(z(T));  % Deflation is done on the chopped data
-      
-    else
+%     if apply_to_chopped_data
+%         hos.get_block(z(T));  % Deflation is done on the chopped data
+%       
+%     else
         hos.get_block(z,[],[],segment);  % This allows the entire record to be used in the deflation step.
       
-    end
+%     end
     if opts.run_phase_randomized
         hosphaserand = hosobject(hos);
         znz = z;

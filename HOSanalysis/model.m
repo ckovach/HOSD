@@ -130,6 +130,9 @@ classdef model
 %                 evs = permute(me.event(k).evnt,[3 2 1]);
 %                 evs = repmat(evs,size(evw.T,1),1);
                 F = zeros(size(me.response,1),size(me.event(k).evnt,1));
+                if ~isfield(me.event(k),'timeBasis')
+                    me.event(k).timeBasis='polynomial';
+                end
                 switch me.event(k).timeBasis
                     case {'forward_laguerre','backward_laguerre'}
                         trts = round(me.event(k).times*me.sampling_rate);
