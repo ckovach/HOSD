@@ -1693,6 +1693,9 @@ classdef hosobject < handle
 %                   Xfilt = (Xfilt-me(1).running_mean)./sqrt(me(1).running_var);
 %                  Xfilt = (Xfilt-nanmean(Xfilt))./nanstd(Xfilt);
                 
+                if ~isempty(segment.wint)
+                    segment.wintadj = segment.wint+me(1).delay;
+                end
                 %%% Update CDF buffer
                     xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
                 if size(xin,1)>me(1).buffersize
@@ -2074,9 +2077,9 @@ classdef hosobject < handle
 %                 Xpow = Xcent(srti).^2;
                 Xpow = Xcent2(srti,:);
                 Xmean = Xcent(srti,:);
-                Xcent(isnan(Xcent))=0;
-                Xcent2(isnan(Xcent2))=0;
-                XcentK(isnan(XcentK))=0;
+%                 Xcent(isnan(Xcent))=0;
+%                 Xcent2(isnan(Xcent2))=0;
+%                 XcentK(isnan(XcentK))=0;
 
                 keepsamples = ones(size(Xsrt));
                 Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
