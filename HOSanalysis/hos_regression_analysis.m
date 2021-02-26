@@ -27,7 +27,12 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
     for compi = 1:length(hos)
         segment = hos(compi).segment;
         if isempty(hos(compi).segment.wint)
-            continue
+            if isfield(opts,'windur') && isstruct(opts.windur)
+                hos(compi).segment = opts.windur;
+            end
+            if isempty(hos(compi).segment.wint)        
+                continue
+            end
         end
 %         segment.wintadj = hos(compi).delay + segment.wint;
         for bi = 1:size(opts.bands,1)   
