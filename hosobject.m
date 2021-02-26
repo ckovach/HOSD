@@ -1711,9 +1711,11 @@ classdef hosobject < handle
                     Xfilt = sort(Xfilt);
                 end
                 
-                for k = 1:me(1).threshold_order
-                    me(1).CDFbuffer(:,k) = nanmean(Xfilt.^k,2);
-                end
+               if me(1).use_adaptive_threshold
+                   for k = 1:me(1).threshold_order
+                       me(1).CDFbuffer(:,k) = nanmean(Xfilt.^k,2);
+                   end
+               end    
                 
                 if isempty(segment.wint)
 %                     T = mod(repmat((0:size(Xsh,1)-1)',1,size(Xsh,2))+repmat(me(1).delay,size(Xsh,1),1),size(Xsh,1))+1;
