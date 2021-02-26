@@ -405,9 +405,10 @@ classdef hosobject < handle
             me(1).PSD = [z;0];
 %             me(1).G = ones(size(z));
             me(1).bufferPos = 0;
-            me(1).B(:)=0;
-            me(1).G(:)=1;
-            me(1).D(:)=1;          
+            me(1).B(:)=1;me(1).B=double(me(1).B);
+            me(1).G(:)=1;me(1).G=double(me(1).G);
+            me(1).D(:)=1; me(1).D=double(me(1).D);         
+            me(1).BIASnum(:)=1; me(1).BIASnum = double(me(1).BIASnum);
             me(1).window_number=0;
             me(1).lag=1;
             me(1).Imats = {};
@@ -422,7 +423,7 @@ classdef hosobject < handle
 % %                 me(1).fftN = me(1).bufferN;
 %             end
             for k = 1:length(me(1).Bpart)
-                me(1).Bpart{k}(:) = 0;
+                me(1).Bpart{k}(:) = 0; me(1).Bpart{k} = double( me(1).Bpart{k});
             end
       
             me(1).waveform = z2;
@@ -1854,7 +1855,7 @@ classdef hosobject < handle
             Xmom = Xcent.^me.threshold_order;
             
 %             if size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1 && use_adaptive_threshold
-            if use_adaptive_threshold %|| size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
+            if use_adaptive_threshold && ~isempty(me.CDFbuffer)%|| size(Xfilt,1) == me.bufferN && size(Xfilt,2)==1
                  trialthresh = me.current_threshold([],thresh);
 %                  Xcs = [];
             else
