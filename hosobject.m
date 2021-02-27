@@ -1695,7 +1695,7 @@ classdef hosobject < handle
 %                  Xfilt = (Xfilt-nanmean(Xfilt))./nanstd(Xfilt);
                 
                 if ~isempty(segment.wint)
-                    segment.wintadj = segment.wint+me(1).delay;
+                    segment.wintadj = segment.wint+me(1).delay/segment.fs;
                 end
                 %%% Update CDF buffer
                     xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
@@ -1725,7 +1725,7 @@ classdef hosobject < handle
                     T(T<1)=1;
                     T(T>length(xin))=length(xin);
 
-                    segment.wintadj = segment.wint+me(1).delay;
+                    segment.wintadj = segment.wint+me(1).delay/segment.fs;
                 end
             else
                 me(1).write_buffer(xin);
