@@ -354,7 +354,7 @@ for bsdi = 1:length(bsidin.result)
 %              cols = jet(length(plh2)).*.9;
 %         cols = hsv2rgb([(0:length(regopts.unqev)-1)'/4,ones(4,2)*.9]);
 
-         for lgi = 1:length(plh2)
+         for lgi = 1:size(plh4,1)
 %              plh2(lgi).Color=cols(lgi,:);
               plh3(lgi).Color=plh2(lgi).Color;
               arrayfun(@(x)set(x,'Color',plh2(lgi).Color),plh4(lgi,:));
