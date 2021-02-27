@@ -142,7 +142,8 @@ classdef fact2reg < regressor
                     u2 = ~ignore;
                     m = u2*(u1'*XF);
                     XF = XF-m;
-                    XF = XF(:,2:end);
+%                     XF = XF(:,2:end);
+                    XF = XF(:,1:end-1);
                     me.m = m;
     %                 me.ufs = ufs;
     %                 fun= mkfun(ufs,m(find(~ignore,1),:));
