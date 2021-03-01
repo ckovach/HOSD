@@ -2083,7 +2083,9 @@ classdef hosobject < handle
 %                 Xcent(isnan(Xcent))=0;
 %                 Xcent2(isnan(Xcent2))=0;
 %                 XcentK(isnan(XcentK))=0;
-
+                Xpow(isnan(Xpow)) = 0;
+                Xmean(isnan(Xmean))=0;
+                
                 keepsamples = ones(size(Xsrt));
                 Mcs = cumsum(Xsrt.*keepsamples)./cumsum(keepsamples);
                 Powcs = cumsum(Xpow.*keepsamples)./cumsum(keepsamples);
@@ -2101,7 +2103,7 @@ classdef hosobject < handle
                 if all(Xthr)
                     out = Inf;
                 else
-                    out = sum(Xmom.*(diff(Xthr)>0),1);
+                    out = nansum(Xmom.*(diff(Xthr)>0),1);
                 end
              end
         end
