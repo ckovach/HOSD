@@ -135,7 +135,7 @@ classdef model
                 end
                 switch me.event(k).timeBasis
                     case {'forward_laguerre','backward_laguerre'}
-                        trts = round(me.event(k).times*me.sampling_rate);
+                        trts = round(me.event(k).times*me.sampling_rate)+1; %Zero corresponds to the 1st sample
                     otherwise
                         evw = me.get_event_window(me.event(k)); 
                         trts = evw.T(round(end/2),:);
