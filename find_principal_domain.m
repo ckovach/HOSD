@@ -142,33 +142,41 @@ for k = 1:nsig
   
 end
 
-
-if order > 3 && (max(shighpass) > 0 || any(slowpass<lowpass))
-    %%% Now we need to account for regions within the principal domain for which some
-    %%% subset of the frequencies falls within the highcut range. This is
-    %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to
-    %%% frequency pairs, thereby excluding any component of HOS that
-    %%% weights by the power spectrum. The resultant windowing is not strictly
-    %%% quasicumulant for orders > 5, but it removes a dominant
-    %%% contribution from the power spectrum.
-    discard = false(size(PD));
-    WPD = [Ws{:}];
-    WPD = WPD(PD,:);
-    for k = 1:order-1
-        discard(PD) = discard(PD) | any(abs(repmat(WPD(:,k),1,order-k)+WPD(:,k+1:order)) <= max(shighpass),2)   | all(abs(repmat(WPD(:,k),1,order)+WPD) >= max(slowpass),2)  ;       
-    end
+if order >3
     
-    PD(discard) = [];
-    for k = 1:length(Ws)
-        Ws{k} = Ws{k}(~discard);
-        if k<=length(Is)
-            Is{k} = Is{k}(~discard);
+    %%% Identify remaining regions that are not unique under conjugation.
+    WW = [Ws{:}];
+    pdi = find(PD);
+    [~,ismi] = ismember(sort(-WW(pdi,:),2),sort(WW(pdi,:),2),'rows');
+    [~,srti] = sortrows(WW(pdi,:));
+    rnk(srti) = 1:length(srti);
+    PD(pdi(ismi>0))= rnk(ismi(ismi>0)) <= rnk(ismi(ismi(ismi>0)));
+
+    if  (max(shighpass) > 0 || any(slowpass<lowpass))
+        %%% Now we need to account for regions within the principal domain for which some
+        %%% subset of the frequencies falls within the highcut range. This is
+        %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to
+        %%% frequency pairs, thereby excluding any component of HOS that
+        %%% weights by the power spectrum. The resultant windowing is not strictly
+        %%% quasicumulant for orders > 5, but it removes a dominant
+        %%% contribution from the power spectrum.
+        discard = false(size(keep));
+        WKP = [Ws{:}];
+     %   WKP = WKP(keep,:);
+        for k = 1:order-1
+            discard(keep) = discard(keep) | any(abs(repmat(WKP(:,k),1,order-k)+WKP(:,k+1:order)) <= max(shighpass),2)   | all(abs(repmat(WKP(:,k),1,order)+WKP) >= max(slowpass),2)  ;       
         end
+
+        PD(discard(keep)) = [];
+        for k = 1:length(Ws)
+            Ws{k} = Ws{k}(~discard(keep));
+            if k<=length(Is)
+                Is{k} = Is{k}(~discard(keep));
+            end
+        end
+        keep(keep) = keep(keep) & ~discard(keep);
     end
-    keep(keep) = keep(keep) & ~discard;
 end
-
-
 
 
 
