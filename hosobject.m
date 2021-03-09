@@ -83,7 +83,7 @@ classdef hosobject < handle
        % Automatically apply a circular shift to the filter and waveforms to center the energy in both
        adjust_lag = true; 
        
-       % A phasor representing the amount of circular shift added to the filter estimate according to angle (1 = no shift, +/-1i = max shift = buffersize/2)
+       % A phasor representing the amount of circuglar shift added to the filter estimate according to angle (1 = no shift, +/-1i = max shift = buffersize/2)
        lag = 1; 
        thresh = 0;
        threshtemp = 1;
@@ -101,6 +101,8 @@ classdef hosobject < handle
        regstat = [];
        regweight=[];
        sampweight = [];
+       
+       mask = [];  %Mask applied to HOS domain. Only computes coefficients where the value is true;
        
        %Matrices to integrate over all but 1st dimension of square form bicoherence, from the reduced form.
        Imats = {};
@@ -263,8 +265,10 @@ classdef hosobject < handle
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
               fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
+             
                metac = metaclass(me);
                props = metac.PropertyList;
+
                getprops = strcmp({props.SetAccess},'public');
                fns = intersect(fns,{props(getprops).Name}); %This ensures that only fields with public set access are set to avoid unexpected behavior.
                
@@ -379,7 +383,7 @@ classdef hosobject < handle
                 k=k+2;
             end
             me(1).do_indexing_update = true;
-            me(1).update_frequency_indexing(freqindex)
+            me(1).update_frequency_indexing(freqindex,me(1).mask)
             me(1).reset();
             
             if length(me)>1
@@ -1148,6 +1152,8 @@ classdef hosobject < handle
 %                     XbiasNum = sum(abs(FFX).^2,2)./m^2;
                     XbiasNum = abs(FFX).^2*abs(wgt).^2;
                     XbiasNum(end+1,1) = 0;
+                    XbiasNum(isnan(XbiasNum))=0;
+                    NX(isnan(NX))=0;
                     me.BIASnum = me.BIASnum.*(1-lr).^(2*m) + lrbias*XbiasNum;
                     me.D = (1-lradj)*me.D + lradj*NX+eps;
                    
@@ -1155,6 +1161,7 @@ classdef hosobject < handle
                     %This doesn't seem to have strictly correct symmetry
                     XBCpart = mean(abs(FFXpart{1}).^2,2);
                     XBCpart(end+1,1) = 0;
+                    XBCpart(isnan(XBCpart))=0;
                     me.BCpart = (1-lradj)*me.BCpart + lradj*XBCpart;                    
                     me.D = sqrt(me.BCpart.*me.PSD(me.freqindx.Is(:,1)))+eps;
             end
@@ -1569,8 +1576,11 @@ classdef hosobject < handle
                 use_shifted=false;
 %                 initialize = true;
                 if me(1).use_partial_delay_method
+                    updatebsp = me(1).do_bsp_update;
+                    me(1).do_bsp_update = false; %Avoid updating the bispectrum estimate twice unnecessarily here.
                     me(1).get_input(Xsh,apply_window,use_shifted,initialize);
-                    Gpart = me(1).partial_delay_filt(Xsh,false); 
+                    me(1).do_bsp_update = updatebsp;
+                    Gpart = me(1).partial_delay_filt(Xsh,false,true); %
                     Gpart(isnan(Gpart))=0;
                     if me(1).do_filter_update
                         me(1).G = mean(Gpart,2);
@@ -1741,8 +1751,10 @@ classdef hosobject < handle
                    Xwin = cat(3,Xwin,Xwin2);
                    T = cat(3,T,T2);
                else
-                    me(2).Imats = me(1).Imats;
-                    me(2).Iconjmats = me(1).Iconjmats;                    
+                   if  length(me(2).B)==length(me(1).B)
+                        me(2).Imats = me(1).Imats;
+                        me(2).Iconjmats = me(1).Iconjmats;                    
+                   end
                     me(2:end).get_block(xin-xrec,maxiter,makeplot,segment,compno+1,initialize);
                end
             end
