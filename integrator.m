@@ -72,6 +72,6 @@ end
 %     Isum = [Isum{:}]; 
 
 %%% This matrix combines the two operations...
-Iout = Isum'*Imap;
+Iout = (Imap'*Isum)';
 
 
