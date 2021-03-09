@@ -59,11 +59,19 @@ Imap = sparse(fmapto,double(mapto(fmapto)),ones(size(fmapto)),numel(mapto),vecle
 
 
 %%% This matrix integrates over all dimensions in the array but dim
-Isum = arrayfun(@(x)sparse(Is{dim}(:)==x),inds{dim},'uniformoutput',false);
-Isum = [Isum{:}]; 
+Isum = sparse(1);
+for k = 1:length(Is)
+    if k == dim
+        Isum = kron(speye(length(Is{dim})),Isum);
+    else
+        Isum = kron(ones(length(Is{dim}),1),Isum);
+    end
+end
+%     %Very slow way of doing it
+%     Isum = arrayfun(@(x)sparse(Is{dim}(:)==x),inds{dim},'uniformoutput',false);
+%     Isum = [Isum{:}]; 
 
 %%% This matrix combines the two operations...
-
 Iout = Isum'*Imap;
 
 
