@@ -103,7 +103,7 @@ classdef hosobject < handle
        sampweight = [];
        
        mask = [];  %Mask applied to HOS domain. Only computes coefficients where the value is true;
-       
+       diagonal_slice = false; %Only compute coefficients on slices where at least one Wi==Wj, if true. If an integer, n, require at least n equalities.  
        %Matrices to integrate over all but 1st dimension of square form bicoherence, from the reduced form.
        Imats = {};
        Iconjmats = {};
@@ -488,7 +488,7 @@ classdef hosobject < handle
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
             if nargin < 2 || isempty(freqindx)
-                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass); %#ok<*PROPLC,*PROP>
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice); %#ok<*PROPLC,*PROP>
             end
             
             me.freqindx  = freqindx;
