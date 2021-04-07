@@ -77,25 +77,64 @@ if length(freqs) < order
 end
 
 
+
+if false & diagonal_slice
+    
+    dims = cellfun(@length,freqs(1:order-1));
+    
+    dgs = sparse(prod(dims),1);
+    repfr =[1 cumprod(dims)];
+    keep = false(dims);
+    for k = 1:order-1
+        
+        for kk = k+1:length(freqs)-1
+           
+            iseq = sparse(freqs{k}'==freqs{kk});
+            
+            rpm=repmat(kron(iseq,ones(repfr(k),1)),repfr(kk-1)./repfr(k),1);
+            rec = repmat(rpm(:),prod(dims)/numel(rpm),1);
+%             rec = kron(ones(prod(dims)/numel(rpm)),rpm(:));
+            
+            dgs = dgs+rec(:);
+            
+        end
+%         dgs = kron(ones(numel(iseq),1),dgs)+iseq(:);
+    end
+    
+    keep(:) =dgs>=diagonal_slice;   
+    
+    Is = repmat({[]},1,order-1);
+    [Is{:}] = ind2sub(dims,find(keep));
+    kpindx = keep(:);
+else
+%     keep  = true;
+    
+    freqsi = cellfun(@(x)1:length(x),freqs(1:end-1),'uniformoutput',false);
+    Is = repmat({[]},1,order-1);
+    [Is{:}] = ndgrid(freqsi{:});
+    Is = cellfun(@(x)x(:),Is,'uniformoutput',false);
+    keep = true(size(Is{1}(:)));
+    kpindx = keep;
+end
+
+
 %%% The number of regions in the principal domain depends on the possible 
 %%% signatures.
 nsig = floor(order/2);
 signatures = (-1).^(repmat(1:order,nsig,1)- 1>= order-repmat((1:nsig)',1,order));
 
-freqsi = cellfun(@(x)1:length(x),freqs(1:end-1),'uniformoutput',false);
-Is = repmat({[]},1,order-1);
-[Is{:}] = ndgrid(freqsi{:});
 
 Ws = {};
 Wsum=0;
 
 for k = 1:length(Is)
-    Ws{k} = freqs{k}(Is{k});
+    
+    Ws{k}(:,1) = freqs{k}(Is{k});
     Wsum  = Wsum+Ws{k};
     
 end
 Ws{order} = -Wsum;
-
+% 
 if diagonal_slice
     Wseq = 0;
     for k = 1:length(Ws)-1
@@ -105,8 +144,8 @@ if diagonal_slice
     end
 
     keep = Wseq>=diagonal_slice;      
-else
-    keep  = true;
+% else
+%     keep  = true;
 end
 
 if any(~isinf(xlowpass))
@@ -114,7 +153,8 @@ if any(~isinf(xlowpass))
     for k = 1:length(Ws)
         keepxlp = keepxlp | abs(Ws{k})<xlowpass(k);
     end
-    keep = keepxlp & keep;
+     keep(kpindx) = keepxlp & keep(kpindx);
+%     keep = keepxlp & keep;
 end
 
 if any(xhighpass>0)
@@ -122,15 +162,18 @@ if any(xhighpass>0)
     for k = 1:length(Ws)
         keepxhp = keepxhp | abs(Ws{k})>=xhighpass(k);
     end
-    keep  = keep & keepxhp;
+     keep(kpindx)  = keep(kpindx) & keepxhp;
+%     keep  = keep & keepxhp;
 end
 for k = 1:length(Ws)
    
     if ~isinf(lowpass(k))
-        keep = keep & abs(Ws{k})<lowpass(k);
+         keep(kpindx) = keep(kpindx) & abs(Ws{k})<lowpass(k);
+%         keep = keep & abs(Ws{k})<lowpass(k);
     end
     if highpass(k)>0
-        keep = keep & abs(Ws{k})>highpass(k);
+%         keep = keep & abs(Ws{k})>highpass(k);
+         keep(kpindx) = keep(kpindx) & abs(Ws{k})>highpass(k);
     end
 end
 if ~isscalar(mask)
@@ -138,9 +181,11 @@ if ~isscalar(mask)
 end
 
 for k = 1:length(Ws)
-    Ws{k} = Ws{k}(keep);
+     Ws{k} = Ws{k}(keep(kpindx));
+%     Ws{k} = Ws{k}(keep);
     if k<=length(Is)
-        Is{k} = Is{k}(keep);
+         Is{k} = Is{k}(keep(kpindx));
+%         Is{k} = Is{k}(keep(kpindx));
     end
 end
 

@@ -64,7 +64,7 @@ for k = 1:length(Is)
     if k == dim
         Isum = kron(speye(length(Is{dim})),Isum);
     else
-        Isum = kron(ones(length(Is{dim}),1),Isum);
+        Isum = kron(ones(length(Is{k}),1),Isum);
     end
 end
 %     %Very slow way of doing it
