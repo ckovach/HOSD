@@ -292,7 +292,7 @@ classdef hosobject < handle
                
                
                me(1).order = obj(1).order; 
-               me(1).check_sign = mod(me(1).order,2)~=0;
+               me(1).check_sign = mod(obj(1).order,2)~=0;
 
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
@@ -319,7 +319,7 @@ classdef hosobject < handle
                end
                return
             else
-               me(1).check_sign = mod(me(1).order,2)~=0;
+               me(1).check_sign = mod(order,2)~=0;
             end
             
             if nargin < 1 
@@ -1275,7 +1275,7 @@ classdef hosobject < handle
             if   me.check_sign 
                 GFX = zeros(size(FX));
                 GFX(me.keepfreqs{1},:) = Gpart(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)),:).*FX(me.keepfreqs{1},:);
-                GX = ifft(GFX);
+                GX = real(ifft(GFX));
                 sgn = sum(sign(GX).*(abs(GX)==max(abs(GX)))) ==1;
                 Gpart=Gpart.*sgn;
             else
