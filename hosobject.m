@@ -268,13 +268,13 @@ classdef hosobject < handle
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-              fns = [{'BIASnum'};setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'})];
+              fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'});
              
                metac = metaclass(me);
                props = metac.PropertyList;
 
                getprops = strcmp({props.SetAccess},'public');
-               fns = intersect(fns,{props(getprops).Name}); %This ensures that only fields with public set access are set to avoid unexpected behavior.
+               fns = [{'BIASnum'};intersect(fns,{props(getprops).Name})]; %This ensures that only fields with public set access are set to avoid unexpected behavior.
                
                if isa(order,'struct')
                    fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
