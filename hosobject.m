@@ -277,7 +277,7 @@ classdef hosobject < handle
                fns = [{'BIASnum'};intersect(fns,{props(getprops).Name})]; %This ensures that only fields with public set access are set to avoid unexpected behavior.
                
                if isa(order,'struct')
-                   fnsunset = setdiff({'bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
+                   fnsunset = setdiff({'fftN','bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
                    for k = 1:length(fnsunset)
                        for kk = 1:length(obj)
                            obj(kk).(fnsunset{k})=me(1).(fnsunset{k});
@@ -292,8 +292,9 @@ classdef hosobject < handle
                
                
                me(1).order = obj(1).order; 
-               me(1).check_sign = mod(obj(1).order,2)~=0;
-
+               if obj(1).check_sign
+                    me(1).check_sign = mod(obj(1).order,2)~=0;
+               end
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
                
                me(1).do_indexing_update = false;
@@ -318,7 +319,7 @@ classdef hosobject < handle
                    me(2:end) = hosobject(obj(2:end));
                end
                return
-            else
+            elseif  me(1).check_sign
                me(1).check_sign = mod(order,2)~=0;
             end
             
@@ -415,7 +416,7 @@ classdef hosobject < handle
             me(1).inputbuffer = z;
             me(1).outputbuffer = z;
             me(1).shiftbuffer = z2;
-            me(1).PSD = [z;0];
+            me(1).PSD = [z2;0];
 %             me(1).G = ones(size(z));
             me(1).bufferPos = 0;
             me(1).B(:)=1;me(1).B=double(me(1).B);
@@ -430,7 +431,7 @@ classdef hosobject < handle
             me(1).running_var = 1;
             me(1).running_ssq = 1;
             me(1).running_mean = 0;
-            me(1).win = window(me(1).window,me(1).fftN); %#ok<CPROP>
+            me(1).win = window(me(1).window,me(1).bufferN); %#ok<CPROP>
 %             if me(1).fftN< me(1).bufferN || (~isempty(me(1).keepfreqs) && length(me(1).keepfreqs{1})~=me(1).bufferN)
 %                 me(1).buffersize = me(1).bufferN;
 % %                 me(1).fftN = me(1).bufferN;
@@ -444,7 +445,7 @@ classdef hosobject < handle
             if isempty(me(1).threshold_order)
                 me(1).threshold_order = me(1).order;
             end
-            me(1).CDFbuffer=repmat(z(:,ones(1,me(1).threshold_order)),me(1).CDFupsample,1);
+            me(1).CDFbuffer=repmat(z2(:,ones(1,me(1).threshold_order)),me(1).CDFupsample,1);
             
             if length(me)>1
                 me(2:end).reset();
@@ -792,9 +793,10 @@ classdef hosobject < handle
             else
                 smpw = me.sampweight;
             end
-            if size(X,1) == me.bufferN
+            if size(X,1) == me.bufferN || size(X,1)==me.fftN
                 if apply_window
                     win = me.win;
+                    win(end+1:size(X,1))=0;
                 else
                     win =ones(size(X,1),1);
                 end
@@ -1223,7 +1225,7 @@ classdef hosobject < handle
            % FFX = 1;
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
             
-            if ~use_sample_bispectrum
+            if ~use_sample_bispectrum || ~me(1).do_bsp_update
                 FFX = conj(FX(me.freqindx.Is(:,me.order),:));
                 FFXpart = {};
                 FFXpart(1:me.order-1) = {FFX};
@@ -1408,7 +1410,7 @@ classdef hosobject < handle
              end
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
-                if  size(xin,1) ~=me(1).bufferN 
+                if  size(xin,1) ~= me(1).bufferN 
 %                     stepn = round(me(1).poverlap*me(1).bufferN);
 %                     nget = nxin - me(1).bufferN+1;
 %                     tindx = (0:me(1).bufferN-1)';
@@ -1511,7 +1513,7 @@ classdef hosobject < handle
             
             if nxin >= me(1).bufferN
                 me(1).bufferPos = 0; % Discard the buffer
-                if  size(xin,1) ~=me(1).bufferN 
+                if  size(xin,1) ~=me(1).fftN %me(1).bufferN 
                     if ~isfield(segment,'wint') || isempty(segment.wint)
                         stepn = round(me(1).poverlap*me(1).bufferN);
                         nget = nxin - me(1).bufferN+1;
@@ -1555,6 +1557,7 @@ classdef hosobject < handle
                     T=0;
                     wint=[];
                 end
+%                 Xchop(end+1:me(1).fftN,:) = 0;
                 del = Inf;
 %                 tol =1; % Stop when the average shift is less than 1 sample
                 tol =me(1).sampling_rate/me(1).lowpass(1);
@@ -1565,6 +1568,7 @@ classdef hosobject < handle
 %                 for k = 1:length(Xchop)
                 Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2));
 %                    Xwin = Xchop.*repmat(me(1).win,1,size(Xchop,2)); 
+                Xwin(end+1:me(1).fftN,:)=0;
                 Xsh = Xwin;
                 Xfilt=Xsh;
 %                 end
@@ -1682,7 +1686,8 @@ classdef hosobject < handle
                         me(1).get_input(Xsh,apply_window,use_shifted,initialize);
                         [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
                        newdt = me(1).delay;
-                        Xsh = real(ifftshift(ifft(FXsh),1));
+%                         Xsh = real(ifftshift(ifft(FXsh),1));
+                        Xsh = real(ifft(FXsh));
                    end
                     % checks two and one step back to reduce getting
                     % trapped at points of cyclical stability.
@@ -1935,7 +1940,7 @@ classdef hosobject < handle
             xisnan = isnan(X);
 %             X(xisnan)=0; 
             Xfilt = me.apply_filter(X,apply_window);
-            if size(X,1) == me.bufferN
+            if size(X,1) == me.fftN %me.bufferN
                  Xfilt = fftshift(Xfilt,1);
              
 %                 win = me.win;
@@ -1952,7 +1957,7 @@ classdef hosobject < handle
 %             wf = fftshift(me.waveform);
             wf = me.waveform;
             wf(end+1:size(Xthr,1)) = 0;
-            wf = circshift(wf,-floor(me.bufferN/2));
+            wf = circshift(wf,-floor(me.fftN/2));
             Xthr(end+1:length(wf),:)=0;
             FXthresh =fft(Xthr);
             featfft = fft(wf);
@@ -1966,7 +1971,7 @@ classdef hosobject < handle
                 %%% Apply the filter to the reconstructed data for LMSE fitting
                 %%% so that the frequencies are appropriately weighted.
                 Xrecfilt = me.xfilt(Xrec,apply_window);
-                if size(X,1) == me.bufferN
+                if size(X,1) == me.fftN
                      Xrecfilt = ifftshift(Xrecfilt,1);
                 end
                 Xrecfilt(isnan(Xfilt))=0;
