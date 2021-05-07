@@ -114,6 +114,7 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
 %      outfiles = regexp(txt,'\n([\w_.\-]*)\t*0\t*OUTPUT\t*([\w-]*)','tokens');
 %      outfiles = cat(1,outfiles{:});
       try
+        warning('off','MATLAB:load:variableNotFound')
          for kch = 1:length(files)
             
 %             wh= whos('-file',files{kch});
@@ -129,6 +130,8 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
             ldchin(kch)=ldd;
             
          end
+         warning('on','MATLAB:load:variableNotFound')
+
          chan = [ldchin.chan];
 %          if isstruct(chan)
              chann = [chan.channel];
@@ -145,7 +148,8 @@ if ~isempty(existing_dir) % && exist(fullfile(existing_dir,'manifest.txt'),'file
             flnum = regexp(files,'LFPx(\d*)','tokens','once');
             flnum = cellfun(@str2num,[flnum{:}]);
             files = files(ismember(flnum,[availch.channel]));
-            
+                warning('on','MATLAB:load:variableNotFound')
+
       end
    
 %     co2ch([lddat.block.lozchannels.contact]) = [lddat.block.lozchannels.channel];
