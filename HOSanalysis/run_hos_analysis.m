@@ -225,7 +225,12 @@ seed = reseed;
 z = zscore(double(dat.dat));
 hosargs = [{size(T,1),dat.fs(1),opts.lowpass,[],[]},opts.hosargs];
 if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd && ~opts.save_space
-    load(outputfile,'hos','segment')
+    try
+        load(outputfile,'hos','segment')
+    catch err
+        delete(outputfile)
+        error(err)
+    end
     segment = segment(1);
     segment.wintadj=[];
 else
