@@ -15,59 +15,115 @@ classdef hosminimal < handle
     % SEE HOSOBJECT
     
     properties
+        
+       % HOS order (3=bispectrum, 4=trispectrum, etc.)
        order = 3;
+       
+       % Axis frequencies
        freqs       
-%        B = 0;
-%        Bpart = 0;
-%        D = 1;
+       
+       % Power spectral density estimate
        PSD = 0;
       
        
+       % Sampling rate of the input data
+       sampling_rate = 1; 
+
+       % Normalization used in computing bi-(or poly-)coherence
+       normalization = 'awplv'; 
        
-       sampling_rate = 1; % Sampling rate of the input data
-       normalization = 'awplv'; % Normalization used in computing bi-(or poly-)coherence
-       hos_learning_rate = .01; % Learning rate for online mode
-       filter_adaptation_rate = .02; % Filter adaptation rate for online mode
+       %HOS learning rate for online mode
+       hos_learning_rate = .01; 
+       
+       % Filter adaptation rate for online mode
+       filter_adaptation_rate = .02; 
 %        learningrate = .02; % Asymptotic learning rate
-       burnin = 20;
-       window_number = 0;  % Nunmber of window processed
-       poverlap = .5;      % Default overlap between adjacent windows
+       filter_burnin = 20;
+       hos_burnin = 20;
+       
+        % Nunmber of window processed
+       window_number = 0; 
+       
+       % Default overlap between adjacent windows as the  proportion of step size to window width (poverlap = 1  is no overlap, poverlap = 2 interleaves a gap of 1 window duration between windows, etc.)
+       poverlap = .5;    
       
        do_update = true;
        do_bsp_update = true;
        do_wave_update = true;
        do_filter_update = true;
-       adjust_lag = true; % Automatically apply a circular shift to the filter and waveforms to center the energy in both
-       lag = 1; % A phasor representing the amount of circularshift added to the filter estimate (1 = no shift, +/-1i = max shift)
+       do_CDF_update = true;
+
+       % Automatically apply a circular shift to the filter and waveforms to center the energy in both
+       adjust_lag = true; 
+       
+       % A phasor representing the amount of circuglar shift added to the filter estimate according to angle (1 = no shift, +/-1i = max shift = buffersize/2)
+       lag = 1; 
        thresh = 0;
        threshtemp = 1;
        threshold_type = 'hard';
+       threshold_order = [];
        keepfreqs
+       
+       % Use only the principal domain in the estimates
        pdonly = true;
        dat = [];
-       avg_delay = 1; % Average delay is stored as a phasor because averaging is in the circular domain.
+       
+       %For odd orders, reject negative outliers beyond this value. This improves the ability to recover features in the presence of noise and interference from similar features with opposite sign.
        outlier_threshold = 5;
        fftN = 1024;
        regstat = [];
        regweight=[];
        sampweight = [];
+       
+       mask = [];  %Mask applied to HOS domain. Only computes coefficients where the value is true;
+       diagonal_slice = false; %Only compute coefficients on slices where at least one Wi==Wj, if true. If an integer, n, require at least n equalities.  
+       %Matrices to integrate over all but 1st dimension of square form bicoherence, from the reduced form.
+       Imats = {};
+       Iconjmats = {};
+       
+       %Structure describing the segmentation of the input signal (if applicable)
        segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
        
+       %(inverse) CDF is sampled at evenly spaced CDFupsample.*buffersize quantiles
+       CDFupsample = 4; 
+       
+        %Buffer for the CDF of the filter output and moments up to order
+       CDFbuffer=[];
+        use_adaptive_threshold = true;
+          running_mean=0;
+        running_ssq = 1;
+        running_var = 1;
+        
+        % During iteration use positive peaks only. Default true
+        % if mod(order,2)=1 and false if mod(order,2) = 0.
+        check_sign = false;
+      
      end
   
     properties (GetAccess = public, SetAccess=protected)
        
-        inputbuffer = []; % Current input buffer
-        outputbuffer = []; % Current outputbuffer
+        % Current input buffer
+        inputbuffer = []; 
+        
+         % Current outputbuffer
+        outputbuffer = [];
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
-        thresholdbuffer=[];
+        
+        % Structure containing information on frequency indexing
+        freqindx = [];
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
-        radw = [];  % Vector of sample frequencies in radian units
-        sampt = []; % Vector of sample indices
+        
+        % Vector of sample frequencies in radian units
+        radw = [];  
+        
+        % Vector of sample indices
+        sampt = []; 
+        
+        % Vector of feature delays in the most recent input windows
         delay = 0;
         waveftlag = [];
       
@@ -78,7 +134,7 @@ classdef hosminimal < handle
     
     properties (Access = {?hosobject, ?hosminimal})
       bufferN = 1024;
-      freqindx = [];
+%       freqindx = [];
 
 %      wintype = 'hann'; % Default window type
       wintype = 'sasaki'; % Default window type
