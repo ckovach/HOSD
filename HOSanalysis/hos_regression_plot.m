@@ -419,7 +419,7 @@ for bsdi = 1:length(bsidin.result)
        if isempty(bsidin.result(bsdi).segment)
            if useclust % Save just to prove we here
               figdir = fullfile(outputdir,'figs');
-             wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
+             wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'[\\\s]','_'),bsdi);
              wfn = fullfile(figdir,wfnpart);
               pdflink(fig,[],[],wfn)
              res.pdfpages{bsdi}=wfn;
@@ -565,7 +565,7 @@ for bsdi = 1:length(bsidin.result)
          if ~exist(figdir,'dir')
              mkdir(figdir)
          end
-         wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'\s','_'),bsdi);
+         wfnpart = sprintf('%s_contact_%03i_bispectral_%s_cmp%i.pdf',bsidin.block.block,bsidin.chan(1).contact,regexprep(bsidin.block.subprotocol,'[\\\s]','_'),bsdi);
          wfn = fullfile(figdir,wfnpart);
           pdflink(fig,[],[],wfn)
                     
