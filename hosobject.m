@@ -1813,10 +1813,14 @@ classdef hosobject < handle
                 Ychop = me(1).chop_input(yin,true);
                 keep = ~any(isnan(Ychop)); %Discard any samples containing nans
                 Ychop = Ychop(:,keep,:);
-                for k = 1:size(xin,2)
-                    Xchop = me(1).chop_input(xin(:,k),true);
-                    Xchop = Xchop(:,keep,:);
-                    x(:,k) = sum(Xchop)/sum(me(1).win);                
+                if size(xin,1)==size(yin,1)
+                    for k = 1:size(xin,2)
+                        Xchop = me(1).chop_input(xin(:,k),true);
+                        Xchop = Xchop(:,keep,:);
+                        x(:,k) = sum(Xchop)/sum(me(1).win);                
+                    end
+                else
+                    x = xin(keep,:);
                 end
                 FY = fft(Ychop);
             else
