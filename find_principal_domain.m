@@ -212,12 +212,13 @@ if order >3
     %%% Identify remaining regions that are not unique under conjugation.
     WW = [Ws{:}];
     pdi = find(PD);
-    [~,ismi] = ismember(sort(-WW(pdi,:),2),sort(WW(pdi,:),2),'rows');
+%     [~,ismi] = ismember(sort(-WW(pdi,:),2),sort(WW(pdi,:),2),'rows');
+    [~,ismi] = ismembertol(sort(-WW(pdi,:),2),sort(WW(pdi,:),2),'ByRows',true);
     [~,srti] = sortrows(WW(pdi,:));
     rnk(srti) = 1:length(srti);
     PD(pdi(ismi>0))= rnk(ismi(ismi>0)) <= rnk(ismi(ismi(ismi>0)));
 
-    if  (max(shighpass) > 0 || any(slowpass<lowpass))
+    if  (max(shighpass) >= 0 || any(slowpass<lowpass))
         %%% Now we need to account for regions within the principal domain for which some
         %%% subset of the frequencies falls within the highcut range. This is
         %%% essentially the subset sum problem, which is NP complete. Here we will limit the search to

@@ -4,8 +4,8 @@ function varargout =plotpolycoh(hos)
 
 
 %scale = 'log';
-%  scale = 'lin';
- scale = '';
+  scale = 'lin';
+% scale = '';
 switch scale
 
     case 'log'
@@ -123,8 +123,9 @@ for hi = 1:length(hos)
         else
             caxis(cax)
         end
-        tick = @(x)round(linspace(x(1),x(end),10));
-        set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{1}))
+%         tick = @(x)round(linspace(x(1),x(end),10));
+        tick = @(x)(linspace(x(1),x(end),10));
+%         set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{1}))
     end
 end
 if nargout>=1

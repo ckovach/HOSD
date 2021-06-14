@@ -103,7 +103,7 @@ end
 
 switch example
     case {'nsr_ecg_noise','nsr_ecg_chi2_noise'}  % Denoising of Normal ECG
-        ekg.nsamp = Fs*120; % Get two minutes of data
+        ekg.nsamp = Fs*120*5; % Get two minutes of data
         ekg.recstart =Fs*5*60; %Starting 5 minutes into the recording
     
     case 'arrhythmia'
