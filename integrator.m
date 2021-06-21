@@ -47,9 +47,9 @@ end
 
 inds = arrayfun(@(x)1:x,sz,'uniformoutput',false);
 
-Is = repmat({[]},1,length(sz));
+% Is = repmat({[]},1,length(sz));
 
-[Is{:}] = ndgrid(inds{:});
+% [Is{:}] = ndgrid(inds{:});
 
 %%% This matrix maps elements in the vector to elements in the array; 
 %%% that is, reshape(x'*Imap,size(mapto)) casts x into the array according 
@@ -60,11 +60,11 @@ Imap = sparse(fmapto,double(mapto(fmapto)),ones(size(fmapto)),numel(mapto),vecle
 
 %%% This matrix integrates over all dimensions in the array but dim
 Isum = sparse(1);
-for k = 1:length(Is)
+for k = 1:length(inds)
     if k == dim
-        Isum = kron(speye(length(Is{dim})),Isum);
+        Isum = kron(speye(sz(k)),Isum);
     else
-        Isum = kron(ones(length(Is{k}),1),Isum);
+        Isum = kron(ones(sz(k),1),Isum);
     end
 end
 %     %Very slow way of doing it
