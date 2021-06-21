@@ -78,7 +78,7 @@ end
 
 
 
-if false & diagonal_slice
+if diagonal_slice
     
     dims = cellfun(@length,freqs(1:order-1));
     
@@ -143,7 +143,7 @@ if diagonal_slice
         end
     end
 
-    keep = Wseq>=diagonal_slice;      
+    keep(keep) = Wseq>=diagonal_slice;      
 % else
 %     keep  = true;
 end
