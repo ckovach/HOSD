@@ -563,9 +563,9 @@ classdef hosobject < handle
         function set.BIAS(me,in)
              in(isnan(in))=0;
              if min(size(in))==1
-                me.BIASnum = in*me.D.^2; 
+                me.BIASnum = in.*me.D.^2; 
             else
-                me.BIASnum = [in(me.freqindx.reduce)*me.D.^2;0];
+                me.BIASnum = [in(me.freqindx.reduce).*me.D.^2;0];
              end
         end
         function out = get.fullmap(me)
