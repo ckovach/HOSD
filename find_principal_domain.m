@@ -78,15 +78,20 @@ end
 
 
 
-if diagonal_slice
+if  diagonal_slice
     
     dims = cellfun(@length,freqs(1:order-1));
     
     dgs = sparse(prod(dims),1);
     repfr =[1 cumprod(dims)];
     keep = false(dims);
+    ws = repmat({[]},1,order-1);
+    [ws{:}] = ndgrid(freqs{1:order-1});
+    word = -sum(cat(order,ws{:}),order);
+    dgs(:) = sum(abs(cat(order,ws{:})-word)<eps.*abs(word),order);
+ 
     for k = 1:order-1
-        
+     
         for kk = k+1:length(freqs)-1
            
             iseq = sparse(freqs{k}'==freqs{kk});
@@ -96,7 +101,7 @@ if diagonal_slice
 %             rec = kron(ones(prod(dims)/numel(rpm)),rpm(:));
             
             dgs = dgs+rec(:);
-            
+%             dgs(:) = dgs(:) + (ws{k}(:)==ws{kk}(:));
         end
 %         dgs = kron(ones(numel(iseq),1),dgs)+iseq(:);
     end
@@ -207,7 +212,7 @@ for k = 1:nsig
   
 end
 
-if order >3
+if  order >3
     
     %%% Identify remaining regions that are not unique under conjugation.
     WW = [Ws{:}];
