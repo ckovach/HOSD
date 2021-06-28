@@ -4,8 +4,8 @@ function varargout =plotpolycoh(hos)
 
 
 %scale = 'log';
-  scale = 'lin';
-% scale = '';
+%  scale = 'lin';
+ scale = '';
 switch scale
 
     case 'log'
@@ -21,7 +21,8 @@ end
 
 % fig = figure('WindowButtonMotionFcn',@(a,b,c)figcallback(a,wtr,iwtr));
 % fig = figure;
-
+absfun = @abs;
+%absfun = @real;
 subxy = almostSquare(length(hos));
 for hi = 1:length(hos)
    
@@ -37,7 +38,7 @@ for hi = 1:length(hos)
         [P,M] = meshgrid(power,modfreq);
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
-        B(:) = interp3(W1,W2,W3,fftshift(abs(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
+        B(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
         ax(hi) = subplot(subxy(1),subxy(2),hi);
         imh = imagesc(modfreq,power,B');
          title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
@@ -70,10 +71,12 @@ for hi = 1:length(hos)
         nsamps = cellfun(@length,wb);
 
         K = cellfun(@(x)1:length(x),wb(3:end),'uniformoutput',false);
-
+        
+        Ws = wb;
 
         [K{:}] = ndgrid(K{:});
-
+        [Ws{:}] = ndgrid(wb{:});
+        Ws{end} = -sum(cat(length(Ws),Ws{1:end-1}),length(Ws));
         K = cellfun(@(x)x(:),K,'uniformoutput',false);
         K = [K{:}];
 
@@ -94,7 +97,7 @@ for hi = 1:length(hos)
         [wbin{:}] = ndgrid(wb0{:});
         [wbout{:}] = ndgrid(wb{:});
 
-        B = interpn(wbin{:},abs(fftshift(hos(hi).bicoh)),wbout{:});
+        B = interpn(wbin{:},absfun(fftshift(hos(hi).bicoh)),wbout{:});
         for k = 1:size(K,1)
 
             cent = [0 0];
@@ -104,7 +107,12 @@ for hi = 1:length(hos)
             wcent = cent.*dwb;
 
             imk = num2cell(K(k,:));
-            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),abs(B(:,:,imk{:})));
+            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),B(:,:,imk{:}));
+            delete(datatip(imh(end)));
+%             delete(dt)
+            for kk = 1:length(Ws)
+                imh(end).DataTipTemplate.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk}(:,:,imk{:}));
+            end
             for kk = 3:length(wb)-1
                 if kk==3
                     txt{kk-2} = sprintf('%0.2f',wb{kk}(K(k,kk-2)));
@@ -128,6 +136,8 @@ for hi = 1:length(hos)
 %         set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{1}))
     end
 end
+
+
 if nargout>=1
     varargout{1}=imh;
 end
