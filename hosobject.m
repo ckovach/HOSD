@@ -125,6 +125,14 @@ classdef hosobject < handle
         % if mod(order,2)=1 and false if mod(order,2) = 0.
         check_sign = false;
       
+        %Include regions with these signatures, given as absolute
+        %difference between the number of positive and negative
+        %frequencies.
+        include_signatures = []; 
+        
+        % Normalize each sample by its integrated magnitude spectrum to
+        % suppress outliers.
+        integrated_magnitude_normalization = false;
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -498,7 +506,7 @@ classdef hosobject < handle
             me.keepfreqs = keepfreqs;
             %%% Initialize the indexing   
             if nargin < 2 || isempty(freqindx)
-                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice); %#ok<*PROPLC,*PROP>
+                freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice,me.include_signatures); %#ok<*PROPLC,*PROP>
             end
             
             me.freqindx  = freqindx;
@@ -1100,9 +1108,13 @@ classdef hosobject < handle
             
             if isempty(me.sampweight)
 %                 wgt = ones(size(FFX,2),1)/size(FFX,2);
-                wgt = ~any(isnan(FFX))'/sum(~any(isnan(FFX)));
-            else
-                wgt = me.sampweight;
+                 if me.integrated_magnitude_normalization
+                    ims = nansum(abs(FFX))';
+                    wgt = 1./(ims+nanmean(ims(:)).*1e-6);
+                    wgt(isnan(wgt))=0;
+                 else
+                     wgt = ~any(isnan(FFX))'/sum(~any(isnan(FFX)));
+                 end
             end
             for kk =1:me.order
                     FFXpart{kk}(isnan(FFXpart{kk})) = 0;

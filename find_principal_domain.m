@@ -1,4 +1,4 @@
-function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice)
+function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
 
 % Find the principal domain in a higher-order spectrum
 %
@@ -27,6 +27,9 @@ function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,ma
 
 % Copyright Christopher Kovach, University of Iowa, 2018
 
+if nargin < 11 
+    include_sig = [];
+end
 if nargin < 10 || isempty(diagonal_slice)
     diagonal_slice = false;
 end
@@ -185,6 +188,12 @@ if ~isscalar(mask)
     keep(:) = keep(:)&mask(:);
 end
 
+if ~isempty(include_sig)
+    Wsig=abs(sum(sign([Ws{:}]),2));
+    
+    keep(kpindx) = keep(kpindx) & ismember(Wsig,include_sig);    
+end
+
 for k = 1:length(Ws)
      Ws{k} = Ws{k}(keep(kpindx));
 %     Ws{k} = Ws{k}(keep);
@@ -194,10 +203,18 @@ for k = 1:length(Ws)
     end
 end
 
+
+
+
 [~,srti] = sort(lowpass(1:end-1)); %This ensures the principal domain includes the complete range of frequencies
 srti(end+1) = order;
 PD = false;
 for k = 1:nsig
+    
+    if ~isempty(include_sig) && ~ismember(abs(sum(signatures(k,:))),include_sig)
+        continue
+    end
+    
     PD0 = Ws{srti(1)}>=0 & Ws{order}<=0; %First signature is always + and last always -.  ;
     for kk = 2:order
 %           PD0 = PD0 & signatures(k,kk)*Ws{kk}>=signatures(k,kk-1)*Ws{kk-1};
