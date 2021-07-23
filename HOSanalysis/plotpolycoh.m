@@ -3,9 +3,9 @@ function varargout =plotpolycoh(hos)
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 
 
-%scale = 'log';
+scale = 'log';
 %  scale = 'lin';
- scale = '';
+%  scale = '';
 switch scale
 
     case 'log'
@@ -38,7 +38,9 @@ for hi = 1:length(hos)
         [P,M] = meshgrid(power,modfreq);
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
+%         Bpart = B;
         B(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
+%         Bpart(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
         ax(hi) = subplot(subxy(1),subxy(2),hi);
         imh = imagesc(modfreq,power,B');
          title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
@@ -49,10 +51,12 @@ for hi = 1:length(hos)
     elseif hos(hi).diagonal_slice && hos(hi).order == 3
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         B = nan*wb0{1};
+        Bpart = B;
         [W1,W2] = meshgrid(wb0{:});
         B(:) = interp2(W1,W2,fftshift(absfun(hos(hi).bicoh)),wb0{1},wb0{1});
+        Bpart(:) = interp2(W1,W2,fftshift(absfun(hos(hi).partialbicoh)),wb0{1},wb0{1});
         ax(hi) = subplot(subxy(1),subxy(2),hi);
-        imh = plot(wb0{1},B);
+        imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0))*Bpart);
          title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
          xlabel('freq.(Hz)')
     else
@@ -108,6 +112,7 @@ end
         [wbout{:}] = ndgrid(wb{:});
 
         B = interpn(wbin{:},absfun(fftshift(hos(hi).bicoh)),wbout{:});
+        Bpart = interpn(wbin{:},absfun(fftshift(hos(hi).partialbicoh)),wbout{:});
         for k = 1:size(K,1)
 
             cent = [0 0];
@@ -117,7 +122,8 @@ end
             wcent = cent.*dwb;
 
             imk = num2cell(K(k,:));
-            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),B(:,:,imk{:}));
+            Bplot = B(:,:,imk{:}).*(wbout{2}>=wbout{1}) + (1-(wbout{2}>=wbout{1})).*Bpart(:,:,imk{:});
+            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),Bplot);
             delete(datatip(imh(end)));
 %             delete(dt)
             for kk = 1:length(Ws)
