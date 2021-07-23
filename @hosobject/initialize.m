@@ -40,6 +40,13 @@
     end
     if nargin > 3 && ~isempty(lowpass)
         me(1).lowpassval=lowpass./me(1).sampling_rate;
+        
+        %%% By default, set the global lowpass value to the same as lowpass.
+        %%% HOSD filters can only detects features whose support lies within
+        %%% the filter passband, so there is normally little point in
+        %%% retaining HOS coefficients involving frequencies outside the
+        %%% passband.
+        me(1).glowpassval=lowpass./me(1).sampling_rate;
     else
         lowpass = me(1).lowpass;
     end
