@@ -1,4 +1,4 @@
-function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
+function out = freq2index(me,freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
 
 % out = freq2index(freqs,order,lowpass,highpass)
 %
@@ -23,43 +23,43 @@ function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,freq
 
 % Copyright Christopher Kovach, University of Iowa 2018.
 
-if nargin < 14 || isempty(include_sig)
+if nargin < 15 || isempty(include_sig)
     include_sig = [];
 end
-if nargin < 13 || isempty(diagonal_slice)
+if nargin < 14 || isempty(diagonal_slice)
     diagonal_slice = false;
 end
-if nargin < 12 || isempty(shighpass)
+if nargin < 13 || isempty(shighpass)
     shighpass = [];
     
 end
-if nargin < 11 || isempty(slowpass)
+if nargin < 12 || isempty(slowpass)
     slowpass = [];
 end
-if nargin < 10 || isempty(xhighpass)
+if nargin < 11 || isempty(xhighpass)
     xhighpass = 0;
 end
-if nargin < 9 || isempty(xlowpass)
+if nargin < 10 || isempty(xlowpass)
     xlowpass = Inf;
 end
 
-if nargin < 8 || isempty(mask)
+if nargin < 9 || isempty(mask)
     mask = true;
 end
-if nargin < 7 || isempty(frequency_spacing)
+if nargin < 8 || isempty(frequency_spacing)
     frequency_spacing = 'linear';
 end
-if nargin < 2 || isempty(order)
+if nargin < 3 || isempty(order)
     if iscell(freqsin)
         order = length(freqsin);
     else 
         order = 3;
     end
 end
-if nargin < 3 || isempty(lowpass)
+if nargin < 4 || isempty(lowpass)
     lowpass = .5;
 end
-if nargin < 4 || isempty(highpass)
+if nargin < 5 || isempty(highpass)
     highpass = 0;
 end
 
@@ -80,13 +80,13 @@ end
 %%
 if isnumeric(freqsin)
     freqsin = repmat({freqsin},1,order);
-    if nargin < 6 || isempty(condense)
+    if nargin < 7 || isempty(condense)
         condense = true;
     end
-elseif nargin < 6 || isempty(condense)
+elseif nargin < 7 || isempty(condense)
     condense = false; % If the indexing is the same for the different frequencies, then we will give the mapping into the principal domain
 end
-if nargin < 5 || isempty(keepfreqs)
+if nargin < 6 || isempty(keepfreqs)
    keepfreqs = cellfun(@(x)1:length(x),freqsin,'uniformoutput',false);
 elseif isnumeric(keepfreqs)
     keepfreqs = repmat({keepfreqs},1,order);
@@ -122,7 +122,7 @@ if ~isscalar(mask)
     mask = mask(keepregion);
 end
 
-[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig);
+[PD,Ws,Is,keep] = find_principal_domain(me,freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig);
 Fsum = Ws{end};
 
 %%% Efficiently map the nearest elements of Fsum to elements of frinds{end} with

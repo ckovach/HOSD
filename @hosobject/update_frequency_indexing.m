@@ -50,7 +50,7 @@ function update_frequency_indexing(me,freqindx,mask)
     me.keepfreqs = keepfreqs;
     %%% Initialize the indexing   
     if nargin < 2 || isempty(freqindx)
-        freqindx = freq2index(freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice,me.include_signatures); %#ok<*PROPLC,*PROP>
+        freqindx = freq2index(me,freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice,me.include_signatures); %#ok<*PROPLC,*PROP>
     end
 
     me.freqindx  = freqindx;

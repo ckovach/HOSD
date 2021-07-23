@@ -1,4 +1,4 @@
-function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
+function [PD,Ws,Is,keep] = find_principal_domain(me,freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
 
 % Find the principal domain in a higher-order spectrum
 %
@@ -27,37 +27,37 @@ function [PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass,ma
 
 % Copyright Christopher Kovach, University of Iowa, 2018
 
-if nargin < 11 
+if nargin < 12 
     include_sig = [];
 end
-if nargin < 10 || isempty(diagonal_slice)
+if nargin < 11 || isempty(diagonal_slice)
     diagonal_slice = false;
 end
-if nargin < 9 || isempty(shighpass)
+if nargin < 10 || isempty(shighpass)
     shighpass = min(highpass);
 end
-if nargin < 8 || isempty(slowpass)
+if nargin < 9 || isempty(slowpass)
     shighpass = max(lowpass);
 end
     
-if nargin < 6 || isempty(xlowpass)
+if nargin < 7 || isempty(xlowpass)
     xlowpass = xlowpass*ones(1,order);
 end
-if nargin < 5 || isempty(mask)
+if nargin < 6 || isempty(mask)
     mask = true;
 end
 
-if nargin < 2 || isempty(order)
+if nargin < 3 || isempty(order)
     if iscell(freqs)
         order = length(freqs);
     else 
         order = 3;
     end
 end
-if nargin < 3 || isempty(lowpass)
+if nargin < 4 || isempty(lowpass)
     lowpass = Inf*ones(1,order);
 end
-if nargin < 4 || isempty(highpass)
+if nargin < 5 || isempty(highpass)
     highpass = zeros(1,order);
 end
 
