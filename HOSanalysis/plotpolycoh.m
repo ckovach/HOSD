@@ -46,8 +46,16 @@ for hi = 1:length(hos)
         axis xy
         xlabel('Envelope modulation freq.(Hz)')
         ylabel('Band freq. (Hz)')
+    elseif hos(hi).diagonal_slice && hos(hi).order == 3
+        wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
+        B = nan*wb0{1};
+        [W1,W2] = meshgrid(wb0{:});
+        B(:) = interp2(W1,W2,fftshift(absfun(hos(hi).bicoh)),wb0{1},wb0{1});
+        ax(hi) = subplot(subxy(1),subxy(2),hi);
+        imh = plot(wb0{1},B);
+         title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
+         xlabel('freq.(Hz)')
     else
-
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         do_interp=true;
         switch scale
@@ -73,14 +81,16 @@ for hi = 1:length(hos)
         K = cellfun(@(x)1:length(x),wb(3:end),'uniformoutput',false);
         
         Ws = wb;
-
         [K{:}] = ndgrid(K{:});
         [Ws{:}] = ndgrid(wb{:});
         Ws{end} = -sum(cat(length(Ws),Ws{1:end-1}),length(Ws));
+if length(wb)>3
         K = cellfun(@(x)x(:),K,'uniformoutput',false);
         K = [K{:}];
-
-
+        K = K(K(:,end-1)<=length(wb{end-1})/2,:);
+else
+    K=1
+end
         dims = [];
         for k = 3:length(wb)
     %         rg = [0:sqrt(length(wb{k}))];
@@ -113,6 +123,7 @@ for hi = 1:length(hos)
             for kk = 1:length(Ws)
                 imh(end).DataTipTemplate.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk}(:,:,imk{:}));
             end
+                imh(end).DataTipTemplate.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',B(:,:,imk{:}));
             for kk = 3:length(wb)-1
                 if kk==3
                     txt{kk-2} = sprintf('%0.2f',wb{kk}(K(k,kk-2)));
