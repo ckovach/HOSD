@@ -13,7 +13,11 @@
 %      from me.CDFbuffer.
 %   thresh - static cumulant thresholod. By default this is 0.
 %
-%
+% Outputs:
+%   out - Threshold value for Xcent.^me.order. To obtain a threshold value
+%         for Xcent (without the exponent), use thresh = nthroot(out,me.order).
+%         
+%   
 % Copyright Christopher K. Kovach, University of Iowa 2018-2021
 
 if nargin < 2 || isempty(Xcent) %||true % Find threshold based on empirical CDF
