@@ -1,6 +1,6 @@
-function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold)
+function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold, use_filtered_lmse)
       
-% [Xrec,Xfilt] = reconstruct(me,X,[threshold],[apply_window],[use_adaptive_threshold])
+% [Xrec,Xfilt] = reconstruct(me,X,[threshold],[apply_window],[use_adaptive_threshold],[use_filtered_lmse])
 %       
 % Reconstruct a component signal according to the feature detection filter
 % and waveform. This is done in the following steps:
@@ -20,6 +20,12 @@ function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_thr
 %       HOSOBJECT/APPLY_FILTER.
 %   use_adaptive_threshold - If false, computes static cumulants from the
 %       current sample, otherwise uses a pre-computed reference distribution.
+%   use_filtered_lmse - If true, the scaling in step 4 is computed
+%                       after applying the detection filter to both the
+%                       reconstructed signal and the input signal. This
+%                       adjusts for the baseline spectrum through
+%                       whitening, which equalizes the weight of different
+%                       bandwidths in least square estimation. Default is true.
 %
 % To obtain a complete multi-component decomposition use HOSOBJECT/XREC rather than
 % HOSOBJECT/RECONSTRUCT.
@@ -28,7 +34,7 @@ function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_thr
 % HOSOBJECT/XREC HOSOBJECT/APPLY_FILTER
 %
 % Copyright Christopher K. Kovach, University of Iowa 2018-2021
-
+   
     if nargin < 2
         X = me.inputbuffer;
     end
@@ -41,6 +47,10 @@ function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_thr
     if nargin < 5 || isempty(use_adaptive_threshold)
         use_adaptive_threshold=me.use_adaptive_threshold;
     end
+    if nargin < 6 || isempty( use_filtered_lmse)
+         use_filtered_lmse = true;
+    end
+    
     xisnan = isnan(X);
 %             X(xisnan)=0; 
     Xfilt = me.apply_filter(X,apply_window);
@@ -63,7 +73,6 @@ function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window,use_adaptive_thr
     %X(xisnan)=0;
     Xrec(xisnan)=0;
 
-    use_filtered_lmse = true;
     if use_filtered_lmse
         %%% Apply the filter to the reconstructed data for LMSE fitting
         %%% so that the frequencies are appropriately weighted.
