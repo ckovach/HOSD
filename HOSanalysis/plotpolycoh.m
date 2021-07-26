@@ -19,6 +19,8 @@ switch scale
         iwtr = wtr;
 end
 
+plot_partialbc = false;
+
 % fig = figure('WindowButtonMotionFcn',@(a,b,c)figcallback(a,wtr,iwtr));
 % fig = figure;
 absfun = @abs;
@@ -112,7 +114,11 @@ end
         [wbout{:}] = ndgrid(wb{:});
 
         B = interpn(wbin{:},absfun(fftshift(hos(hi).bicoh)),wbout{:});
+        if plot_partialbc 
         Bpart = interpn(wbin{:},absfun(fftshift(hos(hi).partialbicoh)),wbout{:});
+        else
+            Bpart = B;
+        end
         for k = 1:size(K,1)
 
             cent = [0 0];
@@ -122,14 +128,14 @@ end
             wcent = cent.*dwb;
 
             imk = num2cell(K(k,:));
-            Bplot = B(:,:,imk{:}).*(wbout{2}>=wbout{1}) + (1-(wbout{2}>=wbout{1})).*Bpart(:,:,imk{:});
+            Bplot = B(:,:,imk{:}).*(wbout{2}(:,:,imk{:})>=wbout{1}(:,:,imk{:})) + (1-(wbout{2}(:,:,imk{:})>=wbout{1}(:,:,imk{:}))).*Bpart(:,:,imk{:});
             imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),Bplot);
-            delete(datatip(imh(end)));
+            delete(datatip(imh(imk{:})));
 %             delete(dt)
             for kk = 1:length(Ws)
-                imh(end).DataTipTemplate.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk}(:,:,imk{:}));
+                imh(imk{:}).DataTipTemplate.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk}(:,:,imk{:}));
             end
-                imh(end).DataTipTemplate.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',B(:,:,imk{:}));
+                imh(imk{:}).DataTipTemplate.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',B(:,:,imk{:}));
             for kk = 3:length(wb)-1
                 if kk==3
                     txt{kk-2} = sprintf('%0.2f',wb{kk}(K(k,kk-2)));
