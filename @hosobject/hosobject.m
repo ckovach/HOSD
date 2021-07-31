@@ -516,7 +516,7 @@ classdef hosobject < handle
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
            me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
            if (N ~= Norig || length(me.freqs{1})~=me.fftN) && me.do_indexing_update
-                freqs = {fftfreq(me.fftN)*me.sampling_rate};
+                freqs = {me.fftfreq(me.fftN)*me.sampling_rate};
                 freqs(1:me.order) = freqs;
                 me.freqs = freqs;
                 me.update_frequency_indexing;
