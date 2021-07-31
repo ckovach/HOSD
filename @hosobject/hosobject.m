@@ -392,6 +392,13 @@ classdef hosobject < handle
             if length(me)>1
                 me(2:end).reset();
             end
+            
+            %Set these to default values
+            h = hosobject([]);
+            fld =  {'do_bsp_update','do_bsp_update','do_filter_update','do_wave_update','do_update'};
+            for k = 1:length(fld)
+                me(1).(fld{k})=h.(fld{k});
+            end            
         end
         
         
