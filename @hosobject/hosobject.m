@@ -433,6 +433,16 @@ classdef hosobject < handle
           pBC = pBC(me.freqindx.remap);
           pBC(me.freqindx.PDconj) = conj(pBC(me.freqindx.PDconj));
           
+         end
+        function pbcorr = pbcorr(me)
+           %Correlation of feature partial polycohherence and sample polycoherence
+          FF = me.wavefft(me.freqindx.Is);
+          FF(:,me.order) = conj(FF(:,me.order));
+          FF = prod(FF,2);
+          FF(end+1) =0;
+          pBC = FF./me.D;
+          bc = me.bicohreduced;
+          pbcorr = real((pBC'*bc)./sqrt(sum(abs(pBC).^2.).*sum(abs(bc).^2)));
         end
         function out = get.BIAS(me)        
           bias = sqrt(me.BIASnum./(me.D.^2+eps));
