@@ -243,12 +243,13 @@
                end
                if me(1).adjust_lag && me(1).do_filter_update
 %                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
-                   ffun = ifftshift(real(ifft((me(1).filterftlag).*abs(me(1).waveftlag+eps))),1);                   
+                   ffun = ifftshift(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),1);   
                    mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
                    mph = mph./(abs(mph)+eps);
                    if ~isnan(mph)
-                     me(1).lag = mph; % Circularshift to keep filter energy centered on the window
+                     me(1).lag = mph; % Circular shift to keep filter energy centered on the window
                    end
+
                end
 
            else
@@ -278,6 +279,17 @@
 %                     end
 
         end
+        
+        %%% With highly periodic signals in high noise,
+        %%% the algorithm seems occasionally to converge with inverted sign (for odd orders).
+        %%% To avoid this, make sure that partial polycoherence is
+        %%% positively correlated with sample polycoherence.
+        if mod(me(1).order,2)~=0 && me(1).pbcorr < 0 
+           fprintf('\nInverting sign...')
+           me(1).waveftlag = -me(1).waveftlag;
+           me(1).G= -me(1).G;
+        end
+        
         %%% Also need to make sure that the output of the filter applied to
         %%% the feature waveform is centered with respect to the maximum!
          [~,FXsh] = me(1).apply_filter(Xwin,false,true);
@@ -288,11 +300,14 @@
             me(1).filterfun = circshift(me(1).filterfun,ceil(-me(1).sampt(mxi)/2));
             me(1).feature= circshift(me(1).feature,floor(-me(1).sampt(mxi)/2));
         end
+        
+        
        if all(ishandle(makeplot))
             set(makeplot(1),'cdata',Xsh');
             set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
             drawnow
        end
+       
         %%% Set the delays to the correct value for the original
         %%% data set;
 
@@ -341,7 +356,7 @@
         T=[];
     end    
     me(1).segment = segment;
-
+  
     if length(me)>1
        xrec = me(1).reconstruct(xin);
        if nargout > 0
