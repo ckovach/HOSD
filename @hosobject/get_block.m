@@ -103,7 +103,7 @@
 
                 hasnans = any(xisnan(T));
                 segment.discarded = hasnans;
-                if all(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
+                if all(hasnans) && all(islogical(makeplot)) && makeplot>=0
                     fprintf('\nAll segments contain NaN values. Discarding these data')
                     if nargout > 1
                          varargout = {Xsh,Xwin,T,wint,segment};
@@ -284,15 +284,17 @@
         %%% the algorithm seems occasionally to converge with inverted sign (for odd orders).
         %%% To avoid this, make sure that partial polycoherence is
         %%% positively correlated with sample polycoherence.
-        if mod(me(1).order,2)~=0 && me(1).pbcorr < 0 
+        [Xfilt,FXsh] = me(1).apply_filter(Xwin,false,true);
+        if mod(me(1).order,2)~=0 && skewness(Xfilt(:))<0 %me(1).pbcorr < 0 
            fprintf('\nInverting sign...')
            me(1).waveftlag = -me(1).waveftlag;
            me(1).G= -me(1).G;
+           [~,FXsh] = me(1).apply_filter(Xwin,false,true);
         end
         
         %%% Also need to make sure that the output of the filter applied to
         %%% the feature waveform is centered with respect to the maximum!
-         [~,FXsh] = me(1).apply_filter(Xwin,false,true);
+     
          Xsh = real(ifft(FXsh));
          me(1).feature = mean(Xsh,2);
         [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
