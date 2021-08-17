@@ -3,8 +3,8 @@ function varargout =plotpolycoh(hos)
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 
 
-scale = 'log';
-%  scale = 'lin';
+% scale = 'log';
+ scale = 'lin';
 %  scale = '';
 switch scale
 
@@ -19,7 +19,7 @@ switch scale
         iwtr = wtr;
 end
 
-plot_partialbc = false;
+plot_partialbc = true;
 
 % fig = figure('WindowButtonMotionFcn',@(a,b,c)figcallback(a,wtr,iwtr));
 % fig = figure;
