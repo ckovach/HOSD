@@ -1,8 +1,8 @@
 
 
-function [T,t,Err] = chopper(rg,evtt,fs) 
+function [T,t,Err] = chopper(rg,evtt,fs,maxN) 
 
-% [T,t,Err] = chopper(rg,evtt,fs) 
+% [T,t,Err] = chopper(rg,evtt,[fs],[maxN]) 
 %
 % Creates a matrix to segment a signal sampled at fs into windows ranging from rg(1) to
 % rg(end) around event times specified in evtt.
@@ -13,8 +13,13 @@ function [T,t,Err] = chopper(rg,evtt,fs)
 %
 %  evtt:  time stamps (in s)
 %
-%  fs:  sampling rate
+%  fs:  sampling rate. Default is 1.
 %
+%  maxN: Maximum index. If this value is greater than 0, then indices are wrapped
+%        as mod(T-1,maxN)-1. Note that non-positive indices are therefore wrapped to the
+%        end of the array while indices greater than maxN are wrapped to the beginning. 
+%        If maxN is negative, then segments with out-of-range indices are
+%        simply discarded. Default is 0 (do nothing).
 %
 % OUTPUT VARIABLE:
 %
@@ -40,12 +45,19 @@ function [T,t,Err] = chopper(rg,evtt,fs)
 % $Author$
 % ------------------------------------------------
 
+if nargin < 4
+    maxN = false;
+end
+
 if isstruct(rg)
     if isfield(rg,'fs')
         fs = rg.fs;
     end
     if isfield(rg,'wint')
         evtt = rg.wint;
+    end
+    if isfield(rg,'maxN')
+        maxN = maxN;
     end
     rg = rg.Trange;
 end    
@@ -54,8 +66,16 @@ t = (rg(1):1/fs:rg(2))';
 
 T = fs*( repmat(t,1,length(evtt)) + repmat(evtt(:)',length(t),1))+1;
 
+
+
 if nargout > 2
    Err = (round(T)-T)./fs;  %%% Return the rounding error 
 end
 
 T = round(T);
+
+if maxN > 0
+    T = mod(T-1,maxN)+1;
+elseif maxN < 0
+    T = T(:,all(T>=1) & all(T<= -maxN));
+end
