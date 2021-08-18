@@ -2,8 +2,9 @@
 ncascade = 2;
 
 
-h = dsp.AudioRecorder;
-h.SampleRate = 8000;
+% h = dsp.AudioRecorder;
+h = audioDeviceReader;
+h.SampleRate = 1000;
 h.SamplesPerFrame = 2000;
 h.NumChannels=1;
 Fs = h.SampleRate;
@@ -14,7 +15,7 @@ hos.window= @(x)hann(x);
 
 hos.glowpass = h.SampleRate/2*.999;
 hos.hos_learning_rate = .025;
-hos.burnin = 1./hos.hos_learning_rate;
+hos.hos_burnin = 1./hos.hos_learning_rate;
 hos.filter_adaptation_rate = .025;
 
 % Xn = ecgfn(T);
