@@ -85,42 +85,42 @@ classdef mvhosd < hosobject
             while del >tol && iter < maxiter                  
                 [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
-                if all(ishandle(makeplot))
-                    try
-                    for k = 1:size(makeplot,2)
-                        kplot = plotcompi(k);
-                        set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
-                      
-                        set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
-                        set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
-                        axis tight
-                        ylim(minmax(me(1).feature(:)));
-                    end
-                    drawnow
-                elseif islogical(makeplot) && makeplot
-                    figure,
-                    clear makeplot
-                    nplot = min(nsig,me(1).maxplotn);
-                    for k = 1:nplot
-                        kplot = plotcompi(k);
-                        subplot(2,max(nplot,me(1).maxplotn),k )
-                        makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
-                        makeplot(7,k) = title(sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=',kplot,compno,iter,del/me(1).sampling_rate,moment_type ));
-                        subplot(2,nplot,k+ nplot)
-                       plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature(:,kplot)*ones(1,5));
-                         for pli = 1:length(plh)
+                try
+                     if all(ishandle(makeplot))
+                       for k = 1:size(makeplot,2)
+                            kplot = plotcompi(k);
+                            set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
 
-                             set(plh(pli),'Color',hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]));
-                         end
-                         makeplot(2:6,k)=plh;
-                    end
-%                         xlim([0 me(1).lowpass])
+                            set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
+                            set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
+                            axis tight
+                            ylim(minmax(me(1).feature(:)));
+                        end
+                        drawnow
+                    elseif islogical(makeplot) && makeplot
+                        figure,
+                        clear makeplot
+                        nplot = min(nsig,me(1).maxplotn);
+                        for k = 1:nplot
+                            kplot = plotcompi(k);
+                            subplot(2,max(nplot,me(1).maxplotn),k )
+                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
+                            makeplot(7,k) = title(sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=',kplot,compno,iter,del/me(1).sampling_rate,moment_type ));
+                            subplot(2,nplot,k+ nplot)
+                           plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature(:,kplot)*ones(1,5));
+                             for pli = 1:length(plh)
+
+                                 set(plh(pli),'Color',hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]));
+                             end
+                             makeplot(2:6,k)=plh;
+                        end
+    %                         xlim([0 me(1).lowpass])
+
+                     end
                     drawnow
-                    catch
+                catch
                         plh = false;
-                    end
                 end
-
                 iter=iter+1;
                 fprintf('\b\b\b%03i',compno,iter)
 
