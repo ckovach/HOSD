@@ -302,6 +302,11 @@ classdef mvhosd < hosobject
            if nargin < 3 || isempty(apply_window)
               apply_window = false; 
            end
+           chdim = find(size(me(1).feature)>1,1,'last');
+           if size(in,chdim) ~= size(me(1).feature,3) && size(in,chdim-1) == size(me(1).feature,3)
+               warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
+               in = permute(in, [1:chdim-2 chdim chdim-1]);
+           end
            if nargout > 1
                [out,~,~,mvout] = me(1).apply_mvfilter(in,apply_window,false);  
            else
