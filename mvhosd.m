@@ -86,6 +86,7 @@ classdef mvhosd < hosobject
                 [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
                 if all(ishandle(makeplot))
+                    try
                     for k = 1:size(makeplot,2)
                         kplot = plotcompi(k);
                         set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
@@ -115,6 +116,9 @@ classdef mvhosd < hosobject
                     end
 %                         xlim([0 me(1).lowpass])
                     drawnow
+                    catch
+                        plh = false;
+                    end
                 end
 
                 iter=iter+1;
