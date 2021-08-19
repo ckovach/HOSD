@@ -17,7 +17,7 @@ classdef mvhosd < hosobject
             
         end
         
-        function [Xsh,Xwin] = align(me,Xwin,Gpart,maxiter,makeplot,compno)
+        function [Xsh,Xwin,makeplot] = align(me,Xwin,Gpart,maxiter,makeplot,compno)
              % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
             if nargin < 6
@@ -89,9 +89,11 @@ classdef mvhosd < hosobject
                     for k = 1:size(makeplot,2)
                         kplot = plotcompi(k);
                         set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
-
+                      
                         set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                         set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
+                        axis tight
+                        ylim(minmax(me(1).feature(:)));
                     end
                     drawnow
                 elseif islogical(makeplot) && makeplot
@@ -316,7 +318,7 @@ classdef mvhosd < hosobject
                    [xf,mvxf] = me(:,2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window);
                    mvout = cat(sum(size(in)>1)+1,mvout,mvxf);
                end
-               out = cat(sum(size(in)>1)+1,out,xf);
+               out = cat(sum(size(in)>1),out,xf);
            end
         end
         %%%%%%%
@@ -402,7 +404,7 @@ classdef mvhosd < hosobject
             Xfilt = me(1).xfilt(in);
             out=me(1).filter_threshold(Xfilt,threshold);
             if size(me,2)>1
-               out = cat(sum(size(in)>1)+1,out,me(2:end).xthresh(in-me(1).xrec(in,threshold,apply_window),threshold,apply_window));
+               out = cat(sum(size(in)>1),out,me(2:end).xthresh(in-me(1).xrec(in,threshold,apply_window),threshold,apply_window));
            end
          end
            %%%
@@ -423,7 +425,7 @@ classdef mvhosd < hosobject
 %                else 
 %                    applydim = max(find(size(in)>1))+1;
 %                end
-               out =  cat(2,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
+               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
            end
         end
          %%%%
@@ -438,7 +440,7 @@ classdef mvhosd < hosobject
             Xthr=me(1).xthresh(in);
             out = Xthr>0;
             if size(me,2)>1
-               out = cat(sum(size(in)>1)+1,out,me(:,2:end).ximp(in-me(:,1).xrec(in,[],apply_window),apply_window));
+               out = cat(sum(size(in)>1),out,me(:,2:end).ximp(in-me(:,1).xrec(in,[],apply_window),apply_window));
            end
         end
 
