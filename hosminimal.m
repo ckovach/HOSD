@@ -75,9 +75,9 @@ classdef hosminimal < hosobject
                    if isprop(me(1),fns{k})
                         try
                        me(1).(fns{k}) = obj(1).(fns{k});
-                       if me(1).lag~=obj(1).lag
-                           keyboard
-                       end
+%                        if me(1).lag~=obj(1).lag
+%                            keyboard
+%                        end
                         catch
                         end
                    end

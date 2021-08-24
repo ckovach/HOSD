@@ -151,11 +151,11 @@ classdef mvhosd < hosobject
 %                 newdt = dt;
                %  deltg = delt(me(1).keepfreqs{1},:);
                 Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
-                G = mean(Gpart,2);
+                G = nanmean(Gpart,2);
            
 %                Xsh = real(ifftshift(ifft(exp(1i*delt).*FXwin),1));
 %                Xsh = real(ifft(exp(1i*delt).*FXwin));
-                features = mean(Xsh,2);
+                features = nanmean(Xsh,2);
            
                 %%% G should be matched to features so as to produce a
                 %%% peak at zero lag. Might as well enforce this
