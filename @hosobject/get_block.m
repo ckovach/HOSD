@@ -375,6 +375,6 @@
        end
     end
     if nargout > 0
-        varargout = {Xsh,Xwin,T,wint,segment};
+        varargout = {Xsh,Xwin,T,wint,segment,makeplot};
     end
 end

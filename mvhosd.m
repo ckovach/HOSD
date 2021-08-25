@@ -72,7 +72,7 @@ classdef mvhosd < hosobject
                 smpw = me(1).sampweight;
             end
             
-            std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+            std_moment = @(x)nanmean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
              switch me(1).order
                 case 3
                     moment_type = 'skewness';
@@ -308,7 +308,7 @@ classdef mvhosd < hosobject
            end
            chdim = find(size(me(1).feature)>1,1,'last');
            if size(in,chdim) ~= size(me(1).feature,3) && size(in,chdim-1) == size(me(1).feature,3)
-               warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
+%                warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
                in = permute(in, [1:chdim-2 chdim chdim-1]);
            end
            if nargout > 1
