@@ -325,7 +325,7 @@ classdef mvhosd < hosobject
                    xf = me(:,2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window);
                else                   
                    [xf,mvxf] = me(:,2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window);
-                   mvout = cat(sum(size(in)>1)+1,mvout,mvxf);
+                   mvout = cat(find([size(in),1]==1,1),mvout,mvxf);
                end
                out = cat(sum(size(in)>1),out,xf);
            end
@@ -427,6 +427,10 @@ classdef mvhosd < hosobject
            if nargin < 4
                apply_window = false;
            end
+           if size(in,3) == 1
+               in = permute(in,[1 3 2]);
+           end
+           
            out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            if length(me)>1
 %                if size(in,2) == 1
@@ -434,7 +438,7 @@ classdef mvhosd < hosobject
 %                else 
 %                    applydim = max(find(size(in)>1))+1;
 %                end
-               out =  cat(sum(size(in)>1)+1,out,me(2:end).xrec(in-out(:,1),thresh,apply_window,varargin{:}));
+               out =  cat(find([size(in),1]==1,1),out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
            end
         end
          %%%%
