@@ -277,18 +277,22 @@ classdef mvhosd < hosobject
                 FXshift = FXshift*diag(sgn);
             else
 %                  Xin = X(:);
-                filts = squeeze(me(1).filterfun);
+%                 filts = squeeze(me(1).filterfun);
+                filts = me(1).filterfun;
+                if size(X,3) ~=size(filts,3)
+                    X = permute(X,[1 3 2]);
+                end
                 Xin = X;
                 Xin(end+me(1).fftN,:) = 0;
                 Xfilt = 0;
                 if nargout > 3
-                    mvXfilt = zeros(size(Xin,1),size(filts,2));
+                    mvXfilt = zeros(size(Xin,1),1,size(filts,3));
                 end
-                for k = 1:size(filts,2)
-                    xf = filter(filts(:,k),1,Xin(:,k));
+                for k = 1:size(filts,3)
+                    xf = filter(filts(:,:,k),1,Xin(:,:,k));
                     Xfilt = Xfilt+xf;
                     if nargout > 3
-                        mvXfilt(:,k) = xf;
+                        mvXfilt(:,:,k) = xf;
                     end
                 end
                 Xfilt = Xfilt(ceil(me(1).fftN/2)+1:end-floor(me(1).fftN/2),:);
