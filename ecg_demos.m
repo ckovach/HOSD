@@ -45,8 +45,8 @@ switch example
         
         db = 'nsrdb'; %% Database to query
         recordID =   '16483'; %% Record ID to get
-        InbandNoise = 4; % In-band noise in dB
-        OutbandNoise = 7; %Out-band noise in dB;
+        InbandNoise = 8; % In-band noise in dB
+        OutbandNoise = 8; %Out-band noise in dB;
         n_components_out = 3; %Number of components to estimate;
         yl=[-1 1]*10;
         xl = [30 40];

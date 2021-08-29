@@ -85,7 +85,7 @@ classdef mvhosd < hosobject
             end
             nsig = size(Xsh,3);
             if me(1).annealing_start>0
-                noise = randn(size(Xsh))*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]));
+                noise = randn(size(Xsh)).*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]));
             else
                 noise = 0;
             end
