@@ -6,6 +6,9 @@ classdef mvhosd < hosobject
       Gpart
       Xwin
       maxplotn =4;
+      
+      annealing_start=10;%Starting noise amplitude used for annealing, in units of input s.d
+      annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number and maxiters    
     end
     
     methods
@@ -53,7 +56,8 @@ classdef mvhosd < hosobject
 %             Xwin = me(1).Xwin;
             Xsh = Xwin;
              Xfilt=nanmean(Xsh,3);
-            
+           
+                 
             del = Inf;
             tol =me(1).sampling_rate/me(1).lowpass(1);
             iter = 0;
@@ -127,11 +131,21 @@ classdef mvhosd < hosobject
                 if iter >2
                   olddt = me(1).delay;
                 end
-
-               [Xfilt,FXsh,sgn] = me(:,1).apply_mvfilter(Xsh,false,true);
-               Xsh = real(ifft(FXsh));
+                if me(1).annealing_start>0
+                    Xsh0 = Xsh;
+                     
+                    noise = randn(size(Xsh))*nanstd(Xsh(:));
+             
+                    Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(iter,maxiter);
+                    [Xfilt,~,sgn] = me(:,1).apply_mvfilter(Xsh,false,true);
+                    newdt = me(1).delay;
+                    FXsh = fft(Xsh0).*conj(fft(me(1).sampt'==newdt)); 
+                else
+                    [Xfilt,FXsh,sgn] = me(:,1).apply_mvfilter(Xsh,false,true);
+                    newdt = me(1).delay;
+                end
+                Xsh = real(ifft(FXsh));
                
-               newdt = me(1).delay;
 %                delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                delt = me(1).radw*newdt;
 
