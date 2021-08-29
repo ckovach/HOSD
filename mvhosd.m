@@ -7,8 +7,6 @@ classdef mvhosd < hosobject
       Xwin
       maxplotn =4;
       
-      annealing_start=10;%Starting noise amplitude used for annealing, in units of input s.d
-      annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number and maxiters    
     end
     
     methods
@@ -77,15 +75,21 @@ classdef mvhosd < hosobject
             end
             
             std_moment = @(x)nanmean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
-             switch me(1).order
+            switch me(1).order
                 case 3
                     moment_type = 'skewness';
                 case 4
                     moment_type = 'kurtosis';
                 otherwise
                     moment_type = 'standardized cumulant';
-             end
-             nsig = size(Xsh,3);
+            end
+            nsig = size(Xsh,3);
+            if me(1).annealing_start>0
+                noise = randn(size(Xsh))*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]));
+            else
+                noise = 0;
+            end
+            
             while del >tol && iter < maxiter                  
                 [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
@@ -134,7 +138,7 @@ classdef mvhosd < hosobject
                 if me(1).annealing_start>0
                     Xsh0 = Xsh;
                      
-                    noise = randn(size(Xsh))*nanstd(Xsh(:));
+%                     noise = randn(size(Xsh))*nanstd(Xsh(:));
              
                     Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(iter,maxiter);
                     [Xfilt,~,sgn] = me(:,1).apply_mvfilter(Xsh,false,true);

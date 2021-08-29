@@ -186,6 +186,11 @@
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
         end
+        if me(1).annealing_start>0
+            noise = randn(size(Xsh))*nanstd(Xsh(:));
+        else
+            noise = 0;
+        end
         while del >tol && k < maxiter                    
             if all(ishandle(makeplot))
                 set(makeplot(1),'cdata',Xsh');
@@ -227,10 +232,20 @@
 
 
            if me(1).use_partial_delay_method
-               [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
-%                        Xsh = real(ifftshift(ifft(FXsh),1));
+                if me(1).annealing_start>0
+                    Xsh0 = Xsh;
+                     
+%                     noise = randn(size(Xsh))*nanstd(Xsh(:));
+             
+                    Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(k,maxiter);
+                    [Xfilt,~,sgn] = me(:,1).apply_filter(Xsh,false,true);
+                    newdt = me(1).delay;
+                    FXsh = fft(Xsh0).*conj(fft(me(1).sampt'==newdt)); 
+                else
+                   [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
+                   newdt = me(1).delay;
+                end
                Xsh = real(ifft(FXsh));
-               newdt = me(1).delay;
                delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
                Gpart(isnan(Gpart))=0;
@@ -256,8 +271,20 @@
                %%% This approach recomputes all statistics at every
                %%% iteration, which is unnecessary.
                 me(1).get_input(Xsh,apply_window,use_shifted,initialize);
-                [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
-               newdt = me(1).delay;
+                 if me(1).annealing_start>0
+                    Xsh0 = Xsh;
+                     
+                    noise = randn(size(Xsh))*nanstd(Xsh(:));
+             
+                    Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(k,maxiter);
+                    [Xfilt,~,sgn] = me(:,1).apply_filter(Xsh,false,true);
+                    newdt = me(1).delay;
+                    FXsh = fft(Xsh0).*conj(fft(me(1).sampt'==newdt)); 
+                    newdt = me(1).delay;
+                else
+                    [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
+                   newdt = me(1).delay;
+                 end
 %                         Xsh = real(ifftshift(ifft(FXsh),1));
                 Xsh = real(ifft(FXsh));
            end
