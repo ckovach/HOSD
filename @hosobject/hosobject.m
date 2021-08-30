@@ -91,11 +91,11 @@ classdef hosobject < handle
        threshold_order = [];
        keepfreqs
        
-       %%% If annealing_start is greater than 0, then Gaussian white noise
-       %%% will be added to the input during iterated realignment to improve convergence
-       %%% and  decremented with iteration according to annealing_schedule.
-       annealing_start=10;%Starting noise amplitude used for annealing, in units of input s.d
-       annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number (1st arg.) and maximum iterations (2nd arg)    
+%        %%% If annealing_start is greater than 0, then Gaussian white noise
+%        %%% will be added to the input during iterated realignment to improve convergence
+%        %%% and  decremented with iteration according to annealing_schedule.
+%        annealing_start=10;%Starting noise amplitude used for annealing, in units of input s.d
+%        annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number (1st arg.) and maximum iterations (2nd arg)    
 
        % Use only the principal domain in the estimates
        pdonly = true;
