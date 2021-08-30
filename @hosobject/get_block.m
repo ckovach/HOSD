@@ -157,7 +157,7 @@
             smpw = me(1).sampweight;
         end
 %                 std_moment = @(x)mean(cumulant(x,me(1).order,1,smpw')./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
-        std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+        std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2)).^(me(1).order/2));
          switch me(1).order
             case 3
                 moment_type = 'skewness';
@@ -193,7 +193,7 @@
         end
         while del >tol && k < maxiter                    
             if all(ishandle(makeplot))
-                set(makeplot(1),'cdata',Xsh');
+                set(makeplot(1),'cdata',me(1).sampweight.*Xsh');
 
                 set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                 %                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
@@ -205,7 +205,7 @@
             elseif double(makeplot) > 0
                 figure,
                 subplot(2,1,1)
-                makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
+                makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],me(1).sampweight.*Xsh');
                 makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                 subplot(2,1,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs),ifftshift(abs(me(1).filterfft))*ones(1,5));
@@ -332,7 +332,7 @@
         
         
        if all(ishandle(makeplot))
-            set(makeplot(1),'cdata',Xsh');
+            set(makeplot(1),'cdata',me(1).sampweight.*Xsh');
             set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
             drawnow
        end

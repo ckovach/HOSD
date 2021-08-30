@@ -54,7 +54,6 @@
     end
     if me.do_wave_update
       %  Xsh = real(ifft(FXsh(:,getwin)));
-
         me.update_waveform(FXsh(:,getwin),initialize); 
     end
     if me.do_filter_update

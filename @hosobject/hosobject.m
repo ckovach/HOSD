@@ -359,6 +359,7 @@ classdef hosobject < handle
             me(1).window_number = 0;
             me(1).sumlr =0;
             me(1).sumlr2 = 0;
+            me(1).sampweight = 1;
             z=zeros(me(1).bufferN,1);
             z2=zeros(me(1).fftN,1);
             me(1).inputbuffer = z;

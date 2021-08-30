@@ -74,7 +74,8 @@ classdef mvhosd < hosobject
                 smpw = me(1).sampweight;
             end
             
-            std_moment = @(x)nanmean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+%             std_moment = @(x)nanmean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+            std_moment = @(x)nanmean(cumulant(x,me(1).order,1)./(nanmean(x.^2)).^(me(1).order/2));
             switch me(1).order
                 case 3
                     moment_type = 'skewness';
@@ -97,7 +98,7 @@ classdef mvhosd < hosobject
                      if all(ishandle(makeplot))
                        for k = 1:size(makeplot,2)
                             kplot = plotcompi(k);
-                            set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
+                            set(makeplot(1,k),'cdata',me(1).sampweight.*Xsh(:,:,kplot)');
 
                             set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                             set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
@@ -112,7 +113,7 @@ classdef mvhosd < hosobject
                         for k = 1:nplot
                             kplot = plotcompi(k);
                             subplot(2,max(nplot,me(1).maxplotn),k )
-                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
+                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],me(1).sampweight.*Xsh(:,:,kplot)');
                             makeplot(7,k) = title(sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=',kplot,compno,iter,del/me(1).sampling_rate,moment_type ));
                             subplot(2,nplot,k+ nplot)
                            plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature(:,kplot)*ones(1,5));
@@ -329,7 +330,7 @@ classdef mvhosd < hosobject
               apply_window = false; 
            end
            chdim = find(size(me(1).feature)>1,1,'last');
-           if size(in,chdim) ~= size(me(1).feature,3) && size(in,chdim-1) == size(me(1).feature,3)
+           if ~isvector(in) && size(in,chdim) ~= size(me(1).feature,3) && size(in,chdim-1) == size(me(1).feature,3)
 %                warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
                in = permute(in, [1:chdim-2 chdim chdim-1]);
            end
