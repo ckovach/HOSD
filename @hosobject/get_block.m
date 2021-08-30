@@ -157,7 +157,7 @@
             smpw = me(1).sampweight;
         end
 %                 std_moment = @(x)mean(cumulant(x,me(1).order,1,smpw')./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
-        std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2)).^(me(1).order/2));
+        std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
          switch me(1).order
             case 3
                 moment_type = 'skewness';
@@ -186,14 +186,9 @@
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
         end
-%         if me(1).annealing_start>0
-%             noise = randn(size(Xsh))*nanstd(Xsh(:));
-%         else
-%             noise = 0;
-%         end
         while del >tol && k < maxiter                    
             if all(ishandle(makeplot))
-                set(makeplot(1),'cdata',me(1).sampweight.*Xsh');
+                set(makeplot(1),'cdata',Xsh');
 
                 set(makeplot(7),'string',sprintf('Component %3i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                 %                         set(makeplot(mod(k,5)+2),'ydata',ifftshift(abs(me(1).filterfft)));
@@ -205,7 +200,7 @@
             elseif double(makeplot) > 0
                 figure,
                 subplot(2,1,1)
-                makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],me(1).sampweight.*Xsh');
+                makeplot = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh');
                 makeplot(7) = title(sprintf('Component %03i, Iter. %3i, Mean shift = %2.2fs, %s=%2.2f',compno,k,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                 subplot(2,1,2)
 %                          makeplot(2:6) = plot(ifftshift(me(1).freqs),ifftshift(abs(me(1).filterfft))*ones(1,5));
@@ -232,20 +227,10 @@
 
 
            if me(1).use_partial_delay_method
-%                 if me(1).annealing_start>0
-%                     Xsh0 = Xsh;
-%                      
-% %                     noise = randn(size(Xsh))*nanstd(Xsh(:));
-%              
-%                     Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(k,maxiter);
-%                     [Xfilt,~,sgn] = me(:,1).apply_filter(Xsh,false,true);
-%                     newdt = me(1).delay;
-%                     FXsh = fft(Xsh0).*conj(fft(me(1).sampt'==newdt)); 
-%                 else
-                   [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
-                   newdt = me(1).delay;
-%                 end
+               [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
+%                        Xsh = real(ifftshift(ifft(FXsh),1));
                Xsh = real(ifft(FXsh));
+               newdt = me(1).delay;
                delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
                Gpart(isnan(Gpart))=0;
@@ -271,20 +256,8 @@
                %%% This approach recomputes all statistics at every
                %%% iteration, which is unnecessary.
                 me(1).get_input(Xsh,apply_window,use_shifted,initialize);
-%                  if me(1).annealing_start>0
-%                     Xsh0 = Xsh;
-%                      
-%                     noise = randn(size(Xsh))*nanstd(Xsh(:));
-%              
-%                     Xsh = Xsh + noise*me(1).annealing_start*me(1).annealing_schedule(k,maxiter);
-%                     [Xfilt,~,sgn] = me(:,1).apply_filter(Xsh,false,true);
-%                     newdt = me(1).delay;
-%                     FXsh = fft(Xsh0).*conj(fft(me(1).sampt'==newdt)); 
-%                     newdt = me(1).delay;
-%                 else
-                    [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
-                   newdt = me(1).delay;
-%                  end
+                [Xfilt,FXsh] = me(1).apply_filter(Xsh,false,true);
+               newdt = me(1).delay;
 %                         Xsh = real(ifftshift(ifft(FXsh),1));
                 Xsh = real(ifft(FXsh));
            end
@@ -332,7 +305,7 @@
         
         
        if all(ishandle(makeplot))
-            set(makeplot(1),'cdata',me(1).sampweight.*Xsh');
+            set(makeplot(1),'cdata',Xsh');
             set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
             drawnow
        end
