@@ -483,9 +483,71 @@ classdef mvhosd < hosobject
             out = Xthr>0;
             if size(me,2)>1
                out = cat(sum(size(in)>1),out,me(:,2:end).ximp(in-me(:,1).xrec(in,[],apply_window),apply_window));
-           end
-        end
+            end
+          end
 
+          function [A,B,makeplot] = get_block(me,in,maxiter,makeplot,segment,compno,initialize)
+            
+              if nargin < 6 || isempty(compno)
+                  compno = 1;
+              end
+              if nargin < 5 || isempty(segment)
+                  segment = [];
+              end
+              if nargin < 7 || isempty(initialize)
+                  initialize = true;
+              end
+              if nargin < 4 || isempty(makeplot)
+                  makeplot = true;
+              end
+              if nargin < 3 || isempty(maxiter)
+                  maxiter = 25;
+              end
+              if size(in,2) > 1 && size(in,3) ==1
+                   in = permute(in,[1 3 2]);
+              end
+               
+              if all(isnan(in))
+                  A = [];
+                  B = [];
+                  return
+              end
+                   
+                nfp = 0;
+                nchan = size(in,3);
+                for k = 1:nchan
+                    nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
+                    X(:,:,k) = me(1).chop_input(in(:,k));
+                    Gpart(:,:,k) = me(1).partial_delay_filt(X(:,:,k),true,true); 
+                    if k==1
+                        X(:,:,nchan)=0;
+                        Gpart(:,:,nchan)=0;
+                    end
+                end
+
+
+                me(1).use_adaptive_threshold=false;
+                
+                me(1).filterfft = nanmean(Gpart,2);
+                me(1).feature = nanmean(X,2);
+                [A,B,makeplot] = me(1).align(X,Gpart,25,makeplot,compno);
+                if size(A,4) ==1
+                    A = permute(A,[1 2 4 3]);
+                end
+%                  [~,xfilt] = me(1).xfilt(permute(zresid,[1 3 2]));
+               
+%                 if nk > 1 && skf(nk-1)< params.skewness_threshold && skf(nk)< params.skewness_threshold 
+%                     fprintf('Skewness under %0.3f for the last 2 components... stopping at %i.',params.skewness_threshold,nk)
+%                     return
+%                 else
+                if length(me)>1
+                    xrec = me(1).xrec(in);
+                     [A2,B2] = me(2:end).get_block(in-xrec,maxiter,makeplot,segment,compno+1,initialize);
+                    A = cat(2,A,A2);
+                    B = cat(2,B,B2);
+                end
+              
+          end
         
     end
 
