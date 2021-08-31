@@ -104,7 +104,7 @@ classdef mvhosd < hosobject
                      if all(ishandle(makeplot))
                        for k = 1:size(makeplot,2)
                             kplot = plotcompi(k);
-                            set(makeplot(1,k),'cdata',me(1).sampweight.*Xsh(:,:,kplot)');
+                            set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
 
                             set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                             set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
@@ -119,7 +119,7 @@ classdef mvhosd < hosobject
                         for k = 1:nplot
                             kplot = plotcompi(k);
                             subplot(2,max(nplot,me(1).maxplotn),k )
-                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],me(1).sampweight.*Xsh(:,:,kplot)');
+                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
                             makeplot(7,k) = title(sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=',kplot,compno,iter,del/me(1).sampling_rate,moment_type ));
                             subplot(2,nplot,k+ nplot)
                            plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature(:,kplot)*ones(1,5));
