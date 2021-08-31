@@ -543,8 +543,8 @@ classdef mvhosd < hosobject
                 if length(me)>1
                     xrec = me(1).xrec(in);
                      [A2,B2] = me(2:end).get_block(in-xrec,maxiter,makeplot,segment,compno+1,initialize);
-                    A = cat(2,A,A2);
-                    B = cat(2,B,B2);
+                    A = cat(3,A,A2);
+                    B = cat(3,B,B2);
                 end
               
           end
