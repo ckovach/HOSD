@@ -530,7 +530,7 @@ classdef mvhosd < hosobject
                 
                 me(1).filterfft = nanmean(Gpart,2);
                 me(1).feature = nanmean(X,2);
-                [A,B,makeplot] = me(1).align(X,Gpart,25,makeplot,compno);
+                [A,B,makeplot] = me(1).align(X,Gpart,maxiter,makeplot,compno);
                 if size(A,4) ==1
                     A = permute(A,[1 2 4 3]);
                 end
