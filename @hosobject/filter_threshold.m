@@ -37,7 +37,11 @@ function [Xthresh,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_t
 %                   zsc = @(x)(x-nanmean(x))./nanstd(x);
 %                   Xcent = zsc(Xfilt);
 
+    if me.use_adaptive_threshold
          Xcent = (Xfilt-me.running_mean)./sqrt(me.running_var);
+    else
+        Xcent = (Xfilt - nanmean(Xfilt(:)))./nanstd(Xfilt(:));
+    end
     %Xcent = Xfilt;
     if isempty(me.threshold_order)
         me.threshold_order = me.order;
