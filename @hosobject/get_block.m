@@ -239,7 +239,7 @@
                    me(1).G = G;
                end
                if me(1).do_wave_update
-                me(1).feature = mean(Xsh,2);
+                me(1).feature = nanmean(Xsh,2);
                end
                if me(1).adjust_lag && me(1).do_filter_update
 %                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
@@ -296,7 +296,7 @@
         %%% the feature waveform is centered with respect to the maximum!
      
          Xsh = real(ifft(FXsh));
-         me(1).feature = mean(Xsh,2);
+         me(1).feature = nanmean(Xsh,2);
         [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
         if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
             me(1).filterfun = circshift(me(1).filterfun,ceil(-me(1).sampt(mxi)/2));
