@@ -1,4 +1,4 @@
-function Xfilt =laguerreFilt(X,ord,tau,fs)
+function [Xfilt,structout] =laguerreFilt(X,ord,tau,fs)
 
 % [Xfilt,str] =laguerreFilt(X,ord,alpha)
 %Filter with laguerre polynomialynomials up to specified order.
@@ -61,6 +61,8 @@ for k = 1:length(structin)
     
     alpha = exp(-1./str.tau/str.fs);
 
+    B = [1 -1/alpha];
+    A = [1 -alpha];
 %     clear filtcoef
     coli = coli+1;
     Xfilt(:,coli) = filter([0 sqrt(1-alpha.^2)],[1 -alpha],full(X));
@@ -69,15 +71,20 @@ for k = 1:length(structin)
 
         coli = coli+1;
 
-        Xfilt(:,coli) = filter([1 -1/alpha],[1 -alpha],Xfilt(:,coli-1));
-
+        Xfilt(:,coli) = filter(B,A,Xfilt(:,coli-1));
+        
+      
 %         filtcoef(i+1).order=i;
         
       
     end
     
 %     str.filtcoefs=filtcoef;
-%     structout(k) = str; %#ok<*AGROW>
+    if nargout > 1
+      str.A = A;
+      str.B = B;
+      structout(k) = str; %#ok<*AGROW>
+    end
 end
 
 
