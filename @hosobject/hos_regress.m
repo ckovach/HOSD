@@ -36,7 +36,7 @@
     if nargin < 4
         do_permtest = false; %Do a permutation test to verify significant results
     end
-    if  nargin > 3 && dopermtest > 1
+    if  nargin > 3 && do_permtest > 1
         maxpermn = dopermtest;
     else
         maxpermn = 5e5;
