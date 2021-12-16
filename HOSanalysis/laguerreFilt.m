@@ -1,7 +1,7 @@
 function [Xfilt,structout] =laguerreFilt(X,ord,tau,fs)
 
 % [Xfilt,str] =laguerreFilt(X,ord,alpha)
-%Filter with laguerre polynomialynomials up to specified order.
+%Filter with laguerre polynomials up to specified order.
 %
 % Inputs:
 %
