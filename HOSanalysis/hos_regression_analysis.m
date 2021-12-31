@@ -3,7 +3,7 @@ function res = hos_regression_analysis(bsidin,varargin)
 opts = bsidin.opts;
 hos = bsidin.hos;
 segment = bsidin.segment(1);
-xthresh = bsidin.hos.xthresh(bsidin.dat);
+xthresh = bsidin.hos.xthresh(bsidin.dat).^2;
 
 res = struct('atts',[],'Mbi',[],'afrqs',[],'segment',[],'fit',[],'model',[]);
 
