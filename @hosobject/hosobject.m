@@ -411,6 +411,7 @@ classdef hosobject < handle
           BC = me.B./me.D;
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+          BC(end+1:max(me.freqindx.remap(:)))=nan;
           BC = BC(me.freqindx.remap);
           BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
           
