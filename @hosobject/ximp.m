@@ -34,7 +34,7 @@ function out = ximp(me,xin,return_sparse,apply_window)
    if nargin < 4 || isempty(apply_window)
       apply_window = false; 
    end
-   out = me.xthresh(xin,return_sparse,apply_window)>0;  
+   out = me.xthresh(xin,return_sparse,apply_window)~=0;  
 %            if length(me)>1
 %                out = [out,me(2:end).ximp(in-me(1).xrec(in))];
 %            end         
