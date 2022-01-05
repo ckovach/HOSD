@@ -151,7 +151,9 @@ classdef fact2reg < regressor
     %                 fun= mkfun(ufs);
     %                 me.ufs = ufs;
                 end
-                
+                if isempty(XF)
+                    continue
+                end
                 if isscalar(postmult)==1
                     XF = XF*postmult;
                 else
