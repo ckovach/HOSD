@@ -1,10 +1,13 @@
-function varargout =plotpolycoh(hos)
+function varargout =plotpolycoh(hos,ax)
 
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 
 
-% scale = 'log';
- scale = 'lin';
+if nargin < 2 
+    ax = [];
+end
+scale = 'log';
+%  scale = 'lin';
 %  scale = '';
 switch scale
 
@@ -43,7 +46,11 @@ for hi = 1:length(hos)
 %         Bpart = B;
         B(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
 %         Bpart(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
-        ax(hi) = subplot(subxy(1),subxy(2),hi);
+        if hi>length(ax)
+            ax(hi) = subplot(subxy(1),subxy(2),hi);
+        else
+            axes(ax(hi))
+        end
         imh = imagesc(modfreq,power,B');
          title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
 %         axis image xy
@@ -57,7 +64,11 @@ for hi = 1:length(hos)
         [W1,W2] = meshgrid(wb0{:});
         B(:) = interp2(W1,W2,fftshift(absfun(hos(hi).bicoh)),wb0{1},wb0{1});
         Bpart(:) = interp2(W1,W2,fftshift(absfun(hos(hi).partialbicoh)),wb0{1},wb0{1});
-        ax(hi) = subplot(subxy(1),subxy(2),hi);
+        if hi>length(ax)
+            ax(hi) = subplot(subxy(1),subxy(2),hi);
+        else
+            axes(ax(hi))
+        end
         imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0))*Bpart);
          title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
          xlabel('freq.(Hz)')
@@ -77,7 +88,12 @@ for hi = 1:length(hos)
 
         wb(end+1) = {0};
 
-        ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
+%         ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
+        if hi>length(ax)
+            ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
+        else
+            axes(ax(hi))
+        end
         hold on
 
         dwb = cellfun(@(x)diff(x([1 end])),wb(1:2));
@@ -160,6 +176,7 @@ end
     end
 end
 
+colorbar
 
 if nargout>=1
     varargout{1}=imh;
