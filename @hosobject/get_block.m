@@ -224,7 +224,7 @@
               olddt = me(1).delay;
             end
 
-
+            
 
            if me(1).use_partial_delay_method
                [Xfilt,FXsh,sgn] = me(1).apply_filter(Xsh,false,true);
@@ -241,6 +241,7 @@
                if me(1).do_wave_update
                 me(1).feature = nanmean(Xsh,2);
                end
+              
                if me(1).adjust_lag && me(1).do_filter_update
 %                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
                    ffun = ifftshift(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),1);   
@@ -277,7 +278,10 @@
 % %                         me(1).regweight = nrm(me(1).regval.value\cumXfilt');
 % %                         me(1).sampweight=nrm(me(1).regval.value*me(1).regweight);
 %                     end
-
+          
+           
+  
+           
         end
         
         %%% With highly periodic signals in high noise,
@@ -303,13 +307,18 @@
             me(1).feature= circshift(me(1).feature,floor(-me(1).sampt(mxi)/2));
         end
         
-        
        if all(ishandle(makeplot))
             set(makeplot(1),'cdata',Xsh');
             set(makeplot(6),'ydata',me(1).feature,'Color','k','linewidth',2);
             drawnow
        end
        
+       
+        if me(1).power_iterate && me(1).do_filter_update && me(1).do_wave_update
+                 for rep = 1:50
+                    me(1).power_iteration(Xwin);
+                 end
+        end
         %%% Set the delays to the correct value for the original
         %%% data set;
 
