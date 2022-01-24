@@ -787,6 +787,8 @@ classdef hosobject < handle
         %%%        
         [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum)
         %%%
+        power_iteration(me,X)
+        %%%
         varargout = get_block(me,xin,maxiter,makeplot,segment,compno,initialize)
         %%%
         out = get_input(me,xin,apply_window,use_shifted,initialize)
