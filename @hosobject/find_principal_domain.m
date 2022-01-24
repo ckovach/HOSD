@@ -91,7 +91,8 @@ if  diagonal_slice
     ws = repmat({[]},1,order-1);
     [ws{:}] = ndgrid(freqs{1:order-1});
     word = -sum(cat(order,ws{:}),order);
-    dgs(:) = sum(abs(cat(order,ws{:})-word)<eps.*abs(word),order);
+%     dgs(:) = sum(abs(cat(order,ws{:})-word)<eps.*abs(word),order);
+    dgs(:) = sum(abs(cat(order,ws{:})-word)< 1.5*me.sampling_rate/me.buffersize,order);
  
     for k = 1:order-1
      
@@ -147,7 +148,7 @@ if diagonal_slice
     Wseq = 0;
     for k = 1:length(Ws)-1
         for kk = k+1:length(Ws)
-           Wseq = Wseq + (Ws{k} == Ws{kk});
+           Wseq = Wseq + (abs(Ws{k} - Ws{kk}) < 1.5*me.sampling_rate/me.buffersize);
         end
     end
 
