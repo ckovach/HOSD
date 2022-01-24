@@ -157,7 +157,8 @@
             smpw = me(1).sampweight;
         end
 %                 std_moment = @(x)mean(cumulant(x,me(1).order,1,smpw')./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
-        std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+%         std_moment = @(x)mean(cumulant(x,me(1).order,1)./(nanmean(x.^2).*nanmean(smpw.^2)).^(me(1).order/2));
+        std_moment = @(x)mean(cumulant(x,me(1).order,1,true));
          switch me(1).order
             case 3
                 moment_type = 'skewness';
