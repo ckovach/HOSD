@@ -80,6 +80,9 @@ classdef hosobject < handle
        do_filter_update = true;
        do_CDF_update = true;
 
+       
+       power_iterate = false; %Refine estimates with power iteration
+   
        % Automatically apply a circular shift to the filter and waveforms to center the energy in both
        adjust_lag = true; 
        
