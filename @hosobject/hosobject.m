@@ -79,10 +79,10 @@ classdef hosobject < handle
        do_wave_update = true;
        do_filter_update = true;
        do_CDF_update = true;
-       
+
        
        power_iterate = false; %Refine estimates with power iteration
-       
+   
        % Automatically apply a circular shift to the filter and waveforms to center the energy in both
        adjust_lag = true; 
        
@@ -680,11 +680,11 @@ classdef hosobject < handle
            out = me.Bpartval; 
         end
         function set.B(me,in)
-%             in(isnan(in))=0;
+            in(isnan(in))=0;
             if min(size(in))==1
                 me.Bval = in; 
             else
-                me.Bval = [in(me.freqindx.reduce);nan];
+                me.Bval = [in(me.freqindx.reduce);0];
             end
         end
         function set.D(me,in)

@@ -81,8 +81,8 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     XPSD = mean(abs(FX).^2,2);
 %             BXpart = mean(FFXpart,2);
 
-    BX(end+1,1) = nan;
-    XPSD(end+1,:) =nan;
+    BX(end+1,1) = 0;
+    XPSD(end+1,:) =0;
 %             BXpart(end+1,:) = 0;
     BXpart = {};
     for kk = 1:me.order
@@ -112,13 +112,13 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
         me.sumlr = me.sumlr*(1-lradj) + lradj;
         me.sumlr2 = me.sumlr2*(1-lr).^(2*m) + lrbias;
     end            
-%     BX(isnan(BX))=0;
+    BX(isnan(BX))=0;
     me.B = (1-lradj)*me.B + lradj*BX;
 %             me.Bpart = (1-fflr)*me.Bpart + fflr*BXpart;
      for kk = 1:me.order
         me.Bpart{kk} = (1-fflr)*me.Bpart{kk} + fflr*BXpart{kk};
      end
-%     XPSD(isnan(XPSD))=0;
+    XPSD(isnan(XPSD))=0;
     me.PSD = (1-lradj)*me.PSD + lradj*XPSD;
 %            me.sumlr2 = (me.sumlr2-1./asympedf)*(1-me.current_learning_rate).^(2*m) + lrbias;
 
