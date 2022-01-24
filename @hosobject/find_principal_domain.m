@@ -92,7 +92,8 @@ if  diagonal_slice
     [ws{:}] = ndgrid(freqs{1:order-1});
     word = -sum(cat(order,ws{:}),order);
 %     dgs(:) = sum(abs(cat(order,ws{:})-word)<eps.*abs(word),order);
-    dgs(:) = sum(abs(cat(order,ws{:})-word)< 1.5*me.sampling_rate/me.buffersize,order);
+    dgtol = 1.5*me.sampling_rate/me.buffersize;
+    dgs(:) = sum(abs(cat(order,ws{:})-word)< dgtol,order);
  
     for k = 1:order-1
      
@@ -148,7 +149,7 @@ if diagonal_slice
     Wseq = 0;
     for k = 1:length(Ws)-1
         for kk = k+1:length(Ws)
-           Wseq = Wseq + (abs(Ws{k} - Ws{kk}) < 1.5*me.sampling_rate/me.buffersize);
+           Wseq = Wseq + (abs(Ws{k} - Ws{kk}) < dgtol);
         end
     end
 
@@ -174,15 +175,17 @@ if any(xhighpass>0)
      keep(kpindx)  = keep(kpindx) & keepxhp;
 %     keep  = keep & keepxhp;
 end
+
+passtol = .25*me.sampling_rate/me.buffersize;
 for k = 1:length(Ws)
    
     if ~isinf(lowpass(k))
-         keep(kpindx) = keep(kpindx) & abs(Ws{k})<lowpass(k);
+         keep(kpindx) = keep(kpindx) & abs(Ws{k})<lowpass(k)-passtol;
 %         keep = keep & abs(Ws{k})<lowpass(k);
     end
     if highpass(k)>0
 %         keep = keep & abs(Ws{k})>highpass(k);
-         keep(kpindx) = keep(kpindx) & abs(Ws{k})>highpass(k);
+         keep(kpindx) = keep(kpindx) & abs(Ws{k})>highpass(k)+passtol;
     end
 end
 if ~isscalar(mask)
@@ -253,7 +256,7 @@ if  order >3
         WKP = [Ws{:}];
      %   WKP = WKP(keep,:);
         for k = 1:order-1
-            discard(keep) = discard(keep) | any(abs(repmat(WKP(:,k),1,order-k)+WKP(:,k+1:order)) <= max(shighpass),2)   | all(abs(repmat(WKP(:,k),1,order)+WKP) >= max(slowpass),2)  ;       
+            discard(keep) = discard(keep) | any(abs(repmat(WKP(:,k),1,order-k)+WKP(:,k+1:order)) < max(shighpass)+passtol,2)   | all(abs(repmat(WKP(:,k),1,order)+WKP) > max(slowpass)-passtol,2)  ;       
         end
 
         PD(discard(keep)) = [];
