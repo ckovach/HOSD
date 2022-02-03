@@ -1,4 +1,4 @@
-function varargout =plotpolycoh(hos,ax)
+function varargout =plotpolycoh(hos,ax,plotwhat)
 
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 
@@ -6,9 +6,16 @@ function varargout =plotpolycoh(hos,ax)
 if nargin < 2 
     ax = [];
 end
-scale = 'log';
-%  scale = 'lin';
-%  scale = '';
+thresh = 0;
+if nargin < 3 || isempty(plotwhat)
+    plotwhat = 'abs';
+elseif isnumeric(plotwhat)
+    thresh = plotwhat;
+    plotwhat = 'phase';
+end
+%scale = 'log';
+%   scale = 'lin';
+ scale = '';
 switch scale
 
     case 'log'
@@ -22,13 +29,25 @@ switch scale
         iwtr = wtr;
 end
 
-plot_partialbc = true;
+plot_partialbc = false;
 
 % fig = figure('WindowButtonMotionFcn',@(a,b,c)figcallback(a,wtr,iwtr));
 % fig = figure;
-absfun = @abs;
+switch plotwhat
+    case {'mag','abs','magnitude'}
+        absfun = @abs;
+    case {'phase','angle'}
+      absfun = @(x)angle(x) + 0./(abs(x)>thresh);
+    otherwise
+        if isa(plotwhat,'function_handle')
+            absfun = plotwhat;
+        else
+            error('Unrecognized plotting option')
+        end
+end
 %absfun = @real;
 subxy = almostSquare(length(hos));
+txth = [];
 for hi = 1:length(hos)
    
     
@@ -44,19 +63,28 @@ for hi = 1:length(hos)
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
 %         Bpart = B;
-        B(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
+        B(:) = interp3(W1,W2,W3,fftshift((hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
 %         Bpart(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
         if hi>length(ax)
             ax(hi) = subplot(subxy(1),subxy(2),hi);
         else
             axes(ax(hi))
         end
-        imh = imagesc(modfreq,power,B');
+        imh = pcolor(power,modfreq,absfun(B));
+        shading flat
          title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
 %         axis image xy
         axis xy
-        xlabel('Envelope modulation freq.(Hz)')
-        ylabel('Band freq. (Hz)')
+%         xlabel('Envelope modulation freq.(Hz)')
+%         ylabel('Band freq. (Hz)')
+        ylabel('Envelope modulation freq.(Hz)')
+        xlabel('Band freq. (Hz)')
+        
+         if hi==1
+            cax = caxis;
+        else
+            caxis(cax)
+        end
     elseif hos(hi).diagonal_slice && hos(hi).order == 3
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         B = nan*wb0{1};
@@ -69,7 +97,7 @@ for hi = 1:length(hos)
         else
             axes(ax(hi))
         end
-        imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0))*Bpart);
+        imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0)).*Bpart);
          title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
          xlabel('freq.(Hz)')
     else
@@ -78,14 +106,25 @@ for hi = 1:length(hos)
         switch scale
 
             case 'log'
-                wb = cellfun(@(x)logspace(log10(hos(hi).highpass),log10(max(x)),length(x)),wb0,'uniformoutput',false);
+                wb = cellfun(@(x)log10(logspace(log10(hos(hi).highpass),log10(max(x)),length(x))),wb0,'uniformoutput',false);
+                tick = @(x)(linspace(x(1),x(end),10));
+                ticklbl = @(x)round(10.^tick(x)./10.^(round(tick(x))-1)).*10.^(round(tick(x))-1);
+                wbin = cellfun(@(x)log10(abs(x)),wb0,'uniformoutput',false);
+  
             case {'lin','linear'}
                 wb = cellfun(@(x)x(x>hos(hi).highpass),wb0,'uniformoutput',false);
+                tick = @(x)(linspace(x(1),x(end),10));
+                ticklbl = @(x)tick(x);
+               wbin = wb;
+                
             otherwise
                 wb=wb0;
                 do_interp=false;
+                wbin = wb;
+  
         end
-
+        [wbin{:}] = ndgrid(wb0{:});
+      
         wb(end+1) = {0};
 
 %         ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
@@ -124,12 +163,12 @@ end
     %         dm = divs{mni2}(mni(mni2));
             dims(k-2,:) = almostSquare(nsamps(k));
         end    
-        wbin = wb(1:end-1);
+%         wbin = wb(1:end-1);
         wbout=wb(1:end-1);
-        [wbin{:}] = ndgrid(wb0{:});
         [wbout{:}] = ndgrid(wb{:});
 
         B = interpn(wbin{:},absfun(fftshift(hos(hi).bicoh)),wbout{:});
+%         B = fftshift(full(hos(hi).freqindx.keep));
         if plot_partialbc 
         Bpart = interpn(wbin{:},absfun(fftshift(hos(hi).partialbicoh)),wbout{:});
         else
@@ -171,8 +210,10 @@ end
             caxis(cax)
         end
 %         tick = @(x)round(linspace(x(1),x(end),10));
-        tick = @(x)(linspace(x(1),x(end),10));
-%         set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{1}))
+%          set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{2}),'xticklabel',ticklbl(wb{1}),'yticklabel',ticklbl(wb{2}))
+    end
+    if nargout >=3
+        Bs{hi} = B;
     end
 end
 
@@ -184,7 +225,9 @@ end
 if nargout>=2
     varargout{2} = txth;
 end
-
+if nargout >=3
+    varargout{3} = Bs;
+end
 
 % function figcallback(ax,wtr,iwtr)
 %     
