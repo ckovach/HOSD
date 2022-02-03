@@ -188,10 +188,16 @@ classdef mvhosd < hosobject
                 %%% explicitly as aligment arrors might accrue.
                 
                 L = ifft(G.*fft(features));
-                [~,mxi] = max(sgn.*L);
+                [~,mxi] = max(real(L).^(2-mod(me(1).order,2)));
+                
+                if mod(me(1).order,2)==0
+                    sgc=sign(real(L(mxi+permute((0:size(L,3)-1)*size(L,1),[1 3 2]))));
+                else
+                    sgc=1;
+                end
                 flcorrection = me(1).sampt(mxi);
                 delt2 = me(1).radw*flcorrection; 
-                Gpart = Gpart.*exp(1i*permute(delt2,[1 3 2]));
+                Gpart = Gpart.*exp(1i*permute(delt2,[1 3 2])).*sgc;
                 G = mean(Gpart,2);
                 
                 if size(G,1) == me(1).fftN
