@@ -1,3 +1,4 @@
+function [MGNRM,bfreq,mfreq,out] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT)
 
 
 if nargin < 3 || isempty(Fs)
