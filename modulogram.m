@@ -1,4 +1,3 @@
-function [MGNRM,bfreq,mfreq,out] = modulogram(x,Nwin,Fs,Novlp,lowpass)
 
 
 if nargin < 3 || isempty(Fs)
@@ -23,11 +22,17 @@ if nargin < 4 || isempty(Novlp)
 elseif Novlp<1
     Novlp = ceil(Nwin*Novlp);
 end
+if nargin < 6
+    NFFT = Nwin;
+end
+
 window = window/sum(window);
 x = x-nanmean(x);
 
 T = chopper([0 Nwin-1],0:Novlp:length(x)-Nwin,1,length(x));
 X = x(T).*window;
+
+X(end+1:NFFT,:) = 0;
 
 disc = any(isnan(X));
 if any(disc)
@@ -35,15 +40,17 @@ if any(disc)
 end
 X = X(:,~disc);
 
-X = [X;zeros(size(X))];
+% X = [X;zeros(size(X))];
 
-w = ifftshift((0:2*Nwin-1)-floor(2*Nwin/2));
+w = ifftshift((0:NFFT-1)-floor(NFFT/2));
 
-[MF,BF] = ndgrid(w(w>=0 & w <=lowpass(1)),w(w>=0 & w <= lowpass(2)));
+nlowpass = lowpass*size(X,1)/Fs;
 
-W1 = BF(1:2:end,:);
-W2 = -BF(1:2:end,:) + MF(1:2:end,:);
-W3 = -BF(1:2:end,:) - MF(1:2:end,:);
+[MF,BF] = ndgrid(w(w>=0 & w <=nlowpass(1)),w(w>=0 & w <= nlowpass(2)));
+
+W1 = BF;
+W2 = -BF + MF;
+W3 = -BF - MF;
 
 FX = fft(X);
 
@@ -62,7 +69,7 @@ winHOS= 1;
 xx = 0;
 for k = 1:length(Ws)
    
-   I = mod(Ws{k},2*Nwin)+1;
+   I = mod(Ws{k},NFFT)+1;
 
    MGX =  MGX.*FX(I(:),:);
     
@@ -83,22 +90,22 @@ NRM = mean(abs(MGX),2);
 MGNRM = MG./NRM;
 
 if nargout >3
-   [b,dev,pval,iXX,sigma,res,Yfit,df] = complexglm(MGX(:,1:2:end)',[],'diagonly',false);
+   [b,dev,pval,iXX,sigma,res,Yfit,df,sigmarel] = complexglm(MGX(:,1:2:end)',[],'diagonly',false);
    out.beta = reshape(b,size(I));
    out.pval = reshape(pval,size(I));
    out.iXX  = iXX;
    out.se = reshape(iXX*sigma ,size(I));
    out.MG = reshape(MG,size(I));
    out.NRM = reshape(NRM,size(I));
+   out.serel = reshape(iXX*sigmarel,size(I)); %To find variance of real and imaginary parts, Re{out.se+out.srel}/2 and Re{out.se - out.srel}/2, respectively.
 end
 
 % MG = reshape(MG,size(I));
 MGNRM = reshape(MGNRM,size(I));
 
 % bfreq =BF(1,1:2:end)/(2*Nwin)*Fs;
-bfreq =BF(1,:)/(2*Nwin)*Fs;
-mfreq =MF(1:2:end,1)/(2*Nwin)*Fs;
-
+bfreq =BF(1,:)/(NFFT)*Fs;
+mfreq =MF(:,1)/(NFFT)*Fs;
 
 
 
