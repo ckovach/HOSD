@@ -473,57 +473,66 @@ for bsdi = 1:length(bsidin.result)
 
 
 
-
-
-           wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
-           wb2 = fftshift(bsidin.hos(1).freqindx.Bfreqs{2});
-            BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
-            szBB = size(BB);
-            PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
-            for bk = 4:bsidin.hos(bsdi).order %%% Gives something to plot for orders > 3
-                BB = mean(BB,bk-1);
-                PB = mean(PB,bk-1);
-            end
-            BB(wb<=0,:)=[];
-            BB(:,wb2<=0)=[];
-            PB(wb<=0,:)=[];
-            PB(:,wb2<=0)=[];
-
-            wb(wb<=0)=[];
-            wb2(wb2<=0)=[];
-             wintp =10.^(linspace(log10(wb(2)),log10(wb(end)),length(wb)));
-            [mm1,mm2] = meshgrid(wb,wb2);
-            mmintp = meshgrid(wintp,wintp);
-            BBintp = interp2(mm2',mm1',BB,mmintp,mmintp');
-            PBintp = interp2(mm2',mm1',PB,mmintp,mmintp');
-
-            BBintp(mmintp<mmintp')=PBintp(mmintp<mmintp');
+        try
             ax4 = subplot(2,3,2);
+            plotpolycoh(bsidin.hos(bsdi),ax4)
+            colorbar off
+           cbar = colorbar('EastOutside','position',[  0.636    0.719   0.0170    0.206]);
+   
+        catch
 
-    %        imagesc(wb,wb,abs(ld.bsid(1).B))
-           imagesc(log10(wintp),log10(wintp),BBintp)
-              set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
-                      'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
-           axis image xy
-           cbar = colorbar('SouthOutside','position',[  0.4303    0.5488    0.1767    0.0200]);
-    %           axis([0 1 0 1]*max(wb))
-    %          ax4.Position = [.71 .53 .188 .4];
-          if bsidin.hos(bsdi).order ==3
-              title('Part/Full Bicoherence');
-          elseif bsidin.hos(bsdi).order ==4
-              title('Part/Full tricoherence avgd. over 3rd dim');
-          else
-              title('Part/Full polycoherence avgd. over dims');
-          end       
-          xlabel Hz
-          ylabel Hz
+               wb = fftshift(bsidin.hos(1).freqindx.Bfreqs{1});
+               wb2 = fftshift(bsidin.hos(1).freqindx.Bfreqs{2});
+                BB=fftshift(abs(bsidin.hos(bsdi).bicoh));
+                szBB = size(BB);
+                PB=fftshift(abs(bsidin.hos(bsdi).partialbicoh));
+                for bk = 4:bsidin.hos(bsdi).order %%% Gives something to plot for orders > 3
+                    BB = mean(BB,bk-1);
+                    PB = mean(PB,bk-1);
+                end
+                BB(wb<=0,:)=[];
+                BB(:,wb2<=0)=[];
+                PB(wb<=0,:)=[];
+                PB(:,wb2<=0)=[];
+
+                wb(wb<=0)=[];
+                wb2(wb2<=0)=[];
+                 wintp =10.^(linspace(log10(wb(2)),log10(wb(end)),length(wb)));
+                [mm1,mm2] = meshgrid(wb,wb2);
+                mmintp = meshgrid(wintp,wintp);
+                BBintp = interp2(mm2',mm1',BB,mmintp,mmintp');
+                PBintp = interp2(mm2',mm1',PB,mmintp,mmintp');
+
+                BBintp(mmintp<mmintp')=PBintp(mmintp<mmintp');
+                ax4 = subplot(2,3,2);
+
+        %        imagesc(wb,wb,abs(ld.bsid(1).B))
+               imagesc(log10(wintp),log10(wintp),BBintp)
+                  set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
+                          'ytick',log10(2.^(0:log2(wintp(end)))),'yticklabel',2.^(0:log2(wintp(end)))) %     caxis([0 quantile(BB(:),.999)])
+               axis image xy
+               cbar = colorbar('SouthOutside','position',[  0.4303    0.5488    0.1767    0.0200]);
+        %           axis([0 1 0 1]*max(wb))
+        %          ax4.Position = [.71 .53 .188 .4];
+              if bsidin.hos(bsdi).order ==3
+                  title('Part/Full Bicoherence');
+              elseif bsidin.hos(bsdi).order ==4
+                  title('Part/Full tricoherence avgd. over 3rd dim');
+              else
+                  title('Part/Full polycoherence avgd. over dims');
+              end       
+              xlabel Hz
+              ylabel Hz
+        end
     %       if bsdi==1
               cax = caxis;
     %       else
     %           caxis(cax);
     %       end
+    if bsidin.hos(bsdi).order == 3
           set(ax4,'xtick',get(ax4,'ytick'))
 
+    end
     %         ax4 = subplot(4,3,5);
     %        imagesc(log10(wintp),log10(wintp),PBintp)
     %           set(ax4,'xtick',log10(2.^(0:log2(wintp(end)))),'xticklabel',2.^(0:log2(wintp(end))),...
