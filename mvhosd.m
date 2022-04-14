@@ -12,7 +12,11 @@ classdef mvhosd < hosobject
         %%% and  decremented with iteration according to annealing_schedule.
         annealing_start=0;%Starting noise amplitude used for annealing, in units of input s.d
         annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number (1st arg.) and maximum iterations (2nd arg)    
-
+    
+        %%% Interleave filter estimation with static ICA on the filter
+        %%% output with the hope of improving spatial separation.
+        do_static_ica = 4; %Updates every kth iteration (0 = none)
+        
     end
     
     methods
@@ -93,11 +97,12 @@ classdef mvhosd < hosobject
             end
             nsig = size(Xsh,3);
             if me(1).annealing_start>0
-                noise = randn(size(Xsh)).*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]));
+                noise = randn(size(Xsh)).*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]))./sqrt(size(Xsh,3));
             else
                 noise = 0;
             end
             
+            apa = 1;
             while del >tol && iter < maxiter                  
                 [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
@@ -143,6 +148,9 @@ classdef mvhosd < hosobject
                 if iter >2
                   olddt = me(1).delay;
                 end
+                
+                
+             
                 if me(1).annealing_start>0
                     Xsh0 = Xsh;
                      
@@ -160,6 +168,7 @@ classdef mvhosd < hosobject
                
 %                delt = me(1).radw(me(1).keepfreqs{1})*newdt;
                delt = me(1).radw*newdt;
+
 
                %                    
 %                if isscalar(smpw)
@@ -198,21 +207,23 @@ classdef mvhosd < hosobject
                 flcorrection = me(1).sampt(mxi);
                 delt2 = me(1).radw*flcorrection; 
                 Gpart = Gpart.*exp(1i*permute(delt2,[1 3 2])).*sgc;
-                G = mean(Gpart,2);
                 
                 if size(G,1) == me(1).fftN
                     G = G(me(1).keepfreqs{1},:,:);
                 end
-                me(1).G = G;
+                me(1).G = G;%.*apa;
                 me(1).waveftlag= fft(features);
- 
+                
+           
+               
+               
                 if me(1).adjust_lag
                    ffun = ifftshift(sum(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),3),1);                   
                    mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*sum(abs(ffun).^2,2))./sum(sum(sum(abs(ffun).^2,2),3));                   
                    mph = mph./(abs(mph)+eps);
                    me(1).lag = mph; % Circularshift to keep filter energy centered on the window
                 end
-                Gpart = Gpart;
+%                 Gpart = Gpart;
                 Xwin = Xsh;
               
             
@@ -220,7 +231,8 @@ classdef mvhosd < hosobject
                 % trapped at points of cyclical stability.
                 del = std(olddt2-newdt);%min(sqrt(mean((olddt-newdt).^2)),sqrt(mean((olddt2-newdt).^2)));
                 olddt2 = olddt;
-
+                
+                
 
             end
 
@@ -306,7 +318,7 @@ classdef mvhosd < hosobject
                 else
                      FXshift = FXwin;
                 end
-                FXshift = FXshift*diag(sgn);
+                FXshift = FXshift.*sgn;
             else
 %                  Xin = X(:);
 %                 filts = squeeze(me(1).filterfun);
@@ -531,13 +543,48 @@ classdef mvhosd < hosobject
                         Gpart(:,:,nchan)=0;
                     end
                 end
-
+                
 
                 me(1).use_adaptive_threshold=false;
                 
                 me(1).filterfft = nanmean(Gpart,2);
                 me(1).feature = nanmean(X,2);
+                
+%                 if me(1).do_static_ica >0
+%                     for rep = 1:10
+%                        [Xfilt,FXsh,sgn,mvXfilt] = me(:,1).apply_mvfilter(X,false,true);
+%                        D = real(ifft(exp(1i*me(1).radw*me(1).delay)).*sgn);
+%                        XFsh = real(ifft(fft(mvXfilt).*fft(D)));
+%                      %  XFsh = XFsh(1,:,:);
+%                        XFsh = XFsh(abs(me(1).sampt)<=ceil(me(1).buffersize/4),:,:);
+%     %                    XFsh = XFsh./sqrt(nansum(nansum(XFsh.^2,3),2)); %Normalizing total energy in each window in order to reduce the tendency for the spatial weighting to collapse onto outliers
+%                        mvxfrs = reshape(XFsh,size(XFsh,1)*size(XFsh,2),size(XFsh,3));
+%                        Apica = pica(mvxfrs(~any(isnan(mvxfrs),2),:),1,me(1).order,ones(size(mvxfrs,2),1));
+%                        me(1).G = me(1).G.*permute(Apica,[2 3 1]);
+%                     end
+%                 end
+                
                 [A,B,makeplot] = me(1).align(X,Gpart,maxiter,makeplot,compno);
+                if me(1).do_static_ica
+                 apvar=Inf;
+                 rep = 1;
+%                  apa = 1;
+                 while apvar>1e-3 && rep <= 10
+                       [xf,XF] = me(:,1).xfilt(in);
+                       XF = squeeze(XF(~any(isnan(sum(XF,3)),2),:,:));
+                       Apica = pica(XF(1:4:end,:),1,me(1).order,ones(size(XF,2),1));
+                       me(1).G = me(1).G.*permute(Apica,[2 3 1]);
+                       apvar =var(Apica); %This converges to 1
+%                        apa = apa.*permute(Apica,[2 3 1]);
+                       rep=rep+1;
+                 end
+                   [~,FXsh] = me(:,1).apply_mvfilter(X,false,true);
+                     
+                  Xsh = real(ifft(FXsh));
+                  me(1).feature = nanmean(Xsh,2);
+                  A = Xsh;
+                end
+                
                 if size(A,4) ==1
                     A = permute(A,[1 2 4 3]);
                 end
