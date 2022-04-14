@@ -1,5 +1,5 @@
 
-function A = pica(X0,ncomp,ord,a0,dnl)
+function [UM,WM,A] = pica(X0,ncomp,ord,a0,dnl)
 
 %ICA through power iteration
 
@@ -11,9 +11,7 @@ if nargin < 3 || isempty(ord)
     ord = 4;
 end
 
-if nargin < 4 || isempty(a0)
-    a0 = randn(size(X0,2),1);
-end
+dorand= nargin < 4 || isempty(a0)
 
 maxiter = 500;
 %%
@@ -38,51 +36,57 @@ end
 
 for dim = 1:ncomp
 
-R = X'*X;
-Rinv = pinv(R);
+    R = X'*X;
+    Rinv = pinv(R);
 
 
-
-tol = 1e-6;
-d = Inf;
-
-a = WM*a0;
-
-% cm = cumulant(X*a,ord);
-
-iter = 1;
-clear ds kt sk
-while d> tol && iter < maxiter
-    
-    r = X*a;
-
-
-    if isnumeric(ord)
-         rX = r.^((ord-2)/2).*X; 
-         G = (rX'*rX)*Rinv;
-    else
-        rX = sign(r).*dnl(r).*X./(abs(r) +eps) ;
-        G = (rX'*X)*Rinv;
+    if dorand
+        a0 = randn(size(X0,2),1);
     end
-    anew = G'*a;
-%     
-     anew = anew./norm(anew);
-    d = norm(anew-a);
-    
-%     cm(iter+1) = cumulant(X*anew,4);
-%     if cm(iter+1)>cm(iter)
-        a = anew;
-%     else
-%         d=-Inf;
-%     end
-%     ds(iter)=d;
-%     kt(iter) = kurtosis(r);
-%     sk(iter) = skewness(r);
-   iter = iter+1;
+   
+    tol = 1e-6;
+    d = Inf;
+
+    a = WM*a0;
+
+    % cm = cumulant(X*a,ord);
+
+    iter = 1;
+    clear ds kt sk
+    nfp = fprintf('\nComponent %i, ',dim);
+    while d> tol && iter < maxiter
+
+        r = X*a;
+
+
+        if isnumeric(ord)
+             rX = r.^((ord-2)/2).*X; 
+             G = (rX'*rX)*Rinv;
+        else
+            rX = sign(r).*dnl(r).*X./(abs(r) +eps) ;
+            G = (rX'*X)*Rinv;
+        end
+        anew = G'*a;
+    %     
+         anew = anew./norm(anew);
+        d = norm(anew-a);
+
+    %     cm(iter+1) = cumulant(X*anew,4);
+    %     if cm(iter+1)>cm(iter)
+            a = anew;
+    %     else
+    %         d=-Inf;
+    %     end
+    %     ds(iter)=d;
+    %     kt(iter) = kurtosis(r);
+    %     sk(iter) = skewness(r);
+       iter = iter+1;
+    end
+    A(:,dim) = a;   
+    %%
+     X = X*(eye(size(X,2))-a*a');
+     nfp = fprintf('  iter %i, final excess kurtosis: %0.1f',iter,cumulant(r,ord));
 end
-A(:,dim) = a;   
-%%
- X = X*(eye(size(X,2))-a*a');
-end
-A = pinv(WM)*A;
-A = A.*sign(mean(nl(X0*A)));
+
+UM = pinv(WM)*A;
+UM = UM.*sign(mean(dnl(X0*UM)));
