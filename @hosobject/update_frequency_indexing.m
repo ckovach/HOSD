@@ -10,7 +10,7 @@ function update_frequency_indexing(me,freqindx,mask)
     end
     order = me.order;
     freqs=me.freqs;
-    if  isempty(freqs) || length(me.freqs{1})~=me.fftN
+    if  isempty(freqs) || length(me(1).freqs{1})~=me(1).fftN
         freqs = me(1).fftfreq(me(1).fftN)*me(1).sampling_rate;
         me(1).freqs = repmat({freqs},1,me(1).order);
     end
