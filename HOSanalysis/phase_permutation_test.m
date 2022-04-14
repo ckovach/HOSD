@@ -35,16 +35,20 @@ function [permP,Ntot,Q] = phase_permutation_test(hos,x,maxperm,stop_threshold)
 
 %C. Kovach 2019
 alpha = .05;
+fdrthresh = .01;
 default_stop_threshold = 2;
+use_fdr_thresh = true; %%% Adjusts stopping threshold according to false discovery rather than Bonferroni correction, if true.
+                       %%% This will often be much more efficient.
+                       
 if nargin < 3 || isempty(maxperm)
-    maxperm = 25e3; %%% Maximum number of permutations. If set to Inf, then will
+    maxperm = 1e6; %%% Maximum number of permutations. If set to Inf, then will
                    %%% continue until all P-values are 2 std errors away
-                   %%% from the Bonferonni threshold.
+                   %%% from the Bonferonni or FDR threshold.
 end
 
 if nargin < 4 || isempty(stop_threshold)
     stop_threshold = default_stop_threshold; %%% For the sake of efficiency, exclude coefficients after
-                        %%% permutation P value differs from the bonferroni threshold by this many
+                        %%% permutation P value differs from the Bonferroni or FDR threshold by this many
                         %%% std. errors.
 end
     
@@ -75,7 +79,11 @@ end
 B0 = abs(mean(FFX,2)); %%% Magnitude of the bispectral estimate
 
 if stop_threshold(1) < 1
-    pbonf = stop_threshold;
+    if use_fdr_thresh
+        fdrthresh = stop_threshold(1);
+    else
+        pbonf = stop_threshold;
+    end
     if length(stop_threshold)>1
         stop_threshold(2)=1;
     else
@@ -94,7 +102,7 @@ fpn = 0;
 
 reseed
 
-while any(keep) &&  permi<maxperm
+while any(keep) &&  permi<maxperm 
     
     %%% Surrogate estimate for which phase has been randomized
     Bperm = mean(abs(FFX(keep,:)).*exp(2*pi*1i.*rand(size(FFX(keep,:)))),2);
@@ -115,10 +123,25 @@ while any(keep) &&  permi<maxperm
     %%% Find coefficients that require no further testing.
     keep = abs((pperm-pbonf).*sqrt(ntot./(pperm.*(1-pperm))))<stop_threshold;
 %    keep = nsig<stop_threshold;
-    fpn = fprintf([repmat('\b',1,fpn),'\nperm %i (N remaining = %i)'],permi,sum(keep))-fpn;
     
+    if mod(permi,ceil(.001*permi)*10) ==0
+        fpn = fprintf([repmat('\b',1,fpn),'\nperm %i (N remaining = %i, pthresh = %0.2g)'],permi,sum(keep),pbonf)-fpn;
+        if use_fdr_thresh 
+            %%%Adjust the threshold according to the false discovery
+            %%%criterion (Benjamini-Hochberg)
+           srtp = sort(pperm); 
+           srtp(1)=0;
+           pbonf = find(srtp'<(1:length(srtp))/length(srtp)*fdrthresh,1,'last')/length(pperm)*fdrthresh;
+        end
+        if sum(keep)/(sum(pperm<pbonf & ~keep)+1)<.05 % If the number of tests within error range of the stopping threshold
+                                                      % is less than 5% of tests deemed significant, then stop. 
+            maxperm=0;
+        elseif (sqrt(pbonf*(1-pbonf))./sqrt(permi))/pbonf < .1 %If error range is less than 10% of the threshold, then stop.
+            maxperm = 0;
+        end
+    end
     permi = permi+1;
-    
+
 end
 
 %%% Reshape 
