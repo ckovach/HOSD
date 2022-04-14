@@ -1,4 +1,4 @@
-function varargout =plotpolycoh(hos,ax,plotwhat)
+function varargout =plotpolycoh(hos,ax,plotwhat,absfun)
 
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 
@@ -7,11 +7,15 @@ if nargin < 2
     ax = [];
 end
 thresh = 0;
+inputfun = @(x)x;
 if nargin < 3 || isempty(plotwhat)
     plotwhat = 'abs';
-elseif isnumeric(plotwhat)
+elseif isnumeric(plotwhat) && isscalar(plotwhat)
     thresh = plotwhat;
     plotwhat = 'phase';
+else
+    inputfun = @(x)plotwhat;
+    plotwhat = 'input';
 end
 %scale = 'log';
 %   scale = 'lin';
@@ -38,9 +42,16 @@ switch plotwhat
         absfun = @abs;
     case {'phase','angle'}
       absfun = @(x)angle(x) + 0./(abs(x)>thresh);
+    case 'input'
+        if nargin < 4
+          absfun = @(x)x;
+        end
     otherwise
         if isa(plotwhat,'function_handle')
-            absfun = plotwhat;
+            if nargin < 4
+                absfun = plotwhat;
+            end
+                
         else
             error('Unrecognized plotting option')
         end
@@ -63,15 +74,16 @@ for hi = 1:length(hos)
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
 %         Bpart = B;
-        B(:) = interp3(W1,W2,W3,fftshift((hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
+        B(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
 %         Bpart(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
-        if hi>length(ax)
-            ax(hi) = subplot(subxy(1),subxy(2),hi);
-        else
-            axes(ax(hi))
-        end
-        imh = pcolor(power,modfreq,absfun(B));
-        shading flat
+         if hi>length(ax)
+             ax(hi) = subplot(subxy(1),subxy(2),hi);
+%         else
+%             axes(ax(hi))
+         end
+        imh = pcolor(power,modfreq,absfun(B),'parent',ax(hi));
+        set(imh,'facecolor','flat','edgecolor','none');
+%         shading flat
          title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
 %         axis image xy
         axis xy
@@ -90,14 +102,14 @@ for hi = 1:length(hos)
         B = nan*wb0{1};
         Bpart = B;
         [W1,W2] = meshgrid(wb0{:});
-        B(:) = interp2(W1,W2,fftshift(absfun(hos(hi).bicoh)),wb0{1},wb0{1});
-        Bpart(:) = interp2(W1,W2,fftshift(absfun(hos(hi).partialbicoh)),wb0{1},wb0{1});
-        if hi>length(ax)
-            ax(hi) = subplot(subxy(1),subxy(2),hi);
-        else
-            axes(ax(hi))
-        end
-        imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0)).*Bpart);
+        B(:) = interp2(W1,W2,fftshift(absfun(inputfun(hos(hi).bicoh))),wb0{1},wb0{1});
+        Bpart(:) = interp2(W1,W2,fftshift(absfun(inputfun(hos(hi).partialbicoh))),wb0{1},wb0{1});
+         if hi>length(ax)
+             ax(hi) = subplot(subxy(1),subxy(2),hi);
+%         else
+%             axes(ax(hi))
+         end
+        imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0)).*Bpart,'parent',ax(hi));
          title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
          xlabel('freq.(Hz)')
     else
@@ -129,10 +141,10 @@ for hi = 1:length(hos)
 
 %         ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
         if hi>length(ax)
-            ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
-        else
-            axes(ax(hi))
-        end
+             ax(hi) = subplot(subxy(1),subxy(2),hi,'UserData',wb);
+%         else
+%             axes(ax(hi))
+         end
         hold on
 
         dwb = cellfun(@(x)diff(x([1 end])),wb(1:2));
@@ -145,13 +157,13 @@ for hi = 1:length(hos)
         [K{:}] = ndgrid(K{:});
         [Ws{:}] = ndgrid(wb{:});
         Ws{end} = -sum(cat(length(Ws),Ws{1:end-1}),length(Ws));
-if length(wb)>3
-        K = cellfun(@(x)x(:),K,'uniformoutput',false);
-        K = [K{:}];
-        K = K(K(:,end-1)<=length(wb{end-1})/2,:);
-else
-    K=1
-end
+        if length(wb)>3
+                K = cellfun(@(x)x(:),K,'uniformoutput',false);
+                K = [K{:}];
+                K = K(K(:,end-1)<=length(wb{end-1})/2,:);
+        else
+            K=1
+        end
         dims = [];
         for k = 3:length(wb)
     %         rg = [0:sqrt(length(wb{k}))];
@@ -170,7 +182,7 @@ end
         B = interpn(wbin{:},absfun(fftshift(hos(hi).bicoh)),wbout{:});
 %         B = fftshift(full(hos(hi).freqindx.keep));
         if plot_partialbc 
-        Bpart = interpn(wbin{:},absfun(fftshift(hos(hi).partialbicoh)),wbout{:});
+        Bpart = interpn(wbin{:},absfun(fftshift(hos(hi).partialbicoh)),wbout{:},'parent',ax(hi));
         else
             Bpart = B;
         end
@@ -184,7 +196,7 @@ end
 
             imk = num2cell(K(k,:));
             Bplot = B(:,:,imk{:}).*(wbout{2}(:,:,imk{:})>=wbout{1}(:,:,imk{:})) + (1-(wbout{2}(:,:,imk{:})>=wbout{1}(:,:,imk{:}))).*Bpart(:,:,imk{:});
-            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),Bplot);
+            imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),Bplot,'parent',ax(hi));
             delete(datatip(imh(imk{:})));
 %             delete(dt)
             for kk = 1:length(Ws)
@@ -199,7 +211,7 @@ end
                 end
             end
             if ~isempty(kk)
-             txth(imk{:})=text(wcent(1)+dwb(1)/2+wb{1}(1),wcent(2)+.9*dwb(2)+wb{2}(1),[txt{:}],'Color','w','HorizontalAlignment','center','fontsize',8);
+             txth(imk{:})=text(wcent(1)+dwb(1)/2+wb{1}(1),wcent(2)+.9*dwb(2)+wb{2}(1),[txt{:}],'Color','w','HorizontalAlignment','center','fontsize',8,'parent',ax(hi));
             end
         end
         title(sprintf('Component %i',hi))
