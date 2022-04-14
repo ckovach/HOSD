@@ -1,4 +1,4 @@
-function [MGNRM,bfreq,mfreq,out] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT)
+function [MGNRM,bfreq,mfreq,out,X] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT,highpass)
 
 
 if nargin < 3 || isempty(Fs)
@@ -26,6 +26,14 @@ end
 if nargin < 6
     NFFT = Nwin;
 end
+if nargin < 7
+    highpass = [0 0];
+elseif isscalar(highpass)
+    highpass = [1 1]*highpass;
+end
+
+
+w = ifftshift((0:NFFT-1)-floor(NFFT/2));
 
 window = window/sum(window);
 x = x-nanmean(x);
@@ -40,20 +48,22 @@ if any(disc)
     fprintf('\n%i segments with nan values discarded (%0.2f%%)',sum(disc),mean(disc)*100);
 end
 X = X(:,~disc);
+T = T(:,~disc);
+
+FX = fft(X);
 
 % X = [X;zeros(size(X))];
 
-w = ifftshift((0:NFFT-1)-floor(NFFT/2));
 
 nlowpass = lowpass*size(X,1)/Fs;
+nhighpass = highpass*size(X,1)/Fs;
 
-[MF,BF] = ndgrid(w(w>=0 & w <=nlowpass(1)),w(w>=0 & w <= nlowpass(2)));
+[MF,BF] = ndgrid(w(w>=nhighpass(1) & w <=nlowpass(1)),w(w>=nhighpass(2) & w <= nlowpass(2)));
 
 W1 = BF;
 W2 = -BF + MF;
 W3 = -BF - MF;
 
-FX = fft(X);
 
 Ws = {W1,W1,W2,W3};
 
@@ -78,6 +88,8 @@ for k = 1:length(Ws)
    
    winHOS = winHOS.*winFT(I);
    xx = xx+w(I);
+   II(:,k) = I(:);
+   
 end
  
 % 
@@ -88,10 +100,12 @@ end
 MG = mean(MGX,2);% - DGcorr(:);
 NRM = mean(abs(MGX),2);
 % NRM = sqrt(PSDX(:));
+BIAS = sum(abs(MGX).^2,2)./sum(abs(MGX),2).^2;
 MGNRM = MG./NRM;
+MGNRM = MGNRM./abs(MGNRM).*(abs(MGNRM)-sqrt(BIAS));
 
 if nargout >3
-   [b,dev,pval,iXX,sigma,res,Yfit,df,sigmarel] = complexglm(MGX(:,1:2:end)',[],'diagonly',false);
+   [b,dev,pval,iXX,sigma,res,Yfit,df,sigmarel] = complexglm(MGX',[],'diagonly',false);
    out.beta = reshape(b,size(I));
    out.pval = reshape(pval,size(I));
    out.iXX  = iXX;
@@ -107,9 +121,39 @@ MGNRM = reshape(MGNRM,size(I));
 % bfreq =BF(1,1:2:end)/(2*Nwin)*Fs;
 bfreq =BF(1,:)/(NFFT)*Fs;
 mfreq =MF(:,1)/(NFFT)*Fs;
-
-
-
+% 
+% if nargout >5
+%    %%% Efficient partial delay filters for the diagonal slice (not working yet) 
+%    fPDfilt = zeros(size(X));
+%    ZFX = FX./sqrt(PSD+eps + mean(PSD));
+%    for k = 1:size(X,2)
+%        XXF = ZFX(:,k).*conj(ZFX);
+%        fPDfilt(:,k) = mean(XXF.*conj(ZFX).*fft(ifft(XXF).^2),2);
+%    end
+%    t = ifftshift((0:NFFT-1)' - floor(NFFT/2));
+% %    FXsh = FX;
+%    PDFsh = fPDfilt;
+%    for k = 1:25
+%       mfpdf = mean(PDFsh,2);
+%       Xdelay = ifft( mfpdf.*FX);
+%       [~,mxi] = max(abs(Xdelay));
+%       delt = t(mxi)';
+% %        delt = delt - round(angle(mean(exp(1i*2*pi*delt/NFFT)))/(2*pi)*NFFT);
+%       D = t==delt;
+% %       D = sign(D.*Xdelay);
+%       FD = fft(D);
+% %       FXsh = FXsh.*FD;
+%       PDFsh = fPDfilt.*conj(FD).^2.*sign(sum(D.*Xdelay));
+%    end
+%    FD = FD*(-1)^(sum(D(:))<0);
+%    Xsh = ifft(FX.*conj(FD));
+%    mpdf = ifft(mfpdf);
+%    [~,mxi] = max(abs(ifft(abs(mfpdf).*mean(FX.*conj(FD),2))));
+%    mpdf = fftshift(circshift(mpdf,t(mxi)),1);
+%    Xsh = fftshift(circshift(Xsh,-t(mxi)),1);
+% end
+% 
+% 
 
 
 
