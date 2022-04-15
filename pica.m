@@ -1,5 +1,5 @@
 
-function [UM,WM,A] = pica(X0,ncomp,ord,a0,dnl)
+function [UM,WM,A] = pica(X0,ncomp,ord,a0,dnl,verbose)
 
 %ICA through power iteration
 
@@ -11,7 +11,11 @@ if nargin < 3 || isempty(ord)
     ord = 4;
 end
 
-dorand= nargin < 4 || isempty(a0)
+if nargin < 6 || isempty(verbose)
+    verbose = true;
+end
+
+dorand= nargin < 4 || isempty(a0);
 
 maxiter = 500;
 %%
@@ -53,7 +57,9 @@ for dim = 1:ncomp
 
     iter = 1;
     clear ds kt sk
-    nfp = fprintf('\nComponent %i, ',dim);
+    if verbose
+        nfp = fprintf('\nComponent %i, ',dim);
+    end
     while d> tol && iter < maxiter
 
         r = X*a;
@@ -85,7 +91,17 @@ for dim = 1:ncomp
     A(:,dim) = a;   
     %%
      X = X*(eye(size(X,2))-a*a');
-     nfp = fprintf('  iter %i, final excess kurtosis: %0.1f',iter,cumulant(r,ord));
+     if verbose
+         switch ord
+            case 3
+                 nfp = fprintf('  iter %i, final skewness: %0.1f',iter,cumulant(r,ord));
+            case 4
+                nfp = fprintf('  iter %i, final ex. kurtosis: %0.1f',iter,cumulant(r,ord));
+            otherwise
+
+         end
+     end
+            
 end
 
 UM = pinv(WM)*A;
