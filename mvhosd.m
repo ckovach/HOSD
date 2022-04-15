@@ -15,7 +15,7 @@ classdef mvhosd < hosobject
     
         %%% Interleave filter estimation with static ICA on the filter
         %%% output with the hope of improving spatial separation.
-        do_static_ica = 4; %Updates every kth iteration (0 = none)
+        do_static_ica = 5; %Updates every kth iteration (0 = none)
         
     end
     
@@ -28,7 +28,7 @@ classdef mvhosd < hosobject
             
         end
         
-        function [Xsh,Xwin,makeplot] = align(me,Xwin,Gpart,maxiter,makeplot,compno)
+        function [Xsh,Xwin,makeplot,iter] = align(me,Xwin,Gpart,maxiter,makeplot,compno)
              % Fit a block of data all at once
             % Process input if length is >= buffer size, else add to buffer.
             if nargin < 6
@@ -108,14 +108,16 @@ classdef mvhosd < hosobject
                 
                 try
                      if all(ishandle(makeplot))
-                       for k = 1:size(makeplot,2)
+                       nplot = size(makeplot,2);
+                       for k = 1:nplot
                             kplot = plotcompi(k);
                             set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
 
                             set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                             set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
-                            axis tight
-                            ylim(minmax(me(1).feature(:)));
+%                             axis tight
+                            subplot(2,nplot,k+ nplot)
+                            ylim(minmax(me(1).feature(:))*1.1);
                         end
                         drawnow
                     elseif islogical(makeplot) && makeplot
@@ -134,6 +136,7 @@ classdef mvhosd < hosobject
                                  set(plh(pli),'Color',hsv2rgb([mod(pli,color_cycle)/color_cycle 1 .8]));
                              end
                              makeplot(2:6,k)=plh;
+                             ylim(minmax(me(1).feature(:))*1.1);
                         end
     %                         xlim([0 me(1).lowpass])
 
@@ -564,27 +567,41 @@ classdef mvhosd < hosobject
 %                     end
 %                 end
                 
-                [A,B,makeplot] = me(1).align(X,Gpart,maxiter,makeplot,compno);
-                if me(1).do_static_ica
-                 apvar=Inf;
-                 rep = 1;
-%                  apa = 1;
-                 while apvar>1e-3 && rep <= 10
-                       [xf,XF] = me(:,1).xfilt(in);
-                       XF = squeeze(XF(~any(isnan(sum(XF,3)),2),:,:));
-                       Apica = pica(XF(1:4:end,:),1,me(1).order,ones(size(XF,2),1));
-                       me(1).G = me(1).G.*permute(Apica,[2 3 1]);
-                       apvar =var(Apica); %This converges to 1
-%                        apa = apa.*permute(Apica,[2 3 1]);
-                       rep=rep+1;
-                 end
-                   [~,FXsh] = me(:,1).apply_mvfilter(X,false,true);
+                if ~me(1).do_static_ica
+                    [A,B,makeplot] = me(1).align(X,Gpart,maxiter,makeplot,compno);
+                else
+                  niter = 0;
+                  while niter <= maxiter
+                     [A,B,makeplot,iter] = me(1).align(X,Gpart,min(maxiter,me(1).do_static_ica),makeplot,compno);
+                     niter = niter+me(1).do_static_ica;
+                  
+                     apvar=Inf;
+                     rep = 0;
+    %                  apa = 1;
+                    AA = 1;
+                     while apvar>1e-3 && rep <= 10
+                           [xf,XF] = me(:,1).xfilt(in);
+                           XF = squeeze(XF(~any(isnan(sum(XF,3)),2),:,:));
+                           Apica = pica(XF(1:4:end,:),1,me(1).order,ones(size(XF,2),1),[],false);
+                           me(1).G = me(1).G.*permute(Apica,[2 3 1]);
+                           AA = AA.*Apica;
+                        
+    %                        apvar =var(Apica); 
+                           apvar = mean((Apica-1).^2);%This converges to 1
+    %                        apa = apa.*permute(Apica,[2 3 1]);
+                           rep=rep+1;
+                     end
+                     Gpart = Gpart.*permute(abs(AA),[2 3 1]);
+                     [~,FXsh] = me(:,1).apply_mvfilter(X,false,true);
                      
-                  Xsh = real(ifft(FXsh));
-                  me(1).feature = nanmean(Xsh,2);
-                  A = Xsh;
+                      Xsh = real(ifft(FXsh));
+                      me(1).feature = nanmean(Xsh,2);
+                      A = Xsh;
+                      if rep <2  && iter <3
+                             break
+                      end
+                   end
                 end
-                
                 if size(A,4) ==1
                     A = permute(A,[1 2 4 3]);
                 end
