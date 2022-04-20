@@ -65,7 +65,7 @@ for dim = 1:ncomp
         r = X*a;
 
 
-        if isnumeric(ord)
+        if false && isnumeric(ord)
              rX = r.^((ord-2)/2).*X; 
              G = (rX'*rX)*Rinv;
         else
@@ -88,6 +88,7 @@ for dim = 1:ncomp
     %     sk(iter) = skewness(r);
        iter = iter+1;
     end
+    a = sign(nansum(nl(X*anew)))*a; %Enforce positivity of the objective function extremum.
     A(:,dim) = a;   
     %%
      X = X*(eye(size(X,2))-a*a');
