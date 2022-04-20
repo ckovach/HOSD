@@ -1,6 +1,45 @@
 
 classdef mvhosd < hosobject
     
+    % Multivariate HOSD estimation using a auto-HOS and (optionally) static ICA using a
+    % power-iteration technique (PICA). MVHOSD interleaves the estimation of a multivariate filter
+    % (i.e. a spatio-temporal filter) and re-weightng of the spatial
+    % dimension with static ICA estimates. Both steps maximize the cumulant
+    % of a given order. 
+    %
+    % USAGE:
+    %
+    % To define an MVHOSD object, first create a univariate HOSOBJECT with
+    % the desired order and component number, then instantiate the MVHOSD
+    % object using the constructor:     
+    %       hos = hosobject(...);
+    %       mvhos = mvhosd(hos);
+    %Then run the decomposition on data, X:
+    %       mvhos.get_block(X);
+    % where X is a time x channel OR time x trial x channel matrix. 
+    %
+    % OUTPUT:
+    % 
+    % After estimation, to obtain a time x component x channel matrix of features, F, use
+    %       F = [mvhos.feature];
+    % and the a matrix representing a time x component x channel
+    % spatiotemporal unmixing/deconvolution filter is obtained with
+    %       H = [mvhos.filterfun];
+    %
+    % To obtain the filtered (deconvolved/unmixed) signal, with serial deflation of each
+    % component:
+    %       [xfilt,XF] = mvhos.xfilt(X);
+    % where XF is separated by channel and xfilt = sum(XF,2).
+    %
+    % To obtain the filtered and thresholded filter use:
+    %       xthresh = mvhos.xthresh(X);
+    % To obtain the time x channel x component reconstruction:
+    %       xrec = mvhos.xrec(X);
+    %
+    % See also HOSOBJECT and PICA
+    
+    %C. Kovach 2019-2022
+    
     properties
      
         Gpart
@@ -15,7 +54,7 @@ classdef mvhosd < hosobject
     
         %%% Interleave filter estimation with static ICA on the filter
         %%% output with the hope of improving spatial separation.
-        do_static_ica = 5; %Updates every kth iteration (0 = none)
+        do_static_ica = 10; %Updates every kth iteration (0 = none)
         
     end
     
@@ -575,14 +614,17 @@ classdef mvhosd < hosobject
                      [A,B,makeplot,iter] = me(1).align(X,Gpart,min(maxiter,me(1).do_static_ica),makeplot,compno);
                      niter = niter+me(1).do_static_ica;
                   
+                     
                      apvar=Inf;
                      rep = 0;
     %                  apa = 1;
                     AA = 1;
                      while apvar>1e-3 && rep <= 10
-                           [xf,XF] = me(:,1).xfilt(in);
-                           XF = squeeze(XF(~any(isnan(sum(XF,3)),2),:,:));
-                           Apica = pica(XF(1:4:end,:),1,me(1).order,ones(size(XF,2),1),[],false);
+                           [xf,XF] = me(:,1).xfilt(A);
+                           XF = XF(abs(me(1).sampt)<=me(1).buffersize/4,:,:);
+                           XF = XF(~any(isnan(sum(XF,3)),2),:,:);
+                           XF = reshape(XF,size(XF,1)*size(XF,2),size(XF,3));
+                           Apica = pica(XF,1,me(1).order,ones(size(XF,2),1),[],false);
                            me(1).G = me(1).G.*permute(Apica,[2 3 1]);
                            AA = AA.*Apica;
                         
@@ -591,7 +633,7 @@ classdef mvhosd < hosobject
     %                        apa = apa.*permute(Apica,[2 3 1]);
                            rep=rep+1;
                      end
-                     Gpart = Gpart.*permute(abs(AA),[2 3 1]);
+                     Gpart = Gpart.*permute(AA,[2 3 1]);
                      [~,FXsh] = me(:,1).apply_mvfilter(X,false,true);
                      
                       Xsh = real(ifft(FXsh));
