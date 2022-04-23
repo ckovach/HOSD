@@ -25,7 +25,10 @@ classdef hosminimal < hosobject
 %         Imat
 %         Iconjmat
     end
-    
+    properties
+        subspace_dim=0;
+        projection=1;
+    end
     methods
        
         function me = hosminimal(order,varargin)

@@ -55,8 +55,12 @@ classdef mvhosd < hosobject
         %%% Interleave filter estimation with static ICA on the filter
         %%% output with the hope of improving spatial separation.
         do_static_ica = 10; %Updates every kth iteration (0 = none)
-        
-    end
+       
+        subspace_dim = 0; %Dimensionality of the feature. The response in channel i, freq. f is modeled as Hi(f) = Ai*B'(f).
+                          %Subspace_dim is the rank of Ai and B. If the rank is 1, each channel is assumed to contain a 
+                          %scaled copy of the same waveform. Subspace_dim=0 is full rank (no dimensionality reduction).
+        projection = 1;   %Current static projection if subspace_dim > 0;
+      end
     
     methods
 
@@ -134,7 +138,11 @@ classdef mvhosd < hosobject
                 otherwise
                     moment_type = 'standardized cumulant';
             end
-            nsig = size(Xsh,3);
+            if me(1).subspace_dim ==0
+                nsig = size(Xsh,3);
+            else
+                nsig =  me(1).subspace_dim;
+            end
             if me(1).annealing_start>0
                 noise = randn(size(Xsh)).*nanstd(reshape(Xsh,[size(Xsh,1)*size(Xsh,2),1,size(Xsh,3)]))./sqrt(size(Xsh,3));
             else
@@ -146,12 +154,13 @@ classdef mvhosd < hosobject
                 [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
                 
                 try
-                     if all(ishandle(makeplot))
+                     if any(ishandle(makeplot))
                        nplot = size(makeplot,2);
                        for k = 1:nplot
                             kplot = plotcompi(k);
-                            set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
-
+                            if me(1).subspace_dim == 0
+                                set(makeplot(1,k),'cdata',Xsh(:,:,kplot)');
+                            end
                             set(makeplot(7,k),'string',sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=%2.2f',kplot,compno,iter,del/me(1).sampling_rate,moment_type,std_moment(Xfilt)));
                             set(makeplot(mod(iter,5)+2,k),'ydata',me(1).feature(:,kplot),'Color',hsv2rgb([mod(iter,color_cycle)/color_cycle 1 .8]));
 %                             axis tight
@@ -166,7 +175,9 @@ classdef mvhosd < hosobject
                         for k = 1:nplot
                             kplot = plotcompi(k);
                             subplot(2,max(nplot,me(1).maxplotn),k )
-                            makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
+                            if me(1).subspace_dim ==0
+                                makeplot(1,k) = imagesc(fftshift(me(1).sampt)/me(1).sampling_rate,[],Xsh(:,:,kplot)');
+                            end
                             makeplot(7,k) = title(sprintf('Ch.%3i, Comp.%3i, Iter.%3i\nMean shift =%2.2fs, %s=',kplot,compno,iter,del/me(1).sampling_rate,moment_type ));
                             subplot(2,nplot,k+ nplot)
                            plh = plot(fftshift(me(1).sampt)./me(1).sampling_rate,me(1).feature(:,kplot)*ones(1,5));
@@ -253,10 +264,19 @@ classdef mvhosd < hosobject
                 if size(G,1) == me(1).fftN
                     G = G(me(1).keepfreqs{1},:,:);
                 end
-                me(1).G = G;%.*apa;
-                me(1).waveftlag= fft(features);
                 
-           
+                 if me(1).subspace_dim > 0
+%                     [u,l,v] = svds(squeeze(features),me(1).subspace_dim);
+                    [u,l,v] = svds(squeeze(G),me(1).subspace_dim);
+                    me(1).feature = permute(squeeze(features)*real(v),[1 3 2]);
+                    me(1).G = permute(squeeze(G)*real(v),[1 3 2]);
+                    me(1).projection = real(v);
+                else
+                   
+                    me(1).G = G;%.*apa;
+                    me(1).waveftlag= fft(features);
+                
+                 end           
                
                
                 if me(1).adjust_lag
@@ -332,12 +352,22 @@ classdef mvhosd < hosobject
                 
 %                 FXwin = fft(X)';
                 FXfilt =zeros(size(Xwin,1),size(Xwin,2));
-                FXfilt(me(1).keepfreqs{1},:) = nansum(FXwin(me(1).keepfreqs{1},:,:).*repmat(me(1).filterfft(me(1).keepfreqs{1},:,:),1,size(X,2)),3);
+                if me(1).subspace_dim > 0
+                    if size(Xwin,3) == size(me(1).projection,1)
+                        filterfft = permute(squeeze(me(1).filterfft)*me(1).projection',[1 3 2]);
+                    else
+                        filterfft = me(1).filterfft;
+                    end                    
+                else
+                    filterfft = me(1).filterfft;
+                end
+                    
+                FXfilt(me(1).keepfreqs{1},:) = nansum(FXwin(me(1).keepfreqs{1},:,:).*repmat(filterfft(me(1).keepfreqs{1},:,:),1,size(X,2)),3); %#ok<*NANSUM>
                 Xfilt = real(ifft(FXfilt));
                 
 %                 Xfilt = sum(real(ifft(FXwin.*repmat(me(1).filterfft(me(1).keepfreqs{1}),1,size(X,2)))),3);   
                 if nargout > 3
-                    mvXfilt = real(ifft(FXwin.*repmat(me(1).filterfft,1,size(X,2))));   
+                    mvXfilt = real(ifft(FXwin.*repmat(filterfft,1,size(X,2))));   
                 end                    
                 if isscalar(smpw)
                     [~,mxi] = max(Xfilt.^me(1).order);
@@ -365,7 +395,14 @@ classdef mvhosd < hosobject
 %                  Xin = X(:);
 %                 filts = squeeze(me(1).filterfun);
                 filts = me(1).filterfun;
-                if size(X,3) ~=size(filts,3)
+                if me(1).subspace_dim >0
+                    X = squeeze(X);
+                    if size(X,2) == size(me(1).projection,1)
+                        X = permute(squeeze(X)*me(1).projection,[1 3 2]); 
+                    end
+                end
+
+                if size(X,3) ~=size(filts,3)                   
                     X = permute(X,[1 3 2]);
                 end
                 Xin = X;
@@ -396,11 +433,17 @@ classdef mvhosd < hosobject
            if nargin < 3 || isempty(apply_window)
               apply_window = false; 
            end
-           chdim = find(size(me(1).feature)>1,1,'last');
-           if ~isvector(in) && size(in,chdim) ~= size(me(1).feature,3) && size(in,chdim-1) == size(me(1).feature,3)
-%                warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
-               in = permute(in, [1:chdim-2 chdim chdim-1]);
+%            chdim = find(size(in)>1,1,'last');
+%            
+%            chdim = chdim + (chdim==1); %In case the input is not in fact multivariate
+           
+           if me(1).subspace_dim==0 && size(in,3)~=size(me(1).filterfun,3) || me(1).subspace_dim>0 && size(in,3)~=size(me(1).projection,1)
+               in = permute(in, [1 3 2]);
            end
+%            if ~isvector(in) && size(in,chdim) ~= size(me(1).feature,3) && (me(1).subspace_dim== 0 || size(in,3) ~= size(me(1).projection,1))
+% %                warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
+%                in = permute(in, [1:chdim-2 chdim chdim-1]);
+%            end
            if nargout > 1
                [out,~,~,mvout] = me(1).apply_mvfilter(in,apply_window,false);  
            else
@@ -447,7 +490,7 @@ classdef mvhosd < hosobject
             Xthr=me(1).filter_threshold(Xfilt,threshold);
             
         %     wf = fftshift(me(1).waveform,1);
-            wf = me(1).waveform;
+            wf = me(1).waveform;%*me(1).projection';
             wf(end+1:size(Xthr,1),:) = 0;
             wf = circshift(wf,-floor(me(1).bufferN/2));
             Xthr(end+1:length(wf),:)=0;
@@ -459,8 +502,11 @@ classdef mvhosd < hosobject
             Xrec = real(ifft(FXthresh.*featfft));
             Xrec(size(X,1)+1:length(wf),:) = [];
             %X(xisnan)=0;
+          
+            if me(1).subspace_dim > 0
+                Xrec = permute(squeeze(Xrec)*me(1).projection',[1 3 2]);
+            end
             Xrec(xisnan)=0;
-
             use_filtered_lmse = true;
             if use_filtered_lmse
                 %%% Apply the filter to the reconstructed data for LMSE fitting
@@ -589,9 +635,19 @@ classdef mvhosd < hosobject
 
                 me(1).use_adaptive_threshold=false;
                 
-                me(1).filterfft = nanmean(Gpart,2);
-                me(1).feature = nanmean(X,2);
-                
+                feature = nanmean(X,2);
+                filterfft = nanmean(Gpart,2); %#ok<*NANMEAN>
+                if me(1).subspace_dim > 0
+%                     [u,l,v] = svds(squeeze(feature),me(1).subspace_dim);
+                    [u,l,v] = svds(squeeze(filterfft),me(1).subspace_dim);
+                    me(1).feature = permute(squeeze(feature)*real(v),[1 3 2]);
+                    me(1).filterfft = permute(squeeze(filterfft)*v,[1 3 2]);
+                    me(1).projection = real(v);
+                else
+                    me(1).feature = feature;
+                    me(1).filterfft = filterfft;
+                    me(1).projection = 1;
+                end
 %                 if me(1).do_static_ica >0
 %                     for rep = 1:10
 %                        [Xfilt,FXsh,sgn,mvXfilt] = me(:,1).apply_mvfilter(X,false,true);
@@ -622,10 +678,14 @@ classdef mvhosd < hosobject
                      while apvar>1e-3 && rep <= 10
                            [xf,XF] = me(:,1).xfilt(A);
                            XF = XF(abs(me(1).sampt)<=me(1).buffersize/4,:,:);
-                           XF = XF(~any(isnan(sum(XF,3)),2),:,:);
+                           XF = XF(:,~any(isnan(sum(XF,3)),1),:);
                            XF = reshape(XF,size(XF,1)*size(XF,2),size(XF,3));
                            Apica = pica(XF,1,me(1).order,ones(size(XF,2),1),[],false);
-                           me(1).G = me(1).G.*permute(Apica,[2 3 1]);
+                           if me(1).subspace_dim ==0
+                               me(1).G = me(1).G.*permute(Apica,[2 3 1]);
+                           else
+                               me(1).projection = Apica.*me(1).projection;
+                           end
                            AA = AA.*Apica;
                         
     %                        apvar =var(Apica); 
@@ -633,11 +693,29 @@ classdef mvhosd < hosobject
     %                        apa = apa.*permute(Apica,[2 3 1]);
                            rep=rep+1;
                      end
-                     Gpart = Gpart.*permute(AA,[2 3 1]);
+%                      if me(1).subspace_dim ==0
+%                          Gpart = Gpart.*permute(AA,[2 3 1]);
+%                      end
                      [~,FXsh] = me(:,1).apply_mvfilter(X,false,true);
                      
                       Xsh = real(ifft(FXsh));
-                      me(1).feature = nanmean(Xsh,2);
+                      if me(1).subspace_dim == 0
+                          me(1).feature = nanmean(Xsh,2);
+                          Gpart = Gpart.*permute(AA,[2 3 1]);
+                      else
+                          feature = squeeze(nanmean(Xsh,2));
+                          delt = me(1).radw*me(1).delay;     
+                          filterfft = nanmean((exp(-1i.*delt)).*Gpart,2);
+%                           [v,l] = svds(me(1).projection,me.subspace_dim);
+%                          [u,l,v] = svds(feature,me(1).subspace_dim);
+%                              wgtfun = ifft(fft(feature).*abs(squeeze(filterfft)));
+%                             [u,l,v] = svds(wgtfun,me(1).subspace_dim);
+                           [u,l,v] = svds(squeeze(filterfft),me(1).subspace_dim);
+                          me(1).feature = permute(feature*real(v),[1 3 2]); 
+                           me(1).projection = real(v);
+           
+                           me(1).filterfft = permute(squeeze(filterfft)*v,[1 3 2]);
+                      end
                       A = Xsh;
                       if rep <2  && iter <3
                              break
