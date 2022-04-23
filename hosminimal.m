@@ -84,7 +84,7 @@ classdef hosminimal < hosobject
                end
                me(1).do_indexing_update = false;
                if length(me)>1
-                   me(2:end) = hosobject(obj(2:end));
+                   me(2:end) = hosminimal(obj(2:end));
                end
                return
             elseif  me(1).check_sign
