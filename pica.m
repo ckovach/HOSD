@@ -15,6 +15,10 @@ if nargin < 6 || isempty(verbose)
     verbose = true;
 end
 
+if ncomp > size(X0,2)
+    ncomp = size(X0,2);
+    warning('Number of components cannot exceed the dimensionality of X. Reducing ncomp to %i',ncomp);
+end
 dorand= nargin < 4 || isempty(a0);
 
 maxiter = 500;
@@ -22,7 +26,9 @@ maxiter = 500;
 
 m0 = mean(X0);
 R0 = cov(X0);
-WM = R0^(.5);
+[u,l,v] = svd(R0);
+WM = u*sqrt(l)*v';
+% WM = R0^(.5);
 Z0 = (X0-m0)*pinv(WM);
 
 X = Z0;
@@ -38,6 +44,7 @@ elseif ischar(ord)
     end
 end
 
+deflate = 1;
 for dim = 1:ncomp
 
     R = X'*X;
@@ -45,7 +52,7 @@ for dim = 1:ncomp
 
 
     if dorand
-        a0 = randn(size(X0,2),1);
+        a0 = deflate*randn(size(X0,2),1);
     end
    
     tol = 1e-6;
@@ -91,7 +98,8 @@ for dim = 1:ncomp
     a = sign(nansum(nl(X*anew)))*a; %Enforce positivity of the objective function extremum.
     A(:,dim) = a;   
     %%
-     X = X*(eye(size(X,2))-a*a');
+    deflate = deflate*(eye(size(X,2))-a*a');
+     X = X*deflate;
      if verbose
          switch ord
             case 3
