@@ -16,6 +16,6 @@ me.filterfft =pdfilt;
 
 [~,FXsh] = me.apply_filter(X,false);
 
-me.wavefft = mean(FXsh,2);
+me.wavefft = nanmean(FXsh,2);
 
 % me.delay = delt;
