@@ -44,7 +44,11 @@
     
     reg_args = {};
     if nargin < 3 || isempty(xin)
-        xin = ones(size(yin,1),1);
+        if size(yin,2) == 1
+           xin = ones(size(yin,1),1);
+        else
+            xin = ones(size(yin,2),1);
+        end
         reg_args = [reg_args,{'intercept',false}];
     end
     me(1).regressor = xin;
@@ -65,6 +69,8 @@
         FY = fft(Ychop);
     else
         FY = fft(yin);
+        x = xin;
+        
     end
     FFY = conj(FY(me(1).freqindx.Is(:,me(1).order),:));          
     for k = me(1).order-1:-1:1
@@ -97,7 +103,7 @@
            geti = num < num_threshold(min(end,ceil(log10(permi+1))));
                fp = fprintf([repmat('\b',1,fp),'Permutation %i, Nsig: %i'],permi,sum(geti))-fp;
            end
-           [~,dev] = complexglm(FFY(geti,rp)',x,'diagonly',false);
+           [~,dev] = complexglm(FFY(geti,rp)',x,'diagonly',false,reg_args{:});
            den(geti) = den(geti)+1;
            num(geti) =  num(geti)+(out.dev(geti)<dev);
            permi=permi+1;
