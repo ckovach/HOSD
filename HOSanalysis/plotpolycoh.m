@@ -14,7 +14,7 @@ elseif isnumeric(plotwhat) && isscalar(plotwhat)
     thresh = plotwhat;
     plotwhat = 'phase';
 else
-    inputfun = @(x)plotwhat;
+    inputfun = @(x)plotwhat(x);
     plotwhat = 'input';
 end
 %scale = 'log';
@@ -63,6 +63,7 @@ for hi = 1:length(hos)
    
     
     if hos(hi).diagonal_slice && hos(hi).order == 4
+        subxy = [length(hos) 2];
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
      
         power = wb0{1};
@@ -73,19 +74,23 @@ for hi = 1:length(hos)
         [P,M] = meshgrid(power,modfreq);
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
-%         Bpart = B;
+        Bpart = B;
         B(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
-%         Bpart(:) = interp3(W1,W2,W3,fftshift(absfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
-         if hi>length(ax)
-             ax(hi) = subplot(subxy(1),subxy(2),hi);
+        Bpart(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
+        Bpart(isnan(B))=nan;
+         if hi>size(ax,1)
+             ax(hi,1) = subplot(subxy(1),subxy(2),1 + 2*(hi-1));
+             ax(hi,2) = subplot(subxy(1),subxy(2),2 + 2*(hi-1));
 %         else
 %             axes(ax(hi))
          end
-        imh = pcolor(power,modfreq,absfun(B),'parent',ax(hi));
+        imh = pcolor(power,modfreq,absfun(B),'parent',ax(hi,1));
         set(imh,'facecolor','flat','edgecolor','none');
-%         shading flat
-         title(sprintf('Component %i Trispectrum Diagonal Slice',hi))
-%         axis image xy
+        if hi==1
+         title(ax(hi,1),sprintf('Modulogram (Trispectrum Diagonal Slice)'))
+        else
+         title(ax(hi,2),sprintf('Residual Modulogram After Comp. %i',hi-1))
+        end    
         axis xy
 %         xlabel('Envelope modulation freq.(Hz)')
 %         ylabel('Band freq. (Hz)')
@@ -96,7 +101,12 @@ for hi = 1:length(hos)
             cax = caxis;
         else
             caxis(cax)
-        end
+         end
+        imh = pcolor(power,modfreq,absfun(Bpart),'parent',ax(hi,2));
+        set(imh,'facecolor','flat','edgecolor','none');
+         title(ax(hi,2),sprintf('Component %i Trispectrum Modulogram',hi))
+        axis xy
+
     elseif hos(hi).diagonal_slice && hos(hi).order == 3
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         B = nan*wb0{1};
