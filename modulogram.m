@@ -1,10 +1,14 @@
-function [MGNRM,bfreq,mfreq,out,X] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT,highpass)
+function [MGNRM,bfreq,mfreq,out,MGX,X] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT,highpass, NORMX,compute_bias)
 
 
 if nargin < 3 || isempty(Fs)
     Fs = 1;
 end
 
+if size(x,2)>1
+    Nwin = size(x,1);
+    NFFT = size(x,1);
+end
 
 if isscalar(Nwin)
     window = rectwin(Nwin);
@@ -32,26 +36,49 @@ elseif isscalar(highpass)
     highpass = [1 1]*highpass;
 end
 
+if nargin < 8 || isempty(compute_bias)
+    compute_bias = true;
+end
 
 w = ifftshift((0:NFFT-1)-floor(NFFT/2));
 
 window = window/sum(window);
-x = x-nanmean(x);
+x = x-nanmean(x(:));
 
-T = chopper([0 Nwin-1],0:Novlp:length(x)-Nwin,1,length(x));
-X = x(T).*window;
+if size(x,2) >1
+    X = x.*window;
+else
+    T = chopper([0 Nwin-1],0:Novlp:length(x)-Nwin,1,length(x));
+    X = x(T).*window;
+end
 
 X(end+1:NFFT,:) = 0;
+
 
 disc = any(isnan(X));
 if any(disc)
     fprintf('\n%i segments with nan values discarded (%0.2f%%)',sum(disc),mean(disc)*100);
 end
 X = X(:,~disc);
-T = T(:,~disc);
+if size(x,2)==1
+    T = T(:,~disc);
+end
 
 FX = fft(X);
 
+
+if nargin < 8 || isempty(NORMX)    
+%     NORMFX = FX;
+    NORMFX=[];
+elseif size(NORMX,2)==1
+     T2 = chopper([0 Nwin-1],0:Novlp:length(NORMX)-Nwin,1,length(NORMX));
+    NORMX = NORMX(T2).*window;
+    NORMX(end+1:NFFT,:) = 0;   
+    NORMFX = fft(NORMX(T2));
+else
+    NORMFX = fft(NORMX);
+end
+    
 % X = [X;zeros(size(X))];
 
 
@@ -69,7 +96,9 @@ Ws = {W1,W1,W2,W3};
 
 PSD = mean(abs(FX).^2,2);
 
-winFT = fft([window;zeros(size(window))]);
+padwin = window;
+padwin(end+1:NFFT) = 0;
+winFT = fft([padwin;zeros(size(padwin))]);
 
 % DR1 = W1==0 | W2==0 | W3==0;
 DR2 = W1+W2==0 | W1+W3==0 | W2+W3==0 | W1==0 ;
@@ -77,30 +106,35 @@ DR2 = W1+W2==0 | W1+W3==0 | W2+W3==0 | W1==0 ;
 MGX = 1;
 PSDX = 1;
 winHOS= 1;
+NORMGX=1;
 xx = 0;
 for k = 1:length(Ws)
    
    I = mod(Ws{k},NFFT)+1;
 
    MGX =  MGX.*FX(I(:),:);
-    
+    if ~isempty(NORMFX)    
+        NORMGX =  NORMGX.*NORMFX(I(:),:);
+    end
    PSDX = PSDX.*PSD(I);
    
-   winHOS = winHOS.*winFT(I);
+%    winHOS = winHOS.*winFT(I);
    xx = xx+w(I);
    II(:,k) = I(:);
    
 end
- 
+if isempty(NORMFX)
+    NORMGX = MGX;
+end
 % 
 % DGcorr = ifft2(fft2(abs(winHOS)).*fft2(DR2.*sqrt(PSDX)));
 
  MGX(DR2,:) = MGX(DR2,:) - sqrt(PSDX(DR2));
 
 MG = mean(MGX,2);% - DGcorr(:);
-NRM = mean(abs(MGX),2);
+NRM = mean(abs(NORMGX),2);
 % NRM = sqrt(PSDX(:));
-BIAS = sum(abs(MGX).^2,2)./sum(abs(MGX),2).^2;
+BIAS = compute_bias*sum(abs(NORMGX).^2,2)./sum(abs(NORMGX),2).^2;
 MGNRM = MG./NRM;
 MGNRM = MGNRM./abs(MGNRM).*(abs(MGNRM)-sqrt(BIAS));
 
