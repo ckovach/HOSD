@@ -54,6 +54,8 @@ end
     
 if size(x,1)~=hos(1).buffersize
     X = hos(1).chop_input(x);
+else
+    X = x;
 end
 isn = any(isnan(X));
 
