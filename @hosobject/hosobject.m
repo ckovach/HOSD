@@ -457,7 +457,7 @@ classdef hosobject < handle
              if min(size(in))==1
                 me.BIASnum = in.*me.D.^2; 
             else
-                me.BIASnum = [in(me.freqindx.reduce).*me.D.^2;0];
+                me.BIASnum = [in(me.freqindx.reduce);0].*me.D.^2;
              end
         end
         function out = get.fullmap(me)
@@ -795,7 +795,7 @@ classdef hosobject < handle
         %%%
         update_filter(me)
         %%%
-        [Xchop,T] = chop_input(me,xin,apply_window,delay)
+        [Xchop,T,segment] = chop_input(me,xin,apply_window,delay,segment)
         %%%
         out = hos_regress(me,yin,xin,do_permtest,varargin)
         %%%
