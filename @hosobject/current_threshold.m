@@ -96,7 +96,7 @@ else
     if all(Xthr)
         out = Inf;
     else
-        out = nansum(Xmom.*(diff(Xthr)>0),1);
+        out = nansum(Xsrt.*(diff(Xthr)>0),1);
     end
  end
 end
