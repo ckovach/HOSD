@@ -785,7 +785,7 @@ classdef hosobject < handle
         %%%
         FFXpart = update_bispectrum(me,FXs,initialize)
         %%%        
-        [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum)
+        [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum,normalization)
         %%%
         power_iteration(me,X)
         %%%
