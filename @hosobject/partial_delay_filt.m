@@ -1,4 +1,4 @@
- function [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum)
+ function [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum,normalization)
             
 % [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum)
 %
@@ -24,7 +24,9 @@
     if nargin < 4 || isempty(use_sample_bispectrum)
         use_sample_bispectrum = false; % Uses precomputed statistics if false
     end
-    
+    if nargin< 5 || isempty(normalization)
+        normalization = true;
+    end
     if ~iscell(Xs)
         Xs  = {Xs};
     end
@@ -83,11 +85,16 @@
         FFXpart = me.update_bispectrum(FX,true);
     end
 
-    BC = me.B./(me.D+eps);
-    bias = sqrt(me.BIASnum./(me.D.^2+eps));
-    bias(isnan(bias))=0;
-    BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
-    H = conj(BC./(me.D+eps));
+    if normalization
+        BC = me.B./(me.D+eps);
+        bias = sqrt(me.BIASnum./(me.D.^2+eps));
+        bias(isnan(bias))=0;
+        BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+        H = conj(BC./(me.D+eps));
+    else
+        BC = me.B; 
+        H = conj(BC);
+    end
 
     Gpart = 0;
 %             Bcheck = 0;
