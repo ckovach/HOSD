@@ -77,8 +77,14 @@ else
 end
 
 apa = 1;
-while del >tol && iter < maxiter                  
-    [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(me(1).filterfft).^2),'descend');
+while del >tol && iter < maxiter        
+    
+    if me(1).subspace_dim > 0 && size(me(1).wavefft,3) ~= me(1).subspace_dim
+        ff = permute(squeeze(me(1).filterfft)*me(1).projection',[1 3 2]);
+    else
+        ff = me(1).filterfft;
+    end
+    [~,plotcompi] = sort(sum(abs(me(1).wavefft).^2.*abs(ff).^2),'descend');
 
     try
          if any(ishandle(makeplot))
@@ -195,7 +201,8 @@ while del >tol && iter < maxiter
      if me(1).subspace_dim > 0
 %                     [u,l,v] = svds(squeeze(features),me(1).subspace_dim);
         [u,l,v] = svds(squeeze(G),me(1).subspace_dim);
-        me(1).feature = permute(squeeze(features)*real(v),[1 3 2]);
+%         me(1).feature = permute(squeeze(features)*real(v),[1 3 2]);
+        me(1).waveftlag =fft(features); 
         me(1).G = permute(squeeze(G)*real(v),[1 3 2]);
         me(1).projection = real(v);
     else
@@ -207,7 +214,12 @@ while del >tol && iter < maxiter
 
 
     if me(1).adjust_lag
-       ffun = ifftshift(sum(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),3),1);                   
+       if me(1).subspace_dim > 0 && size(me(1).filterftlag,3) == size(me(1).projection,2)
+           ff = permute(squeeze(me(1).filterftlag)*me(1).projection',[1 3 2]);
+       else
+           ff = me(1).filterftlag;
+       end
+       ffun = ifftshift(sum(real(ifft(ff.*abs(me(1).waveftlag+eps))),3),1);                   
        mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*sum(abs(ffun).^2,2))./sum(sum(sum(abs(ffun).^2,2),3));                   
        mph = mph./(abs(mph)+eps);
        me(1).lag = mph; % Circularshift to keep filter energy centered on the window
