@@ -1,7 +1,10 @@
 
 function [UM,WM,A] = pica(X0,ncomp,ord,a0,dnl,verbose)
 
-%ICA through power iteration
+%[UM,WM,A] = pica(X0,ncomp,ord,a0,dnl,verbose)
+%ICA through power iteration. This finds a series of projection that
+%maximize the moment of a given order. By default the 4th moment is used, which 
+%assumes all independent components are leptokurtic.
 
 if nargin < 2 || isempty(ncomp)
     ncomp = size(X0,2);
@@ -84,7 +87,7 @@ for dim = 1:ncomp
          anew = anew./norm(anew);
         d = norm(anew-a);
 
-    %     cm(iter+1) = cumulant(X*anew,4);
+    %     cm(iter) = cumulant(X*anew,4);
     %     if cm(iter+1)>cm(iter)
             a = anew;
     %     else
@@ -107,7 +110,8 @@ for dim = 1:ncomp
             case 4
                 nfp = fprintf('  iter %i, final ex. kurtosis: %0.1f',iter,cumulant(r,ord));
             otherwise
-
+                nfp = fprintf('  iter %i, final ex. %ith order cumulant: %0.1f',iter,ord,cumulant(r,ord));
+       
          end
      end
             
