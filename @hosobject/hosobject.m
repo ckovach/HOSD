@@ -414,9 +414,15 @@ classdef hosobject < handle
           BC = me.B./me.D;
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
-          BC(end+1:max(me.freqindx.remap(:)))=nan;
-          BC = BC(me.freqindx.remap);
-          BC(me.freqindx.PDconj) = conj(BC(me.freqindx.PDconj));
+          remap = me.freqindx.remap;
+          BC(end+1:max(remap(:)),:)=nan;
+      
+          prm = circshift(1:me.order,-1);
+          remap = remap + permute( cast(0:size(BC,me.order)-1,class(remap))',prm)*size(BC,1);
+          BC = BC(remap);
+          
+          pdc = repmat(me.freqindx.PDconj,[ones(1,me.order-1) size(BC,me.order)]);
+          BC(pdc) = conj(BC(pdc));
           
         end
         function BC = get.bicohreduced(me)
