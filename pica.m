@@ -70,6 +70,7 @@ for dim = 1:ncomp
     if verbose
         nfp = fprintf('\nComponent %i, ',dim);
     end
+    maxcum = 0;
     while d> tol && iter < maxiter
 
         r = X*a;
