@@ -57,7 +57,7 @@ if isstruct(rg)
         evtt = rg.wint;
     end
     if isfield(rg,'maxN')
-        maxN = maxN;
+        maxN = rg.maxN;
     end
     rg = rg.Trange;
 end    
