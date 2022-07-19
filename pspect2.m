@@ -271,12 +271,12 @@ switch options.normalization
         nrm = sqrt(sum(abs(NORM(:,:,1)).^2).*sum(NORM(:,:,2)));
         nrm(end+1)=1;
         out.normalization = nrm(rmat);
-        out.bias=nan;
+        out.bias=0;
     case 'rms'        
         nrm = sqrt(NORM);
         nrm(end+1)=1;
         out.normalization = nrm(rmat);
-        out.bias = nan;
+        out.bias = 0;
      case {'','none'}
         out.normalization = 1;
   
