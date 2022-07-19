@@ -41,9 +41,10 @@ function [out,pspindices] = pspect2(S,varargin)
 %                    estimate.
 %           .conjugate: Terms for which the complex conjugate is taken.
 %           .reconmat: reconstruct into the same shape and size as psp.pspect. 
+%           .lin     Vector of indices into pspect to create a vector of unique coefficients
+%                    (inverse of reconmat).
 %
-%
-% [psp,pspindices] = pspect(dbx,order,[options)
+% [psp,pspindices] = pspect2(dbx,order,[options)
 % 
 %   Input may alternatively be a 1 x order dbt object array. Note that each
 %   has to have the same sampling rate, meaning that if bandwidths differ,
@@ -285,7 +286,7 @@ out.options = options;
 
 [unq,unqi] = unique(rmat(:));
 lin(unq) = unqi;
-out.lin = lin(:);
+% out.lin = lin(:);
 out.square = rmat;
 
 if options.stats
@@ -313,6 +314,6 @@ if nargout >1
         end
     end
     pspindices.reconmat = rmat;
-        
+    pspindices.lin = lin(:);
 end
 
