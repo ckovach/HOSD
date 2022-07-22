@@ -27,18 +27,19 @@ function [out,pspindices] = xpspect(Xs,fs,bws,order,varargin)
 %            -equal to this value.
 % Output arguments:
 %       psp: Struct with the following fields:
-%          .pspect: Unnormalized polyspectrum as an (order-1)-dimensional
-%                   matrix;
+%          .pspect: Normalized (default) or unnormalized polyspectrum as an (order-1)-dimensional
+%                   matrix, depending on the "return_normalized" option.
 %          .fs:     Frequuency labels for the dimensions of pspect
 %          .options Options struct.
-%
+%          .segment Struct used in segmenting the data. 
 %       pspindices: Struct containing indices into the original data with the
 %            following fields:
 %           .findex: index of the frequency for each unqiue term in the
 %                    estimate.
 %           .conjugate: Terms for which the complex conjugate is taken.
 %           .reconmat: reconstruct into the same shape and size as psp.pspect. 
-%
+%           .lin     Vector of indices into pspect to create a vector of unique coefficients
+%                    (inverse of reconmat).
 %
 %
 %
@@ -69,6 +70,8 @@ options.window = 'sasaki';
 options.upsampleFx = ones(1,order);
 options.segment = [];
 options.povlp = .5;
+options.return_normalized = true;% The pspect field contains normalized and bias corrected HOS if true.
+                                 % Unnormalized HOS is then (psp.pspect+psp.bias)*psp.normalization
 % options.window_spacing = 'max'; %Space windows according to the longest segment.
 % options.window_spacing = 'min'; %Space windows according to the shortest segment
 options.window_spacing = 'mean'; %Space according to mean segment duration.
@@ -102,6 +105,10 @@ segin = options.segment;
 
 if length(bws) < order
     bws(end+1:order) = bws(end);
+end
+
+if length(options.upsampleFx) < order
+    options.upsampleFx(end+1:order) = options.upsampleFx(end);
 end
 
 if isnumeric(Xs)
@@ -182,4 +189,7 @@ end
 out.segment = options.segment;
 out.options.segment = segin;
 
+if options.return_normalized
+    out.pspect = (abs(out.pspect)./out.normalization - out.bias).*out.pspect./(abs(out.pspect)+eps);
+end
 
