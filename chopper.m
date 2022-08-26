@@ -72,7 +72,7 @@ if nargout > 2
    Err = (round(T)-T)./fs;  %%% Return the rounding error 
 end
 
-T = round(T);
+T = ceil(T);
 
 if maxN > 0
     T = mod(T-1,maxN)+1;
