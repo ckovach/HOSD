@@ -87,18 +87,18 @@ for dim = 1:ncomp
     %     
          anew = anew./norm(anew);
         d = norm(anew-a);
-    if isnumeric(ord)
-        cm = cumulant(X*anew,ord);
-        if abs(cm)>abs(maxcum)
-            iter_at_max = iter;
-            maxcum=cm;
-            maxa = anew;
+        if isnumeric(ord)
+            cm = cumulant(X*anew,ord);
+            if abs(cm)>abs(maxcum)
+                iter_at_max = iter;
+                maxcum=cm;
+                maxa = anew;
+            end
+            if iter-iter_at_max  > 100
+                iter = maxiter;
+                fprintf('\nMax cumulant hasn''t been attained in 100 iterations. Stopping early.')
+            end
         end
-        if iter-iter_at_max  > 100
-            iter = maxiter;
-            fprintf('Max cumulant hasn''t been attained in 100 iterations. Stopping early.')
-        end
-    end
     %     cm(iter+1) = cumulant(X*anew,4);
     %     if cm(iter+1)>cm(iter)
             a = anew;
