@@ -218,7 +218,7 @@ classdef mvhosd < hosobject
         end
         %%%%%%%
        
-        function [Xrec,Xfilt] = reconstruct(me,X,threshold,apply_window)
+        function [Xrec,Xfilt,Xthr] = reconstruct(me,X,threshold,apply_window)
             
             if nargin < 2
                 X = [me(:,k).inputbuffer];
@@ -306,7 +306,7 @@ classdef mvhosd < hosobject
            end
          end
            %%%
-        function out = xrec(me,in,thresh,apply_window,varargin)
+        function [out,xfilt,xthr] = xrec(me,in,thresh,apply_window,varargin)
            if nargin < 2
                in = me.dat;
            end
@@ -320,14 +320,26 @@ classdef mvhosd < hosobject
                in = permute(in,[1 3 2]);
            end
            
-           out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+           if nargout > 1
+               [out,xfilt,xthr] = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+           else
+               out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+           end     
            if length(me)>1
 %                if size(in,2) == 1
 %                    applydim = 2;
 %                else 
 %                    applydim = max(find(size(in)>1))+1;
 %                end
-               out =  cat(find([size(in),1]==1,1),out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
+                if nargout >1 
+                    [out2,out3,out4] = me(2:end).xrec(in-out,thresh,apply_window,varargin{:});
+                    out = cat(find([size(in),1]==1,1),out,out2);
+                    xfilt = cat(find([size(in),1]==1,1),xfilt,out3);
+                    xthr = cat(find([size(in),1]==1,1),xthr,out4);
+                    
+                else
+                    out =  cat(find([size(in),1]==1,1),out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
+                end
            end
         end
          %%%%
