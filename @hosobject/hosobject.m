@@ -807,7 +807,7 @@ classdef hosobject < handle
         %%%
         [Xthresh,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
         %%%
-        [Xrec,Xfilt,Xthr] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold)
+        [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold)
         %%%
         do_updates(me,X,apply_window,use_shifted,initialize)
         %%%
@@ -815,7 +815,7 @@ classdef hosobject < handle
         %%%
         out = xfilt(me,xin,apply_window)
         %%%
-        [out,xfilts,xthrs] = xrec(me,xin,thresh,apply_window,varargin)
+        [out,xfilts,xthrs,betas] = xrec(me,xin,thresh,apply_window,varargin)
         %%
         out = xthresh(me,xin,return_sparse,apply_window)
         %%

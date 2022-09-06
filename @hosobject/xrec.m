@@ -1,4 +1,4 @@
- function out = xrec(me,xin,thresh,apply_window,varargin)
+ function [out,xfilt,xthr,betas] = xrec(me,xin,thresh,apply_window,varargin)
  
 % out = xrec(me,xin,[thresh],[apply_window])
 %
@@ -32,13 +32,28 @@
    if nargin < 4
        apply_window = false;
    end
-   out = me(1).reconstruct(xin,thresh,apply_window,varargin{:}); 
-   out(isnan(out)) = 0;
+   if nargout > 1
+       [out,xfilt,xthr,betas] = me(1).reconstruct(xin,thresh,apply_window,varargin{:}); 
+   else
+        out = me(1).reconstruct(xin,thresh,apply_window,varargin{:}); 
+        out(isnan(out)) = 0;
+   end
    if length(me)>1
-       out =  cat(sum(size(xin)>1)+1,out,me(2:end).xrec(xin-out,thresh,apply_window,varargin{:}));
+       if nargout > 1
+          [out2,out3,out4,out5] =  me(2:end).xrec(xin-out,thresh,apply_window,varargin{:});
+          out =  cat(sum(size(xin)>1)+1,out,out2);
+          xfilt = cat(sum(size(xin)>1)+1,xfilt,out3);
+          xthr = cat(sum(size(xin)>1)+1,xthr,out4);
+          betas = cat(sum(size(xin)>1),betas,out5);
+       else
+         out =  cat(sum(size(xin)>1)+1,out,me(2:end).xrec(xin-out,thresh,apply_window,varargin{:}));
+       end
    elseif all(out(:)==0)
        sz = num2cell(size(xin));
        sz{sum(size(xin)>1)+1}=length(me);
        out(sz{:})=0;
+       if nargout > 1
+        xthr(sz{:}) = 0;
+       end
    end
 end 
