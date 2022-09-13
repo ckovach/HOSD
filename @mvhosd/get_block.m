@@ -44,6 +44,9 @@
 
         feature = nanmean(X,2);
         filterfft = nanmean(Gpart,2); %#ok<*NANMEAN>
+        if isnan(me(1).lag)
+            me(1).lag = 1;
+        end
         if me(1).subspace_dim > 0
 %                     [u,l,v] = svds(squeeze(feature),me(1).subspace_dim);
             [u,l,v] = svds(squeeze(filterfft),me(1).subspace_dim);
