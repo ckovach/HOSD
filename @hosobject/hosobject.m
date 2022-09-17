@@ -119,7 +119,7 @@ classdef hosobject < handle
        
         %Buffer for the CDF of the filter output and moments up to order
        CDFbuffer=[];
-        use_adaptive_threshold = true;
+        use_adaptive_threshold = false;
           running_mean=0;
         running_ssq = 1;
         running_var = 1;
