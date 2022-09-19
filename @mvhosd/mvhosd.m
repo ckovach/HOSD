@@ -218,7 +218,7 @@ classdef mvhosd < hosobject
         end
         %%%%%%%
        
-        function [Xrec,Xfilt,Xthr] = reconstruct(me,X,threshold,apply_window)
+        function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window)
             
             if nargin < 2
                 X = [me(:,k).inputbuffer];
@@ -277,7 +277,10 @@ classdef mvhosd < hosobject
             else
                 a= sum(abs(Xrec(:)).^2); %#ok<*UNRCH>
                 if a > 0
-                 Xrec = Xrec*(X(:)'*Xrec(:))./a; % Scale to minimize total mse.
+                    beta=(X(:)'*Xrec(:))./a;
+                    Xrec = beta*Xrec; % Scale to minimize total mse.
+                else
+                    beta=0;
                 end
             end
 
@@ -306,7 +309,7 @@ classdef mvhosd < hosobject
            end
          end
            %%%
-        function [out,xfilt,xthr] = xrec(me,in,thresh,apply_window,varargin)
+        function [out,xfilt,xthr,betas] = xrec(me,in,thresh,apply_window,varargin)
            if nargin < 2
                in = me.dat;
            end
@@ -321,7 +324,7 @@ classdef mvhosd < hosobject
            end
            
            if nargout > 1
-               [out,xfilt,xthr] = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+               [out,xfilt,xthr,betas] = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            else
                out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            end     
@@ -332,10 +335,11 @@ classdef mvhosd < hosobject
 %                    applydim = max(find(size(in)>1))+1;
 %                end
                 if nargout >1 
-                    [out2,out3,out4] = me(2:end).xrec(in-out,thresh,apply_window,varargin{:});
+                    [out2,out3,out4,out5] = me(2:end).xrec(in-out,thresh,apply_window,varargin{:});
                     out = cat(find([size(in),1]==1,1),out,out2);
                     xfilt = cat(find([size(in),1]==1,1),xfilt,out3);
                     xthr = cat(find([size(in),1]==1,1),xthr,out4);
+                    betas = cat(find([size(in),1]==1,1),betas,out5);
                     
                 else
                     out =  cat(find([size(in),1]==1,1),out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
