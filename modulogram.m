@@ -1,5 +1,8 @@
 function [MGNRM,bfreq,mfreq,out,MGX,X] = modulogram(x,Nwin,Fs,Novlp,lowpass,NFFT,highpass, NORMX,compute_bias)
 
+normalization = 'awplv';
+% normalization = 'power';
+
 
 if nargin < 3 || isempty(Fs)
     Fs = 1;
@@ -9,6 +12,10 @@ if size(x,2)>1
     Nwin = size(x,1);
     NFFT = size(x,1);
 end
+
+% if length(Nwin)<4
+%     Nwin(end+1:4) = Nwin(end);
+% end
 
 if isscalar(Nwin)
     window = rectwin(Nwin);
@@ -27,16 +34,21 @@ if nargin < 4 || isempty(Novlp)
 elseif Novlp<1
     Novlp = ceil(Nwin*Novlp);
 end
-if nargin < 6
+if nargin < 6 || isempty(NFFT)
     NFFT = Nwin;
 end
+
+% if length(NFFT) < 4
+%     NFFT(end+1:4) = Nwin(end);
+% end
+
 if nargin < 7
     highpass = [0 0];
 elseif isscalar(highpass)
     highpass = [1 1]*highpass;
 end
 
-if nargin < 8 || isempty(compute_bias)
+if nargin < 9 || isempty(compute_bias)
     compute_bias = true;
 end
 
@@ -74,9 +86,9 @@ elseif size(NORMX,2)==1
      T2 = chopper([0 Nwin-1],0:Novlp:length(NORMX)-Nwin,1,length(NORMX));
     NORMX = NORMX(T2).*window;
     NORMX(end+1:NFFT,:) = 0;   
-    NORMFX = fft(NORMX(T2));
+    NORMFX = fft(NORMX(T2).*window);
 else
-    NORMFX = fft(NORMX);
+    NORMFX = fft(NORMX.*window);
 end
     
 % X = [X;zeros(size(X))];
@@ -119,10 +131,18 @@ for k = 1:length(Ws)
    PSDX = PSDX.*PSD(I);
    
 %    winHOS = winHOS.*winFT(I);
-   xx = xx+w(I);
-   II(:,k) = I(:);
+%    xx = xx+w(I);
+    II(:,k) = I(:);
    
 end
+if strcmp(normalization,'power')
+    if isempty(NORMFX)
+        NORMFX = FX;
+    end
+    NORMPSD = mean(abs(NORMFX).^2,2);
+
+end
+
 if isempty(NORMFX)
     NORMGX = MGX;
 end
@@ -132,11 +152,17 @@ end
  MGX(DR2,:) = MGX(DR2,:) - sqrt(PSDX(DR2));
 
 MG = mean(MGX,2);% - DGcorr(:);
-NRM = mean(abs(NORMGX),2);
-% NRM = sqrt(PSDX(:));
-BIAS = compute_bias*sum(abs(NORMGX).^2,2)./sum(abs(NORMGX),2).^2;
+switch normalization
+    case 'awplv'
+        NRM = mean(abs(NORMGX),2);
+        % NRM = sqrt(PSDX(:));
+        BIAS = compute_bias*sqrt(sum(abs(NORMGX).^2,2))./(sum(abs(NORMGX),2)+eps);
+    case 'power'
+        NRM = prod(sqrt(NORMPSD(II)),2);
+        BIAS = 0;
+end
 MGNRM = MG./NRM;
-MGNRM = MGNRM./abs(MGNRM).*(abs(MGNRM)-sqrt(BIAS));
+MGNRM = MGNRM./(abs(MGNRM)+eps).*(abs(MGNRM)-BIAS);
 
 if nargout >3
    [b,dev,pval,iXX,sigma,res,Yfit,df,sigmarel] = complexglm(MGX',[],'diagonly',false);
