@@ -290,7 +290,15 @@ xne.dependencies{end+1}=which(opts.stats_function);
 xne.dependencies{end+1}=which(opts.plot_function);
 deps = [xne.dependencies,matlab.codetools.requiredFilesAndProducts(opts.stats_function)];
 deps = [deps,matlab.codetools.requiredFilesAndProducts(opts.plot_function)];
-xne.dependencies = unique(deps);
+deps = unique(deps);
+ismex = find(contains(deps,'.mex'));
+deps(ismex) = regexprep(deps(ismex),'[.]mexw64','.mexa64');
+nexist =~cellfun(@(x)exist(x,'file'),deps(ismex)); 
+if any(nexist)
+    error(sprintf('The following MEX files compiled for linux are missing: %s',sprintf('\n%s',deps{ismex(nexist)}))) 
+end
+xne.dependencies = deps;
+
 xne.create_job;
 % copyfile(which(opts.plot_function),xne.subpaths.mfiles.local)
 
