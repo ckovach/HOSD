@@ -69,7 +69,7 @@ T = fs*( repmat(t,1,length(evtt)) + repmat(evtt(:)',length(t),1))+1;
 
 
 if nargout > 2
-   Err = (round(T)-T)./fs;  %%% Return the rounding error 
+   Err = (ceil(T)-T)./fs;  %%% Return the rounding error 
 end
 
 T = ceil(T);
