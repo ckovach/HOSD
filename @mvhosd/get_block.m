@@ -29,9 +29,26 @@
 
         nfp = 0;
         nchan = size(in,3);
+        isn = any(isnan(in),3);
+
+        if size(in,2)==1
+            [isn,~,segment] = me(1).chop_input(isn,[],[],segment);
+            discard = any(isn);
+            if any(discard)
+                fprintf('\n%i windows (%0.1f%%) contain nans and will be discarded.',sum(discard),mean(discard)*100)
+                segment.wint = segment.wint(~discard);
+            end
+        else
+            discard = any(isn);
+            if any(discard)
+                fprintf('\n%i windows (%0.1f%%) contain nans and will be discarded.',sum(discard),mean(discard)*100)
+                in = in(:,~discard);
+            end
+        end
+        
         for k = 1:nchan
             nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
-            X(:,:,k) = me(1).chop_input(in(:,k),true,0,segment);
+            X(:,:,k) = me(1).chop_input(in(:,:,k),true,0,segment);
             Gpart(:,:,k) = me(1).partial_delay_filt(X(:,:,k),true,true); 
             if k==1
                 X(:,:,nchan)=0;
