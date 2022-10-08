@@ -234,6 +234,7 @@ classdef mvhosd < hosobject
              if size(X,1) == me(1).bufferN
                  Xfilt = ifftshift(Xfilt,1);             
              end
+             xfisnan = isnan(Xfilt);
             if size(X,3)>1
                 applydim = 3;
             else
@@ -259,7 +260,7 @@ classdef mvhosd < hosobject
             if me(1).subspace_dim > 0 && size(Xrec,2) == size(me(1).projection,2)
                 Xrec = permute(squeeze(Xrec)*me(1).projection',[1 3 2]);
             end
-            Xrec(xisnan)=0;
+            Xrec(xisnan)=nan;
             use_filtered_lmse = true;
             if use_filtered_lmse
                 %%% Apply the filter to the reconstructed data for LMSE fitting
@@ -269,8 +270,8 @@ classdef mvhosd < hosobject
                      Xrecfilt = ifftshift(Xrecfilt,1);
                 end
                 
-                Xrecfilt(isnan(Xfilt))=0;
-                Xfilt(isnan(Xfilt)) = 0;
+                Xrecfilt(xfisnan)=0;
+                Xfilt(xfisnan) = 0;
                 
                 beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
                 Xrec = beta*Xrec; 
@@ -283,7 +284,7 @@ classdef mvhosd < hosobject
                     beta=0;
                 end
             end
-
+            Xfilt(xfisnan) = nan;
             Xrec(xisnan) = nan;
 %             if nargin < 2
 %                 me(1).reconbuffer = Xrec;
