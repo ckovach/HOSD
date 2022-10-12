@@ -80,7 +80,9 @@ for hi = 1:length(hos)
         Bpart(isnan(B))=nan;
          if hi>size(ax,1)
              ax(hi,1) = subplot(subxy(1),subxy(2),1 + 2*(hi-1));
-             ax(hi,2) = subplot(subxy(1),subxy(2),2 + 2*(hi-1));
+             if size(ax,2)>1
+                ax(hi,2) = subplot(subxy(1),subxy(2),2 + 2*(hi-1));
+             end
 %         else
 %             axes(ax(hi))
          end
@@ -89,7 +91,7 @@ for hi = 1:length(hos)
         if hi==1
          title(ax(hi,1),sprintf('Modulogram (Trispectrum Diagonal Slice)'))
         else
-         title(ax(hi,2),sprintf('Residual Modulogram After Comp. %i',hi-1))
+         title(ax(hi,1),sprintf('Residual Modulogram After Comp. %i',hi-1))
         end    
         axis xy
 %         xlabel('Envelope modulation freq.(Hz)')
@@ -98,15 +100,18 @@ for hi = 1:length(hos)
         xlabel('Band freq. (Hz)')
         
          if hi==1
-            cax = caxis;
+            cax = caxis(ax(hi,1));
         else
-            caxis(cax)
+            caxis(ax(hi,1),cax)
+     
          end
-        imh = pcolor(power,modfreq,absfun(Bpart),'parent',ax(hi,2));
-        set(imh,'facecolor','flat','edgecolor','none');
-         title(ax(hi,2),sprintf('Component %i Trispectrum Modulogram',hi))
-        axis xy
-
+         if size(ax,2)>1
+            imh = pcolor(power,modfreq,absfun(Bpart),'parent',ax(hi,2));
+            set(imh,'facecolor','flat','edgecolor','none');
+            title(ax(hi,2),sprintf('Component %i Trispectrum Modulogram',hi))
+            axis xy
+            caxis(ax(hi,2),cax)
+         end
     elseif hos(hi).diagonal_slice && hos(hi).order == 3
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         B = nan*wb0{1};
@@ -122,6 +127,11 @@ for hi = 1:length(hos)
         imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0)).*Bpart,'parent',ax(hi));
          title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
          xlabel('freq.(Hz)')
+         if hi==1
+             cax = caxis;
+         else
+             caxis(cax);
+         end
     else
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
         do_interp=true;
