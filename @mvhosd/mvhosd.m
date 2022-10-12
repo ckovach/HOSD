@@ -303,6 +303,9 @@ classdef mvhosd < hosobject
             if nargin < 4 || isempty(apply_window)
                 apply_window = false;
             end
+            if size(in,2)==size(me(1).feature,3) 
+                in = permute(in,[1 3 2]);
+            end
             Xfilt = me(1).xfilt(in);
             out=me(1).filter_threshold(Xfilt,threshold);
             if size(me,2)>1
@@ -355,7 +358,9 @@ classdef mvhosd < hosobject
            if nargin < 3 || isempty(apply_window)
               apply_window = false; 
            end
-            
+            if size(in,2)==size(me(1).feature,3) 
+                in = permute(in,[1 3 2]);
+            end
             Xthr=me(1).xthresh(in);
             out = Xthr>0;
             if size(me,2)>1
