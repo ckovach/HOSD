@@ -36,8 +36,9 @@
             discard = any(isn);
             if any(discard)
                 fprintf('\n%i windows (%0.1f%%) contain nans and will be discarded.',sum(discard),mean(discard)*100)
-                segment.wint = segment.wint(~discard);
+                segment.wint = segment.wint(~discard);               
             end
+            me(1).segment = segment;
         else
             discard = any(isn);
             if any(discard)
