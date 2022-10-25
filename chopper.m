@@ -64,15 +64,17 @@ end
 
 t = (rg(1):1/fs:rg(2))';
 
+evtt = round(evtt*fs)/fs; %Needed to avoid rounding errors
+
 T = fs*( repmat(t,1,length(evtt)) + repmat(evtt(:)',length(t),1))+1;
 
 
 
 if nargout > 2
-   Err = (ceil(T)-T)./fs;  %%% Return the rounding error 
+   Err = (round(T)-T)./fs;  %%% Return the rounding error 
 end
 
-T = ceil(T);
+T = round(T);
 
 if maxN > 0
     T = mod(T-1,maxN)+1;
