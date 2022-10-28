@@ -62,6 +62,7 @@ if isstruct(rg)
     rg = rg.Trange;
 end    
 
+rg = round(rg*fs)/fs;
 t = (rg(1):1/fs:rg(2))';
 
 evtt = round(evtt*fs)/fs; %Needed to avoid rounding errors
