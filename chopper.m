@@ -65,6 +65,7 @@ end
 t = (rg(1):1/fs:rg(2))';
 
 evtt = round(evtt*fs)/fs; %Needed to avoid rounding errors
+t = round(t.*fs)./fs;
 
 T = fs*( repmat(t,1,length(evtt)) + repmat(evtt(:)',length(t),1))+1;
 
