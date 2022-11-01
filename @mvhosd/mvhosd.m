@@ -22,8 +22,8 @@ classdef mvhosd < hosobject
     % 
     % After estimation, to obtain a time x component x channel matrix of features, F, use
     %       F = [mvhos.feature];
-    % and the a matrix representing a time x component x channel
-    % spatiotemporal unmixing/deconvolution filter is obtained with
+    % The matrix representing a time x component x channel spatiotemporal
+    % unmixing/deconvolution filter is obtained with
     %       H = [mvhos.filterfun];
     %
     % To obtain the filtered (deconvolved/unmixed) signal, with serial deflation of each
@@ -48,17 +48,20 @@ classdef mvhosd < hosobject
       
         %%% If annealing_start is greater than 0, then Gaussian white noise
         %%% will be added to the input during iterated realignment to improve convergence
-        %%% and  decremented with iteration according to annealing_schedule.
+        %%% and  decremented with iteration according to
+        %%% annealing_schedule. This is not used by default and will
+        %%% probably be eliminated in the future.
         annealing_start=0;%Starting noise amplitude used for annealing, in units of input s.d
         annealing_schedule = @(k,maxk)((maxk-k)/maxk); %How to scale annealing noise as a function of iteration number (1st arg.) and maximum iterations (2nd arg)    
     
         %%% Interleave filter estimation with static ICA on the filter
-        %%% output with the hope of improving spatial separation.
+        %%% output in order to improve spatial separation.
         do_static_ica = 10; %Updates every kth iteration (0 = none)
        
         subspace_dim = 0; %Dimensionality of the feature. The response in channel i, freq. f is modeled as Hi(f) = Ai*B'(f).
                           %Subspace_dim is the rank of Ai and B. If the rank is 1, each channel is assumed to contain a 
                           %scaled copy of the same waveform. Subspace_dim=0 is full rank (no dimensionality reduction).
+                          %This is still under development and does not work reliably yet.
         projection = 1;   %Current static projection if subspace_dim > 0;
       end
     
