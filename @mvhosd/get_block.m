@@ -12,7 +12,7 @@
           initialize = true;
       end
       if nargin < 4 || isempty(makeplot)
-          makeplot = true;
+          makeplot = ~isa(xin,'gpuArray');   
       end
       if nargin < 3 || isempty(maxiter)
           maxiter = 25;
