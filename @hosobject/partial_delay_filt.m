@@ -108,13 +108,16 @@
         else
             Iconj = integrator(me.freqindx.remap.*cast(me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
             I = integrator(me.freqindx.remap.*cast(~me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
+            if me.use_gpu
+                I = gpuArray(I);
+                Iconj = gpuArray(Iconj);
+            end
             me.Imats{k}= I;
             me.Iconjmats{k} = Iconj;
         end
         HF = repmat(H(1:end-1),1,size(FFXpart{k},2)).*FFXpart{k};
-
-        Gpart = Gpart + I*HF + Iconj*conj(HF);
-%                 Bcheck = Bcheck + I*HFcheck + Iconj*conj(HFcheck);
+        
+        Gpart = Gpart + (I*HF) + (Iconj*conj(HF));
     end
     if   me.check_sign 
         GFX = zeros(size(FX));

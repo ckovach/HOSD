@@ -49,7 +49,11 @@
 
     wint=[];
     if nargin < 4 || isempty(makeplot)
-        makeplot = ~isa(xin,'gpuArray');        
+        makeplot = true;        
+    end
+    if (islogical(makeplot) && makeplot) && (isa(xin,'gpuArray') || me.use_gpu)
+      fprintf('\nOnline plotting is disabled in GPU mode...')
+      makeplot = false;
     end
     if nargin < 3 || isempty(maxiter)
         maxiter = 25;
@@ -99,22 +103,30 @@
             T(T>length(xin))=length(xin);
 
 %                     for k = 1:length(xin)
-                Xchop = xin(T);
-
-                hasnans = any(xisnan(T));
-                segment.discarded = hasnans;
-                if all(hasnans) && all(islogical(makeplot)) && makeplot>=0
-                    fprintf('\nAll segments contain NaN values. Discarding these data')
-                    if nargout > 1
-                         varargout = {Xsh,Xwin,T,wint,segment};
-                    end
-                    return
-                elseif any(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
-                    fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
-                    T = T(:,~hasnans);
-                    segment.wint = segment.wint(~hasnans);
-                    Xchop = xin(T);
+            Xchop = xin(T);
+            if me.use_gpu
+                try
+                   Xchop =  gpuArray(Xchop);
+                catch err
+                    warning(err.identifier,'GPU error: %s\nSwitching to non-GPU mode',err.message)
+                    me.use_gpu = false;
                 end
+            end
+
+            hasnans = any(xisnan(T));
+            segment.discarded = hasnans;
+            if all(hasnans) && all(islogical(makeplot)) && makeplot>=0
+                fprintf('\nAll segments contain NaN values. Discarding these data')
+                if nargout > 1
+                     varargout = {Xsh,Xwin,T,wint,segment};
+                end
+                return
+            elseif any(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
+                fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
+                T = T(:,~hasnans);
+                segment.wint = segment.wint(~hasnans);
+                Xchop = xin(T);
+            end
 
 %                     end
             if length(xin)==1  %%% Streaming is only implemented for single-channel input
@@ -232,8 +244,12 @@
 %                        Xsh = real(ifftshift(ifft(FXsh),1));
                Xsh = real(ifft(FXsh));
                newdt = me(1).delay;
-               delt = me(1).radw(me(1).keepfreqs{1})*newdt;
-               Gpart = (sgn.*exp(-1i.*delt)).*Gpart; 
+               if isa(Gpart,'gpuArray')
+                   delt = gpuArray(me(1).radw(me(1).keepfreqs{1}))*gpuArray(newdt);
+               else
+                   delt = me(1).radw(me(1).keepfreqs{1})*newdt;
+               end
+               Gpart = (sgn.*exp(-1i.*delt)).*Gpart;
                Gpart(isnan(Gpart))=0;
                G = mean(Gpart,2);
                if me(1).do_filter_update

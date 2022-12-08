@@ -43,16 +43,35 @@
         else
             win =ones(size(X,1),1);
         end
+        if isa(X,'gpuArray')
+            win = gpuArray(win);
+        end
 %                 Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
         Xwin = repmat(win,1,size(X,2)).*X;
         Xwin(end+1:me.fftN,:) = 0;
         FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
-        Xfilt = real(ifft(FXwin.*repmat(me.filterfft,1,size(X,2))));   
+        filtft = me.filterfft;
+        if me.use_gpu 
+            if isa(filtft,'gpuArray') && ~isa(Xwin,'gpuArray')
+                filtft = gather(filtft);
+            elseif ~isa(filtft,'gpuArray') && isa(Xwin,'gpuArray')
+                filtft = gpuArray(filtft);
+            end
+        end
+        Xfilt = real(ifft(FXwin.*repmat(filtft,1,size(X,2))));   
         if isscalar(smpw)
-            [~,mxi] = max(Xfilt.^me.order);
+            if mod(me.order,2)==0
+                [~,mxi] = max(abs(Xfilt));
+            else
+                [~,mxi] = max(Xfilt);
+            end
         else
-            [~,mxi] = max(Xfilt.^me.order.*repmat(smpw',size(Xfilt,1),1));
+            if mod(me.order,2)==0
+                [~,mxi] = max(abs(Xfilt).*repmat(smpw',size(Xfilt,1),1));
+            else
+                [~,mxi] = max(Xfilt.*repmat(smpw',size(Xfilt,1),1));
+            end
         end
         if mod(me.order,2)==0 
            sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1)).*smpw'); 
@@ -64,8 +83,12 @@
              dt = samptc(mxi);
 
              me.delay = dt;             
-
-            delt = me.radw*dt;
+            
+            if isa(FXwin,'gpuArray')
+                delt = gpuArray(me.radw)*gpuArray(dt);
+            else
+                delt = me.radw*dt;
+            end
             FXshift = exp(1i*delt).*FXwin;
 
         else

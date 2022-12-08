@@ -12,8 +12,12 @@
           initialize = true;
       end
       if nargin < 4 || isempty(makeplot)
-          makeplot = ~isa(in,'gpuArray');   
+          makeplot = true;   
       end
+      if (islogical(makeplot) && makeplot) && (isa(in,'gpuArray') || me.use_gpu)
+          fprintf('\nOnline plotting is disabled in GPU mode...')
+          makeplot = false;
+      end      
       if nargin < 3 || isempty(maxiter)
           maxiter = 25;
       end
@@ -47,6 +51,14 @@
             end
         end
         
+        X = zeros(me(1).buffersize,length(segment.wint),nchan);
+        if me(1).use_gpu
+            try 
+                X = gpuArray(X);
+            catch
+            end
+        end
+        Gpart = X;
         for k = 1:nchan
             nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
             X(:,:,k) = me(1).chop_input(in(:,:,k),true,0,segment);

@@ -71,5 +71,14 @@
     if apply_window
        Xchop = fftshift(repmat(me(1).win,1,size(T,2)).*Xchop,1);
     end
-
+    
+    if me.use_gpu
+       try
+           Xchop =  gpuArray(Xchop);
+        catch err
+            warning(err.identifier,'GPU error: %s\nSwitching to non-GPU mode',err.message)
+            me.use_gpu = false;
+        end
+    end           
+                
 end

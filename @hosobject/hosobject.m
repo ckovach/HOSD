@@ -136,6 +136,8 @@ classdef hosobject < handle
         % Normalize each sample by its integrated magnitude spectrum to
         % suppress outliers.
         integrated_magnitude_normalization = false;
+        
+        use_gpu = false; %Use GPU when available
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -552,7 +554,7 @@ classdef hosobject < handle
         end
         function out = get.filterftlag(me)
            %%% Filter FT without circular shift adjustment
-            out = zeros(me.fftN,size(me.G,2),size(me.G,3));
+            out = zeros(me.fftN,size(me.G,2),size(me.G,3),'like',me.G);
             out(me.keepfreqs{1},:,:) = me.G;
         end
         function out = get.filterfft(me)
@@ -576,7 +578,7 @@ classdef hosobject < handle
            delt = me.radw*dt;
            F= exp(1i*delt).*in;
            
-            me.G = F(me.keepfreqs{1},:,:) ;
+           me.G = F(me.keepfreqs{1},:,:) ;
             
         end
         function out = get.filterfun(me)

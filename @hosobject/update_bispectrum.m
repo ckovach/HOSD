@@ -23,7 +23,11 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
 
        %%% Adjust for lag
     dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
-    delt = me.radw*dt;
+    if isa(FXs{1},'gpuArray')
+        delt = gpuArray(me.radw)*gpuArray(dt);
+    else
+        delt = me.radw*dt;
+    end
     delt(isnan(delt))=0;
     for k = 1:length(FXs)
         FXs{k} = repmat(exp(-1i*delt),1,size(FXs{k},2)).*FXs{k};
@@ -46,7 +50,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
 
     FFXpart = {};
     FFXpart(1:me.order-1) = {FFX};
-    FFXpart{me.order} = ones(size(FFX));
+    FFXpart{me.order} = ones(size(FFX),'like',FFX);
 
     for k = me.order-1:-1:1
         if k>length(FXs)

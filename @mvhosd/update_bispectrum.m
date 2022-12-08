@@ -43,12 +43,15 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
    % FFX = 1;
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
     FFX = zeros(size(me.freqindx.Is,1),size(FX,2),size(FX,3));
+    if isa(FXs{1},'gpuArray')
+        FFX = gpuArray(FFX);
+    end
     FXk = FFX;
     FFX(:) = conj(FX(me.freqindx.Is(:,me.order),:));
 
     FFXpart = {};
     FFXpart(1:me.order-1) = {FFX};
-    FFXpart{me.order} = ones(size(FFX));
+    FFXpart{me.order} = ones(size(FFX),'like',FFX);
 
     for k = me.order-1:-1:1
         if k>length(FXs)

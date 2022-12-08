@@ -99,6 +99,9 @@ classdef mvhosd < hosobject
                 else
                     win =ones(size(X,1),1);
                 end
+                if isa(X,'gpuArray')
+                    win = gpuArray(win);
+                end
                % Xwin = fftshift(repmat(win,1,size(X,2),size(X,3)).*X,1);
                 Xwin = repmat(win,1,size(X,2),size(X,3)).*X; %#ok<*PROPLC>
                 Xwin(end+1:me(1).fftN,:,:) = 0;
@@ -117,7 +120,9 @@ classdef mvhosd < hosobject
                 else
                     filterfft = me(1).filterfft;
                 end
-                    
+                if me.use_gpu && isa(filterfft,'gpuArray') && ~isa(Xwin,'gpuArray')
+                    filterfft = gather(filterfft);
+                end    
                 FXfilt(me(1).keepfreqs{1},:) = nansum(FXwin(me(1).keepfreqs{1},:,:).*repmat(filterfft(me(1).keepfreqs{1},:,:),1,size(X,2)),3); %#ok<*NANSUM>
                 Xfilt = real(ifft(FXfilt));
                 
@@ -126,9 +131,17 @@ classdef mvhosd < hosobject
                     mvXfilt = real(ifft(FXwin.*repmat(filterfft,1,size(X,2))));   
                 end                    
                 if isscalar(smpw)
-                    [~,mxi] = max(Xfilt.^me(1).order);
+                    if mod(me(1).order,2)==0
+                        [~,mxi] = max(abs(Xfilt));
+                    else
+                        [~,mxi] = max(Xfilt);
+                    end
                 else
-                    [~,mxi] = max(Xfilt.^me(1).order.*repmat(smpw',size(Xfilt,1),1));
+                    if mod(me(1).order,2)==0
+                        [~,mxi] = max(abs(Xfilt).*repmat(smpw',size(Xfilt,1),1));
+                    else
+                        [~,mxi] = max(Xfilt.*repmat(smpw',size(Xfilt,1),1));
+                    end
                 end
                 if mod(me(1).order,2)==0 
                    sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1)).*smpw'); 
@@ -151,6 +164,9 @@ classdef mvhosd < hosobject
 %                  Xin = X(:);
 %                 filts = squeeze(me(1).filterfun);
                 filts = me(1).filterfun;
+                if me.use_gpu && isa(filts,'gpuArray') && ~isa(X,'gpuArray')
+                    filts = gather(filts);
+                end    
                 if me(1).subspace_dim >0
                     X = squeeze(X);
                     if size(X,2) == size(me(1).projection,1)
@@ -193,7 +209,7 @@ classdef mvhosd < hosobject
 %            
 %            chdim = chdim + (chdim==1); %In case the input is not in fact multivariate
            
-           if me(1).subspace_dim==0 && size(in,3)~=size(me(1).filterfun,3) || me(1).subspace_dim>0 && size(in,3)~=size(me(1).projection,1)
+           if me(1).subspace_dim==0 && size(in,3)~=size(me(1).filterftlag,3) || me(1).subspace_dim>0 && size(in,3)~=size(me(1).projection,1)
                in = permute(in, [1 3 2]);
            end
 %            if ~isvector(in) && size(in,chdim) ~= size(me(1).feature,3) && (me(1).subspace_dim== 0 || size(in,3) ~= size(me(1).projection,1))
@@ -256,6 +272,9 @@ classdef mvhosd < hosobject
             if applydim == 3
                featfft=repmat(featfft,1,size(X,2));
             end
+            if me.use_gpu && isa(featfft,'gpuArray') && ~isa(Xthr,'gpuArray')
+                featfft = gather(featfft);
+            end    
             Xrec = real(ifft(FXthresh.*featfft));
             Xrec(size(X,1)+1:length(wf),:) = [];
             %X(xisnan)=0;
