@@ -104,7 +104,7 @@
 
 %                     for k = 1:length(xin)
             Xchop = xin(T);
-            if me.use_gpu
+            if me(1).use_gpu
                 try
                    Xchop =  gpuArray(Xchop);
                 catch err
