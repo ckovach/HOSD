@@ -14,7 +14,7 @@
       if nargin < 4 || isempty(makeplot)
           makeplot = true;   
       end
-      if (islogical(makeplot) && makeplot) && (isa(in,'gpuArray') || me.use_gpu)
+      if (islogical(makeplot) && makeplot) && (isa(in,'gpuArray') || me(1).use_gpu)
           fprintf('\nOnline plotting is disabled in GPU mode...')
           makeplot = false;
       end      
