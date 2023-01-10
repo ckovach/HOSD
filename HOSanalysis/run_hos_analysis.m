@@ -26,8 +26,12 @@ opts.redo_hosd = false;
 opts.dbt_denoise = true;
 opts.save_space = false; %Save space by removing all HOS statistics, keeping only features and filters; 
 opts.run_phase_randomized=false; %Run on phase randomized data as well as original for comparison
+opts.multivariate = -1; %Run multivariate. Defaultis -1 = run multivariate if number of columns is greater than 1. NOT IMPLEMENTED YET
+opts.cumulant_threshold = 0;% By default rely on the number ncomps rather than cumulant threshold to decide the number of components
+opts.lookahead = 2; %Stop after this many components in sequence fall under cumulant_threshold.
 % opts.autodep = struct('order',8,'tau',.025);
 outcode = char(java.util.UUID.randomUUID);
+
 reseed;
 
 % if false
@@ -145,9 +149,12 @@ end
 
 if opts.dbt_denoise && (~isfield(dat,'denoised')  ||  ~dat.denoised)
 %     fig = figure;
-    thresh = iterz(dat.dat,6);
-    [xdn,~,~,spk] = dbtDenoise(dat.dat,dat.fs(1),.1,'make plot',false,'spike window',.01);
-    xdn =xdn +  0./(spk.filter>.5); % Place nans wherever the data are clipped
+%    thresh = iterz(dat.dat,6);
+    xdn = dat.dat;
+    for k = 1:size(dat.dat,2)
+        [xdn(:,k),~,~,spk] = dbtDenoise(dat.dat(:,k),dat.fs(1),.1,'make plot',false,'spike window',.01);
+        xdn(:,k) =xdn(:,k) +  0./(spk.filter>.5); % Place nans wherever the data are clipped
+    end
 %     fr = getframe(fig);
 %     dat.denoising = fr;
 %     delete(fig);
@@ -160,7 +167,10 @@ dat.dat = double(dat.dat);
 isn = isnan(dat.dat);
 dat.dat(isn) = 0;
 % fprintf('\ndat.dat type is: %s, size:[%i %i]',class(dat.dat),size(dat.dat));
-dat.dat = resample(dat.dat,opts.resamp(1),opts.resamp(2)) + 0./(resample(double(isn),opts.resamp(1),opts.resamp(2))==0);
+for k =1:size(dat.dat,2)
+    xrs(:,k) = resample(dat.dat(:,k),opts.resamp(1),opts.resamp(2)) + 0./(resample(double(isn(:,k)),opts.resamp(1),opts.resamp(2))==0);
+end
+dat.dat = xrs;
 dat.fs = dat.fs(1)*opts.resamp(1)./opts.resamp(2);
 
 n = length(dat.dat);
@@ -206,7 +216,8 @@ if opts.zthresh<Inf
 %    z = zscore(dat.dat);
 %    discard = any(z(T)>opts.zthresh);
     z = iterz(dat.dat,opts.zthresh);
-   discard = any(isnan(z(T)));
+    isn = any(isnan(z),2);
+   discard = any(isn(T));
    if mean(discard)<.5 % Run on all data if too many windows are discarded.
        segment.wint(discard)=[];
    end
@@ -223,6 +234,11 @@ end
 seed = reseed;
 
 z = zscore(double(dat.dat));
+
+if opts.multivariate == -1 && size(z,2)>1
+    opts.multivariate = true;
+end
+    
 hosargs = [{size(T,1),dat.fs(1),opts.lowpass,[],[]},opts.hosargs];
 if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.redo_hosd && ~opts.save_space
     try
@@ -235,13 +251,47 @@ if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.re
     segment.wintadj=[];
 else
      hos.initialize(hosargs{:});
-%     if apply_to_chopped_data
-%         hos.get_block(z(T));  % Deflation is done on the chopped data
-%       
-%     else
-        hos.get_block(z,[],[],segment);  % This allows the entire record to be used in the deflation step.
-      
-%     end
+     if opts.multivariate
+         hos = mvhosd(hos);
+     end
+%        hos.get_block(z,[],[],segment);  % This allows the entire record to be used in the deflation step.
+     zresid = z;
+     krt = ones(1,opts.lookahead)*Inf;
+     compno = 0;
+     plh = true;
+     while max(krt)> opts.cumulant_threshold && compno < opts.ncomp
+         
+         compno = compno+1;
+         if opts.multivariate
+            hos(compno) = mvhosd(hos(1));
+         else
+            hos(compno) = hosobject(hos(1));
+         end
+         
+         [~,~,plh] = hos(compno).get_block(zresid,[],plh,segment,compno);  % This allows the entire record to be used in the deflation step.
+         
+         [xrec,xfilt,xthr,beta] = hos(compno).xrec(zresid);
+         
+         xfilts(:,compno) = xfilt*beta;
+         xthrs(:,compno) = xthr*beta;
+         
+         krt = [cumulant(xfilt,hos(compno).order),krt(1)];
+         
+         if opts.hos_order==3
+             fprintf('\nComponent %i final skewness %0.2f',compno,krt(1));
+         elseif opts.hos_order==4
+             fprintf('\nComponent %i final kurtosis %0.2f',compno,krt(1));
+         else
+             fprintf('\nComponent %i final cumulant %0.2f',compno,krt(1));
+         end       
+         zresid = zresid-squeeze(xrec);
+     end
+     keepcomps = cumulant(xfilts,hos(1).order)>opts.cumulant_threshold;
+     hos = hos(keepcomps);
+     xfilts = xfilts(:,keepcomps);
+     xthrs = xthrs(:,keepcomps);
+     fprintf('\n%i components retained',length(hos))
+     
     if opts.run_phase_randomized
         hosphaserand = hosobject(hos);
         znz = z;
@@ -269,7 +319,9 @@ end
 bsidout(1).hosargs = [{opts.hos_order},hosargs];
 bsidout(1).dat = z;
 if ~isfield(dat,'chan')
-    dat.chan = struct('label','Channel','number',dat.ChannelNumber(1)+1,'channel',dat.ChannelNumber(1)+1,'contact',dat.ChannelNumber(1)+1);
+    if isfield(dat,'ChannelNumber')
+        dat.chan = struct('label','Channel','number',dat.ChannelNumber(1)+1,'channel',dat.ChannelNumber(1)+1,'contact',dat.ChannelNumber(1)+1);
+    end
 end
 if ~isfield(dat,'block')
     dat.block = struct('block','???-???','subprotocol','????');
