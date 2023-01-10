@@ -23,6 +23,10 @@ end
 
 if ~isfield(opts,'no_anls') || ~opts.no_anls
     x = bsidin.dat;
+    isn = any(isnan(x),2);
+    if isfield(opts,'multivariate') && opts.multivariate
+        x = bsidin.hos.xfilt(x);
+    end
     x(isnan(x))=0;
     for compi = 1:length(hos)
         segment = hos(compi).segment;
@@ -30,14 +34,20 @@ if ~isfield(opts,'no_anls') || ~opts.no_anls
             if isfield(opts,'windur') && isstruct(opts.windur)
                 hos(compi).segment = opts.windur;
             end
-            if isempty(hos(compi).segment.wint)        
-                continue
+            if isempty(hos(compi).segment.wint)  
+                [A,~,segment]=hos(compi).chop_input(isn);
+                segment.wintadj = segment.wint+hos(compi).delay;
+                %continue
             end
+         
         end
+       if ~isfield(segment,'wintadj')
+               segment.wintadj = segment.wint+hos(compi).delay;
+        end 
 %         segment.wintadj = hos(compi).delay + segment.wint;
         for bi = 1:size(opts.bands,1)   
-
-           dbx = dbt(x,bsidin.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
+            
+           dbx = dbt(x(:,compi),bsidin.fs(1),opts.bands(bi,3),'upsample',4,'lowpass',opts.bands(bi,2),'highpass',opts.bands(bi,1),'remodphase',true,'centerDC',false);
             %%% envelope smoothing
 
             dbx.blrep = dbx.blrep./abs(dbx.blrep).*sqrt(convn(abs(dbx.blrep).^2,hann(3*opts.time_freq_smoothn),'same'));
