@@ -178,9 +178,11 @@ subremap = zeros(size(keep),useInt);
 subremap(keep) = find(keep);
 
 tol = min(abs(diff([freqs{:}])))/2;
-
+tol = 2.^floor(log2(tol)); %Use power of 2 to avoid precision error
 if condense %for auto-spectra we only need the principal domain. This is not so for cross-spectra
-    [Wsrt,wsrti] = sort(round(abs(W)./tol)*tol);
+    [Wsrt,wsrti] = sort(abs(W)+tol/32*(W<0)); %For frequencies of equal magnitude and different sign, force consistent sorting of negative and positive values
+    Wsrt = round(abs(Wsrt)./tol)*tol;
+    %[Wsrt,wsrti] = sort(round(abs(W)./tol)*tol);
     wsrti = wsrti + order*repmat(0:size(W,2)-1,order,1);
     Wsrt = Wsrt.*sign(W(wsrti));
    
