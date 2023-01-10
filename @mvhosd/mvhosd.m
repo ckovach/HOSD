@@ -263,7 +263,11 @@ classdef mvhosd < hosobject
             Xthr=me(1).filter_threshold(Xfilt,threshold);
             
         %     wf = fftshift(me(1).waveform,1);
-            wf = me(1).waveform;%*me(1).projection';
+            if ~isa(Xthr,'gpuArray')
+                wf = gather(me(1).waveform);%*me(1).projection';
+            else
+                wf = me(1).waveform;
+            end
             wf(end+1:size(Xthr,1),:) = 0;
             wf = circshift(wf,-floor(me(1).bufferN/2));
             Xthr(end+1:length(wf),:)=0;

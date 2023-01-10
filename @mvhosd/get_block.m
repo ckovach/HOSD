@@ -55,7 +55,9 @@
         if me(1).use_gpu
             try 
                 X = gpuArray(X);
-            catch
+            catch err
+                warning(err.identifier,'GPU error: %s\nUse of GPU is disabled',err.message)
+                me(1).use_gpu = false;
             end
         end
         Gpart = X;
