@@ -295,7 +295,7 @@ classdef hosobject < handle
                    fnsunset = setdiff({'fftN','bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
                    for k = 1:length(fnsunset)
                        for kk = 1:length(obj)
-                           obj(kk).(fnsunset{k})=me(1).(fnsunset{k});
+                           obj(kk).(fnsunset{k})=gather(me(1).(fnsunset{k}));
                        end
                    end
                end               
@@ -321,7 +321,7 @@ classdef hosobject < handle
                for k = 1:length(fns)  
                    if isprop(me(1),fns{k})
                         try
-                       me(1).(fns{k}) = obj(1).(fns{k});
+                       me(1).(fns{k}) = gather(obj(1).(fns{k}));
 %                        if me(1).lag~=obj(1).lag
 %                            keyboard
 %                        end
