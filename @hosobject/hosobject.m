@@ -824,13 +824,16 @@ classdef hosobject < handle
         out = ximp(me,xin,return_sparse,apply_window)
         %%
         initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
-
+        %%
+        out = cleangpu(me,in)
     end
+    
     methods (Static)
         function out = fftfreq(N)
             out = ifftshift((0:N-1)-floor(N/2))/N;
-        end 
+        end        
     end    
+
     
 end
 
