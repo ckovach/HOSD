@@ -118,7 +118,7 @@
             if all(hasnans) && all(islogical(makeplot)) && makeplot>=0
                 fprintf('\nAll segments contain NaN values. Discarding these data')
                 if nargout > 1
-                     varargout = {Xsh,Xwin,T,wint,segment};
+                     varargout = {Xsh,Xwin,T,wint,segment,makeplot};
                 end
                 return
             elseif any(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
