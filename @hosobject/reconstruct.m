@@ -1,4 +1,4 @@
-function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold, use_filtered_lmse)
+function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold, use_filtered_lmse,varargin)
       
 % [Xrec,Xfilt] = reconstruct(me,X,[threshold],[apply_window],[use_adaptive_threshold],[use_filtered_lmse])
 %       
@@ -88,7 +88,7 @@ function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_ad
     else
         a= sum(abs(Xrec(:)).^2); %#ok<*UNRCH>
         if a > 0
-            beta = (X(:)'*Xrec(:))./a;
+            beta = nansum(X(:).*Xrec(:))./a;
             Xrec = beta*Xrec; % Scale to minimize total mse.
         else
             beta= 0;
