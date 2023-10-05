@@ -52,6 +52,8 @@ classdef ecgonline  < handle
         function update(me,xin)
            
             %Pre-filter the data
+            me.input = xin;
+    
             xprefilt = filtfilt(me.pre_filter,1,xin);
             dx = xin-xprefilt; %The lowpass component will be added back in at the end
             xin = xprefilt;
@@ -98,7 +100,7 @@ classdef ecgonline  < handle
             
             me.xrec = me.hos.xrec(xin)*xsd;
             me.residual = (xin-me.xrec)*xsd + xm + dx;
-            me.input = xin*xsd+xm;
+    %        me.input = xin*xsd+xm + dx;
             me.xfilt = me.hos.xfilt(xin);
             me.feature = me.hos.feature;
         end
