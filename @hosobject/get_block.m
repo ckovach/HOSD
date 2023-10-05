@@ -115,13 +115,13 @@
 
             hasnans = any(xisnan(T));
             segment.discarded = hasnans;
-            if all(hasnans) && all(islogical(makeplot)) && makeplot>=0
+            if all(hasnans) %&& all(islogical(makeplot)) && makeplot>=0
                 fprintf('\nAll segments contain NaN values. Discarding these data')
                 if nargout > 1
                      varargout = {Xsh,Xwin,T,wint,segment,makeplot};
                 end
                 return
-            elseif any(hasnans) && ~any(ishandle(makeplot)) && makeplot>=0
+            elseif any(hasnans) %&& ~any(ishandle(makeplot)) && makeplot>=0
                 fprintf('\n%i (%0.2f %%) Segments with NaN values have been excluded',sum(hasnans),100*mean(hasnans))
                 T = T(:,~hasnans);
                 segment.wint = segment.wint(~hasnans);
@@ -352,7 +352,7 @@
         %%% Update CDF buffer
             xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
         if size(xin,1)>me(1).buffersize
-            Tcdf = chopper([0 me(1).buffersize*me(1).CDFupsample-1],segment.wint(1:me(1).CDFupsample:end),segment.fs);
+            Tcdf = chopper(segment.Trange*me(1).CDFupsample,segment.wint(1:me(1).CDFupsample:end),segment.fs);
 %                     Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
             Tcdf = mod(Tcdf-1,length(xfilt))+1;
             Xfilt = sort(xfilt(Tcdf));
