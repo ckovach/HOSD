@@ -44,7 +44,7 @@ classdef ecgonline  < handle
             %hosobj.poverlap = .75;
             me.hos = hosobj;
             
-            me.pre_filter = fir1(2*floor(me.buffersize/10)+1,me.pre_highpass/me.fs*2,'high');
+            me.pre_filter = fir1(2*floor(me.buffersize/10),me.pre_highpass/me.fs*2,'high');
             
         end
         
@@ -52,7 +52,7 @@ classdef ecgonline  < handle
            
             %Pre-filter the data
             xprefilt = filtfilt(me.pre_filter,1,xin);
-           % dx = xin-xprefilt;
+            dx = xin-xprefilt; %The lowpass component will be added back in at the end
             xin = xprefilt;
              
             if me.standardize
@@ -96,7 +96,7 @@ classdef ecgonline  < handle
             end
             
             me.xrec = me.hos.xrec(xin)*xsd;
-            me.residual = (xin-me.xrec)*xsd + xm;
+            me.residual = (xin-me.xrec)*xsd + xm + dx;
             me.input = xin*xsd+xm;
             me.xfilt = me.hos.xfilt(xin);
             me.feature = me.hos.feature;
