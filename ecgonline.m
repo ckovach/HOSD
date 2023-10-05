@@ -22,6 +22,7 @@ classdef ecgonline  < handle
         pre_highpass = 0.5 %Highpass before HOSD estimation
         pre_filter = []; % Filter function for highpass filter
         standardize = false; % Standardize each segment before estimation.
+        learning_rate = 1e-3; %Learning rate for the bispectral running estimate
     end
     
     methods
@@ -38,9 +39,9 @@ classdef ecgonline  < handle
             if nargin < 3 || isempty(hosobj)
                 hosobj = hosobject(3,round(me.hoswin*me.fs),me.fs,me.lowpass);
             end
-            hosobj.hos_learning_rate = 1e-3;
-            hosobj.filter_adaptation_rate = 1e-3;
-            hosobj.hos_burnin = 1;
+            hosobj.hos_learning_rate = me.learning_rate;
+            hosobj.filter_adaptation_rate = me.learning_rate;
+            hosobj.hos_burnin = 100;
             %hosobj.poverlap = .75;
             me.hos = hosobj;
             
