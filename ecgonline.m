@@ -6,7 +6,7 @@ classdef ecgonline  < handle
         input    % Input data segment
         xrec     % HOSD-based reconstructed component signal.
         xfilt    % Data filtered with estimated matched filter.
-        filtfun  % Current matched filter estimate
+        filterfun  % Current matched filter estimate
         feature  % Current feature estimate
         residual % Residual after removing component (this is the "denoised" signal)
 %        type = 'iterate'; %Apply the iterative algorithm - not working quite right yet
@@ -42,6 +42,7 @@ classdef ecgonline  < handle
             hosobj.hos_learning_rate = me.learning_rate;
             hosobj.filter_adaptation_rate = me.learning_rate;
             hosobj.hos_burnin = 100;
+%             hosobj.use_adaptive_threshold = true;
             %hosobj.poverlap = .75;
             me.hos = hosobj;
             
@@ -53,11 +54,14 @@ classdef ecgonline  < handle
            
             %Pre-filter the data
             me.input = xin;
-    
+            
+            isn = isnan(xin);
+            xin(isn) =0;
             xprefilt = filtfilt(me.pre_filter,1,xin);
             dx = xin-xprefilt; %The lowpass component will be added back in at the end
             xin = xprefilt;
-             
+            xin(isn) = nan;
+           
             if me.standardize
                 xsd = nanstd(xin);
                 xm = nanmean(xin);
@@ -84,11 +88,10 @@ classdef ecgonline  < handle
 %             
 %             if any(~keep), keyboard, end
 %             x = x(:,keep);
-            nsamp = me.Nsamp + size(x,2);
+%        nsamp = me.Nsamp + size(x,2);
             %Update mean and covariance after rejecting outliers
 %             me.M = me.M*me.Nsamp./nsamp + sum(x,2)./nsamp;
 %             me.S = me.S*me.Nsamp./nsamp + x*x'./nsamp;
-            me.Nsamp = nsamp;
             
             
             switch me.type
@@ -103,6 +106,9 @@ classdef ecgonline  < handle
     %        me.input = xin*xsd+xm + dx;
             me.xfilt = me.hos.xfilt(xin);
             me.feature = me.hos.feature;
+            me.filterfun = me.hos.filterfun;
+            me.Nsamp = me.hos.EDF;
+
         end
         function reset(me)
             me.Nsamp = 0;
