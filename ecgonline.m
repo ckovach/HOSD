@@ -101,6 +101,7 @@ classdef ecgonline  < handle
                     me.hos.get_input(x);
             end
             
+            xin(isn) = 0; %For the purpose of reconstruction, replace nans with 0s so we're less prone to miss events in the vicinity of nans.
             me.xrec = me.hos.xrec(xin)*xsd;
             me.residual = (xin-me.xrec)*xsd + xm + dx;
     %        me.input = xin*xsd+xm + dx;
