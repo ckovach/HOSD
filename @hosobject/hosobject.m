@@ -768,7 +768,8 @@ classdef hosobject < handle
         end
       
         function out = update_criteria(me,Xfilt) %#ok<INUSL>
-            out = true(1,size(Xfilt,2)); % Placeholder for now
+            out = ~any(isnan(Xfilt));
+      %      out = true(1,size(Xfilt,2)); % Placeholder for now
         end
      
         function out = get.pad(me)
