@@ -1,6 +1,32 @@
 classdef ecgonline  < handle
     
-    %Class for online feature identification, reconstruction and removal
+    %Class for live feature identification, reconstruction and removal
+    %using online HOSD. 
+    %
+    %To use:
+    %
+    %   1. Create object: ecg = ecgonline;
+    %   2. Update with a data segment: ecg.update(x);
+    % 
+    % Input can be a column vector or a matrix, where the 2nd dimension is
+    % channel. In the latter case, a multivariate version of HOSD will be
+    % applied to estimate a spatio-temporal filter. 
+    % 
+    % Main properties:
+    %   
+    %   hos:     The hosobject implementing HOSD (see HOSOBJECT)
+    %   feature: Current feature waveform estimate from HOSD.
+    %   filterfun: Current detection filter estimate.
+    %   xrec: Reconstructed component signal
+    %   residual: Residual signal after removing xrec -- this is the
+    %             "cleaned" signal.
+    %   
+    % See the commments in the script for additional properties. 
+    %
+    % See also HOSOBJECT
+    
+    %C. Kovach 2023
+    
     properties
         hos      % hosobject
         input    % Input data segment
@@ -15,14 +41,15 @@ classdef ecgonline  < handle
         fs = 250; %Sampling rate
         hoswin = 2; %Analysis window duration in s
         buffersize = 7500; %Input duration in samples
-%         M = 0; 
-%         S = 0;
         Nsamp = 0; %Cumulative number of segments sampled in HOSD estimation
-%         mahalthresh = 3; 
         pre_highpass = 0.5 %Highpass before HOSD estimation
         pre_filter = []; % Filter function for highpass filter
         standardize = false; % Standardize each segment before estimation.
         learning_rate = 1e-3; %Learning rate for the bispectral running estimate
+        outlier_threshold = 6; %Reject samples more than this number of standard deviations from the running mean
+        running_average = 0; % Running average, updated at the same rate as the HOSD filter
+        running_mss = 1;    %Running mean square
+        running_var = 1;    % Running variance (running_mms - running_average.^2)
     end
     
     methods
@@ -54,10 +81,31 @@ classdef ecgonline  < handle
            
             %Pre-filter the data
             me.input = xin;
-            
-            isn = isnan(xin);
-            xin(isn) =0;
+
+                        %Learning rate used by HOSD
+            if ~all(isnan(xin))
+                lradj = me.hos.learningfunction(me.hos.filter_adaptation_rate,floor(sum(~any(isnan(xin),2))./me.hos.buffersize),me.hos.filter_burnin);            
+                me.running_average = me.running_average*(1-lradj) + nanmean(xin)*lradj;
+                me.running_mss = me.running_mss*(1-lradj) + nanmean(xin.^2)*lradj;
+                me.running_var = me.running_mss-me.running_average.^2;
+            end
+            isn = any(isnan(xin),2);
+            xin(isn,:) = repmat(me.running_average,sum(isn),1);
             xprefilt = filtfilt(me.pre_filter,1,xin);
+            
+            
+            if me.hos.EDF>10 
+               %Reject outliers exceeding the specified threshold and
+               %replace with nans
+          
+               z = (xin-me.running_average)./sqrt(me.running_var);
+               reject = abs(z)>me.outlier_threshold;
+%                xprefilt(reject) = nan;
+            %   if any(reject), keyboard;end
+            else
+                reject = false; 
+            end
+            
             dx = xin-xprefilt; %The lowpass component will be added back in at the end
             xin = xprefilt;
             xin(isn) = nan;
@@ -70,29 +118,8 @@ classdef ecgonline  < handle
                 xm = 0;
             end
             xin = (xin-xm)./xsd;
-            x = xin;
-            %x = me.hos.chop_input(xin,false);
-            
-            
-            
-%             nsamp = me.Nsamp+size(x,2);
-%             m = me.M*me.Nsamp./nsamp + sum(x,2)./nsamp;
-%             ss = me.S*me.Nsamp./nsamp + x*x'./nsamp;
-%             
-%             d = (sum((pinv(ss)*(x-m)).*(x-m),1));
-%             
-%             p = chi2cdf(d,size(x,1));
-%             
-%          %   keep = d<me.mahalthresh | nsamp < 2*size(x,1); %Reject outliers here
-%             keep = p < .99;
-%             
-%             if any(~keep), keyboard, end
-%             x = x(:,keep);
-%        nsamp = me.Nsamp + size(x,2);
-            %Update mean and covariance after rejecting outliers
-%             me.M = me.M*me.Nsamp./nsamp + sum(x,2)./nsamp;
-%             me.S = me.S*me.Nsamp./nsamp + x*x'./nsamp;
-            
+            x = xin + 0./~reject; %Replaces rejected values with nans here
+    
             
             switch me.type
                 case 'iterative'
@@ -101,10 +128,9 @@ classdef ecgonline  < handle
                     me.hos.get_input(x);
             end
             
-            xin(isn) = 0; %For the purpose of reconstruction, replace nans with 0s so we're less prone to miss events in the vicinity of nans.
+            xin(any(isn,2),:) = repmat(nanmean(xin),sum(any(isn,2)),1); %For the purpose of reconstruction, replace nans with the mean so we're less prone to miss events in the vicinity of nans.
             me.xrec = me.hos.xrec(xin)*xsd;
             me.residual = (xin-me.xrec)*xsd + xm + dx;
-    %        me.input = xin*xsd+xm + dx;
             me.xfilt = me.hos.xfilt(xin);
             me.feature = me.hos.feature;
             me.filterfun = me.hos.filterfun;
