@@ -6,16 +6,33 @@ function power_iteration(me,X)
 % refined using a power iteration. This is implemented by updating the detection
 % filter with the partial delay filter computed for the current feature estimate, 
 % then recomputing the feature by aligning on the outputs of the new
-% feature.
+% feature detection filter.
 
+ piter_method = 'realignment';
+%piter_method = 'power_iteration';
 
-pdfilt =  me.partial_delay_filt(me.feature);
+switch piter_method
+    case 'realignment'
+        %Pseudo power-iteration through realignment. 
+        %Less precise but more stable.
+        pdfilt =  me.partial_delay_filt(me.feature);
 
-me.filterfft =pdfilt;
-% delt = me.delay;
+        me.filterfft =pdfilt;
+        % delt = me.delay;
+
+        % me.delay = delt;
+    case 'power_iteration'
+        
+        %%% This is untested!
+        pdfilt =  me.partial_delay_filt(real(ifft(conj(me.filterfft.*me.PSD(1:end-1)))),true,false,false);
+        pdfilt = pdfilt./sqrt(sum(abs(pdfilt).^2));
+        me.filterfft =pdfilt;
+        %Actual power itertion. May be prone to numerical instability.
+        
+end
 
 [~,FXsh] = me.apply_filter(X,false);
 
 me.wavefft = nanmean(FXsh,2);
 
-% me.delay = delt;
+        
