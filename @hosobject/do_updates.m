@@ -36,7 +36,7 @@
     if nargin < 3 || isempty(apply_window)
         apply_window = true;
     end
-    X(end+1:me.fftN,:)=0;
+    X(end+1:me.fftN,:,:)=0;
     [Xfilt,FXsh] = me.apply_filter(X,apply_window,use_shifted);
     if ~me.do_update
        warning('Updating is currently disabled. Set do_update = true to enable.') 
@@ -50,20 +50,32 @@
         return
     end
     if me.do_bsp_update
-       me.update_bispectrum(FXsh(:,getwin),initialize); 
+       me.update_bispectrum(FXsh(:,getwin,:),initialize); 
     end
     if me.do_wave_update
       %  Xsh = real(ifft(FXsh(:,getwin)));
 
-        me.update_waveform(FXsh(:,getwin),initialize); 
+        me.update_waveform(FXsh(:,getwin,:),initialize); 
     end
     if me.do_filter_update
        me.update_filter; 
-
+       if  me.nchannels>1
+          %After updating filters for each channel, run power-iteration-based ICA to optimize the spatial weighting
+          XF = real(ifft(fft(X).*me.filterfft));
+          XF = reshape(XF,size(XF,1)*size(XF,2),size(XF,3));
+          if length(me.chanweight) == 1
+              me.chanweight = ones(me.nchannels,1);
+          end
+          chwgt = pica(XF,1,me.order,ones(me.nchannels,1),[],false);
+          
+       else
+           chwgt = 1;
+       end
        lradj = me.learningfunction(me.filter_adaptation_rate,sum(getwin),me.filter_burnin);
        me.running_mean = me.running_mean*(1-lradj) + nanmean(Xfilt(:))*lradj;
        me.running_ssq = me.running_ssq*(1-lradj) + nanmean(Xfilt(:).^2)*lradj;
-
+       me.chanweight = me.chanweight*(1-lradj) + chwgt*lradj;
+      
         me.running_var = me.running_ssq-me.running_mean.^2;
 
 %                Xsrt = mean(sort(zscore(Xfilt(:,getwin)).^me.order),2);

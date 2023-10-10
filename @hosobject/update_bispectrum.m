@@ -46,7 +46,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
 %             FX = fft(Xwin);
    % FFX = 1;
 %            FFXpart = ones([size(me.freqindx.Is,1),size(FX,2),me.order]);
-    FFX = conj(FX(me.freqindx.Is(:,me.order),:));
+    FFX = conj(FX(me.freqindx.Is(:,me.order),:,:));
 
     FFXpart = {};
     FFXpart(1:me.order-1) = {FFX};
@@ -58,7 +58,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
         else
             FX = FXs{k};
         end
-        FXk = FX(me.freqindx.Is(:,k),:);
+        FXk = FX(me.freqindx.Is(:,k),:,:);
         for kk = setdiff(1:me.order,k) %%% Need multiple me.order symmetry regions for avg. partial cross-polyspectra
             FFXpart{kk} = FFXpart{kk}.*FXk;
         end
@@ -68,11 +68,11 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     if isempty(me.sampweight)
 %                 wgt = ones(size(FFX,2),1)/size(FFX,2);
          if me.integrated_magnitude_normalization
-            ims = nansum(abs(FFX))';
+            ims = squeeze(nansum(abs(FFX)));
             wgt = 1./(ims+nanmean(ims(:)).*1e-6);
             wgt(isnan(wgt))=0;
          else
-             wgt = ~any(isnan(FFX))'/sum(~any(isnan(FFX)));
+             wgt = ~any(sum(isnan(FFX),3))'/sum(~any(sum(isnan(FFX),3)));
          end
     end
     for kk =1:me.order
@@ -81,7 +81,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     FFX(isnan(FFX)) = 0;
 
 %             BX = mean(FFX,2);
-    BX = FFX*wgt;
+    BX = sum(FFX.*wgt',2);
     XPSD = mean(abs(FX).^2,2);
 %             BXpart = mean(FFXpart,2);
 
@@ -91,7 +91,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     BXpart = {};
     for kk = 1:me.order
 %                BXpart{kk} = mean(FFXpart{kk},2); 
-       BXpart{kk} = FFXpart{kk}*wgt; 
+       BXpart{kk} = sum(FFXpart{kk}.*wgt',2); 
        BXpart{kk}(end+1,:) = 0;
     end
 
@@ -129,10 +129,10 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     switch me.normalization
         case 'awplv'
 %                     NX = mean(abs(FFX),2);
-            NX = abs(FFX)*abs(wgt);
-            NX(end+1,1) = 0;
+            NX = sum(abs(FFX).*abs(wgt)',2);
+            NX(end+1,1,:) = 0;
 %                     XbiasNum = sum(abs(FFX).^2,2)./m^2;
-            XbiasNum = abs(FFX).^2*abs(wgt).^2;
+            XbiasNum = sum(abs(FFX).^2.*abs(wgt').^2,2);
             XbiasNum(end+1,1) = 0;
             XbiasNum(isnan(XbiasNum))=0;
             NX(isnan(NX))=0;

@@ -63,11 +63,13 @@
     end
     
     wint = segment.wint;
-  
+    
     T = round((repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1))*segment.fs)+1;
     T(T>length(xin))=length(xin);
     T(T<1)=length(xin);
-    Xchop = xin(T);
+    for k = 1:size(xin,2)
+        Xchop(:,:,k) = xin(T + (k-1)*size(xin,1));
+    end
     if apply_window
        Xchop = fftshift(repmat(me(1).win,1,size(T,2)).*Xchop,1);
     end

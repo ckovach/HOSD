@@ -138,6 +138,8 @@ classdef hosobject < handle
         integrated_magnitude_normalization = false;
         
         use_gpu = false; %Use GPU when available
+        
+        chanweight =1; %Channel weighting in filter.
      end
   
     properties (GetAccess = public, SetAccess=protected)
@@ -267,6 +269,7 @@ classdef hosobject < handle
         D ;
         pad; %
         regressor;
+        nchannels;
     end
     
     methods
@@ -588,7 +591,36 @@ classdef hosobject < handle
             out = real(ifft(F));
             
         end
-         function out = get.wavefft(me)
+        function out = get.nchannels(me)
+            out = size(me.filterfft,3);
+        end
+        function set.nchannels(me,in)
+            for k = size(me.filterfft,3)+1:in
+                 me.G(:,:,k) = me.G(:,:,end);
+                 me.waveftlag(:,:,k) = me.waveftlag(:,:,end);
+                 me.chanweight(k,1) = me.chanweight(end);
+                 me.Bval(:,:,k) = me.Bval(:,:,end);
+                 me.Dval(:,:,k) = me.Dval(:,:,end);
+                 me.PSD(:,:,k) = me.PSD(:,:,end);
+                 for kk = 1:length(me.Bpart)
+                     me.Bpart{kk}(:,:,k) = me.Bpart{kk}(:,:,end);
+                 end
+                 me.BIASnum(:,:,k) = me.BIASnum(:,:,end);
+            end
+            if in < me.nchannels
+                me.G = me.G(:,:,1:in);
+                me.waveftlag = me.waveftlag(:,:,1:in);
+                me.chanweight = me.chanweight(1:in);
+                me.Bval= me.Bval(:,:,1:in);
+                me.Dval = me.Dval(:,:,1:in);
+                me.PSD = me.PSD(:,:,1:in);
+                for kk = 1:length(me.Bpart)
+                     me.Bpart{kk} = me.Bpart{kk}(:,:,1:in);
+                end
+                me.BIASnum = me.BIASnum(:,:,1:in);
+            end
+        end
+        function out = get.wavefft(me)
            
             F = me.waveftlag;
         %    [~,mxi] = max(ifft(F.*me.filterftlag));
@@ -725,10 +757,12 @@ classdef hosobject < handle
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
            bias(isnan(bias))=0;
            BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
-           H = BC./(me.D+eps);
-           H = H(me.freqindx.remap);
-           H(me.freqindx.PDconj) = conj(H(me.freqindx.PDconj));
-           out = conj(H);
+           h = BC./(me.D+eps);
+           for k = 1:size(h,3)
+               hh = h(me.freqindx.remap + (k-1)*size(h,1));
+               hh(me.freqindx.PDconj) = conj(hh(me.freqindx.PDconj));
+               out(:,:,k) = conj(hh);
+           end
         end
         
         %%%%%%%
@@ -762,8 +796,8 @@ classdef hosobject < handle
                 return
             end
            % getsnip = min(me.bufferN-me.bufferPos,length(snip));
-            me.inputbuffer(length(snip)+(1:end-length(snip))) = me.inputbuffer(1:me.bufferN-length(snip));
-            me.inputbuffer(1:length(snip)) = snip;
+            me.inputbuffer(length(snip)+(1:end-length(snip)),:) = me.inputbuffer(1:me.bufferN-length(snip),:);
+            me.inputbuffer(1:length(snip),1:size(snip,2)) = snip;
             me.bufferPos = me.bufferPos + length(snip);
         end
       

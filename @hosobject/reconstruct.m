@@ -63,12 +63,15 @@ function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_ad
 
 %             wf = fftshift(me.waveform);
     wf = me.waveform;
-    wf(end+1:size(Xthr,1)) = 0;
+    if size(wf,3) == size(X,2) && size(X,3) == 1
+        wf = squeeze(wf);
+    end
+    wf(end+1:size(Xthr,1),:,:) = 0;
     wf = circshift(wf,-floor(me.fftN/2));
     Xthr(end+1:length(wf),:)=0;
     FXthresh =fft(Xthr);
     featfft = fft(wf);
-    Xrec = real(ifft(FXthresh.*repmat(featfft,1,size(X,2))));
+    Xrec = real(ifft(FXthresh.*featfft));
     Xrec(size(X,1)+1:length(wf),:) = [];
     %X(xisnan)=0;
     Xrec(xisnan)=0;

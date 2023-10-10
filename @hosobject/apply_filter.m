@@ -1,4 +1,4 @@
- function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
+ function [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,chanweight,varargin)
         
 % [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted)
 %
@@ -26,6 +26,11 @@
     if nargin < 4 || isempty(return_shifted)
        return_shifted = true; 
     end           
+    if nargin <5 || isempty(chanweight)
+        chanweight = me.chanweight;
+    end
+    
+    chanweight = permute(chanweight(:),[2 3 1]);
 %             if nargin < 5 || isempty(center_delays)
 %                center_delays = false; 
 %             end
@@ -47,7 +52,7 @@
             win = gpuArray(win);
         end
 %                 Xwin = fftshift(repmat(win,1,size(X,2)).*X,1);
-        Xwin = repmat(win,1,size(X,2)).*X;
+        Xwin = repmat(win,1,size(X,2),size(X,3)).*X;
         Xwin(end+1:me.fftN,:) = 0;
         FXwin = fft(Xwin);
 %                 FXwin = fft(X)';
@@ -59,7 +64,7 @@
                 filtft = gpuArray(filtft);
             end
         end
-        Xfilt = real(ifft(FXwin.*repmat(filtft,1,size(X,2))));   
+        Xfilt = sum(real(ifft(FXwin.*repmat(filtft,1,size(X,2)))).*chanweight,3);   
         if isscalar(smpw)
             if mod(me.order,2)==0
                 [~,mxi] = max(abs(Xfilt));
@@ -98,11 +103,13 @@
 %                 FXshift = FXshift*diag(sgn);
     else
 %                  Xin = X(:);
-        Xin = X;
-        Xin(end+me.fftN,:) = 0;
-        Xfilt = filter(me.filterfun,1,Xin);
+        Xfilt = 0;
+        for kk = 1:size(X,2)
+            Xin = X(:,kk);
+            Xin(end+me.fftN,:) = 0;
+            Xfilt = Xfilt + filter(me.filterfun(:,:,kk),1,Xin)*chanweight(kk);
+        end
         Xfilt = Xfilt(ceil(me.fftN/2)+1:end-floor(me.fftN/2),:);
-
     end
 
 end
