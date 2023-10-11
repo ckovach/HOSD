@@ -36,7 +36,7 @@
        [~,mxi] = max(sum(real(ifft(me.filterftlag.*me.waveftlag+eps)).*permute(me.chanweight,[2 3 1]),3));
        if mxi~=1 && ~isnan(mxi)
 %                     me.filterfun = circshift(me.filterfun,-me.sampt(mxi));
-            me.waveform = circshift(me.waveform,me.sampt(mxi));
+            me.waveform = circshift(me.waveform,-me.sampt(mxi));
        end
 
     end

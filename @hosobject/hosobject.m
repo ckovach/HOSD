@@ -39,7 +39,7 @@ classdef hosobject < handle
     %                  
     %
     %
-    % Copyright Christopher K. Kovach, University of Iowa 2018-2021
+    % Copyright Christopher K. Kovach, University of Iowa 2018-2023
     
     properties
         
