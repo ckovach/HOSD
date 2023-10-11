@@ -39,17 +39,19 @@ classdef ecgonline  < handle
         type = 'stream'; %Use the streaming, non-iterative, algorithm.
         lowpass = 64; %Lowpass for hos estimation
         fs = 250; %Sampling rate
-        hoswin = 2; %Analysis window duration in s
+        hoswin = 8; %Analysis window duration in s
         buffersize = 7500; %Input duration in samples
         Nsamp = 0; %Cumulative number of segments sampled in HOSD estimation
         pre_highpass = 0.5 %Highpass before HOSD estimation
         pre_filter = []; % Filter function for highpass filter
         standardize = false; % Standardize each segment before estimation.
         learning_rate = 1e-3; %Learning rate for the bispectral running estimate
-        outlier_threshold = 6; %Reject samples more than this number of standard deviations from the running mean
-        running_average = 0; % Running average, updated at the same rate as the HOSD filter
+        outlier_threshold = 10; %Reject samples more than this number of standard deviations from the running mean
+        running_average = []; % Running average, updated at the same rate as the HOSD filter
         running_mss = 1;    %Running mean square
         running_var = 1;    % Running variance (running_mms - running_average.^2)
+        running_median = []; %Running average of sample medians;
+        running_mad = 1; %Running average of absolute deviance from the median
     end
     
     methods
@@ -68,7 +70,7 @@ classdef ecgonline  < handle
             end
             hosobj.hos_learning_rate = me.learning_rate;
             hosobj.filter_adaptation_rate = me.learning_rate;
-            hosobj.hos_burnin = 100;
+            hosobj.hos_burnin = 1./me.learning_rate;
 %             hosobj.use_adaptive_threshold = true;
             %hosobj.poverlap = .75;
             me.hos = hosobj;
@@ -83,32 +85,50 @@ classdef ecgonline  < handle
             me.input = xin;
 
                         %Learning rate used by HOSD
-            if ~all(isnan(xin))
-                lradj = me.hos.learningfunction(me.hos.filter_adaptation_rate,floor(sum(~any(isnan(xin),2))./me.hos.buffersize),me.hos.filter_burnin);            
-                me.running_average = me.running_average*(1-lradj) + nanmean(xin)*lradj;
-                me.running_mss = me.running_mss*(1-lradj) + nanmean(xin.^2)*lradj;
-                me.running_var = me.running_mss-me.running_average.^2;
-            end
             isn = any(isnan(xin),2);
+         
+            if isempty(me.running_average)
+                me.running_average = nanmean(xin);
+                me.running_median = nanmedian(xin);
+            end
+            if isnan( me.running_average), keyboard;end
+     
             xin(isn,:) = repmat(me.running_average,sum(isn),1);
             xprefilt = filtfilt(me.pre_filter,1,xin);
+            xprefilt(isn,:) = nan;
             
+            x_for_thresholding = xin;
             
             if me.hos.EDF>10 
                %Reject outliers exceeding the specified threshold and
                %replace with nans
           
-               z = (xin-me.running_average)./sqrt(me.running_var);
-               reject = abs(z)>me.outlier_threshold;
+%                z = (xin-me.running_average)./sqrt(me.running_var);
+               z = (x_for_thresholding-me.running_median)./me.running_mad;
+               reject = any(abs(z)>me.outlier_threshold,2);
 %                xprefilt(reject) = nan;
             %   if any(reject), keyboard;end
             else
-                reject = false; 
+                reject = false(size(xin,1),1); 
             end
-            
+            isn = isn | reject;
+            if all(isn)
+                return
+            end
+             if ~all(isnan(xin))
+                lradj = me.hos.learningfunction(me.hos.filter_adaptation_rate,floor(sum(~any(isnan(x_for_thresholding),2))./me.hos.buffersize),me.hos.filter_burnin);            
+                me.running_average = me.running_average*(1-lradj) + nanmean(x_for_thresholding + 0./~reject)*lradj;
+                me.running_mss = me.running_mss*(1-lradj) + nanmean(x_for_thresholding.^2+ 0./~reject)*lradj;
+                me.running_var = me.running_mss-me.running_average.^2;
+      
+                me.running_median = me.running_median*(1-lradj) + nanmedian(x_for_thresholding)*lradj;
+                me.running_mad = me.running_mad*(1-lradj) + nanmedian(abs(x_for_thresholding-me.running_median))*lradj;
+             end
+           
             dx = xin-xprefilt; %The lowpass component will be added back in at the end
             xin = xprefilt;
-            xin(isn) = nan;
+            
+            xin(isn,:) = nan;
            
             if me.standardize
                 xsd = nanstd(xin);
