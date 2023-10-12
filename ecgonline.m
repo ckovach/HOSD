@@ -46,7 +46,7 @@ classdef ecgonline  < handle
         pre_filter = []; % Filter function for highpass filter
         standardize = false; % Standardize each segment before estimation.
         learning_rate = 4e-3; %Learning rate for the bispectral running estimate
-        outlier_threshold = 10; %Reject samples more than this number of standard deviations from the running mean
+        outlier_threshold = 10; %Reject samples more than this number of MAD from the running mediaan
         running_average = []; % Running average, updated at the same rate as the HOSD filter
         running_mss = 1;    %Running mean square
         running_var = 1;    % Running variance (running_mms - running_average.^2)
@@ -97,7 +97,7 @@ classdef ecgonline  < handle
             xprefilt = filtfilt(me.pre_filter,1,xin);
             xprefilt(isn,:) = nan;
             
-            x_for_thresholding = xin;
+            x_for_thresholding = xprefilt;
             
             if me.hos.EDF>10 
                %Reject outliers exceeding the specified threshold and
