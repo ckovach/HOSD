@@ -24,7 +24,8 @@ if ncomp > size(X0,2)
 end
 dorand= nargin < 4 || isempty(a0);
 
-maxiter = 500;
+maxiter = 500; %Maximum number of interation
+iter_from_max = 100; %Maximum number of iterations to continue without attaining a cumulant greater than the running maximum.
 %%
 
 m0 = mean(X0);
@@ -96,9 +97,11 @@ for dim = 1:ncomp
                 maxcum=cm;
                 maxa = anew;
             end
-            if iter-iter_at_max  > 100
+            if iter-iter_at_max  > iter_from_max
                 iter = maxiter;
-                fprintf('\nMax cumulant hasn''t been attained in 100 iterations. Stopping early.')
+                if verbose
+                    fprintf('\nMax cumulant hasn''t been attained in 100 iterations. Stopping early.')
+                end
             end
         end
     %     cm(iter+1) = cumulant(X*anew,4);
