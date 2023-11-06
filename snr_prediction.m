@@ -54,7 +54,7 @@ mu = nthroot((1-rate).^2.*skw,3)./sqrt(nthroot((rate.*(1-2*rate)).^2,3) - rate.*
 %thresh = thresh*sqrt(var);
 
 
-dprime = (1+rate)./(1-rate).*mu; %Estimated standardized separation.
+dprime = 1./(1-rate).*mu; %Estimated standardized separation.
 
 % precision = @(thresh)(1-normcdf(thresh-dprime))*rate./((1-normcdf(thresh-dprime))*rate + (1-normcdf(thresh))*(1-rate));
 % recall = @(thresh)1-normcdf(thresh-dprime);
@@ -65,9 +65,9 @@ dprime = (1+rate)./(1-rate).*mu; %Estimated standardized separation.
 
 
 TPR = (1-normcdf(thresh-mu)).*rate; %Predicted true positive rate
+TNR = normcdf(thresh+rate./(1-rate).*mu).*(1-rate);     %Predicted true negative rate.
 FPR = (1-normcdf(thresh+rate./(1-rate).*mu)).*(1-rate); %Predicted false positive rate
 FNR = normcdf(thresh-mu).*rate;  %Predicted false negative rate
-TNR = normcdf(thresh+rate./(1-rate).*mu).*(1-rate);     %Predicted true negative rate.
 
 precision = TPR./(TPR + FPR);
 recall = TPR./(TPR+FNR);
