@@ -5,20 +5,26 @@
     %%% therefore be possible to improve efficiency using the integration
     %%% matrices, Imat, etc.
     
-        Bpart = zeros([size(me.freqindx.remap),size(me.B,3)]);
+        Bpart = zeros([size(me.freqindx.remap),size(me.B,me.order)]);
+        q = repmat({':'},1,me.order);
+        
         for k = 1:length(me.Bpart)          
             for kk = 1:size(me.Bpart{k},3)
                 bpart = Bpart(:,:,kk) + me.Bpart{k}(me.freqindx.remap+(kk-1)*size(me.Bpart{k},1)).*(me.freqindx.partialSymmetryRegions==k);
                 bpart(me.freqindx.PDconj) = conj(bpart(me.freqindx.PDconj));
-                Bpart(:,:,kk) = bpart;
+                q{end} = kk;
+                Bpart(q{:}) = bpart;
             end
         end
 
        GG = Bpart.*me.H;
 
        GG(isnan(GG))=0;
-       G = sum(GG(:,:,:),2);
-
+       G = GG;
+       for k = 2:me.order
+        G = sum(G,k);
+       end
+       
         me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)),:,:);
 
         if me.adjust_lag

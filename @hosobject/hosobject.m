@@ -758,10 +758,13 @@ classdef hosobject < handle
            bias(isnan(bias))=0;
            BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
            h = BC./(me.D+eps);
+          q = repmat({':'},1,me.order);
+       
            for k = 1:size(h,3)
                hh = h(me.freqindx.remap + (k-1)*size(h,1));
                hh(me.freqindx.PDconj) = conj(hh(me.freqindx.PDconj));
-               out(:,:,k) = conj(hh);
+               q{end} = k;
+               out(q{:}) = conj(hh);
            end
         end
         
