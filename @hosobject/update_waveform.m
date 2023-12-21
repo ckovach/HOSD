@@ -31,6 +31,6 @@ function update_waveform(me,FXsh,initialize)
    else
        smpw = me.sampweight;
    end
-   me.wavefft = me.wavefft*(1-lradj) + sum(FXsh.*smpw(:)',2)*lradj; 
+   me.wavefft = me.wavefft*(1-lradj) + sum(FXsh.*smpw',2)*lradj; 
 
 end

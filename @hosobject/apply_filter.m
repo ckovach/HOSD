@@ -40,9 +40,6 @@
        smpw =1 ;
     else
         smpw = me.sampweight;
-        if length(smpw)~=size(X,2)
-            smpw=1;
-        end
     end
     if size(X,1) == me.bufferN || size(X,1)==me.fftN
         if apply_window
@@ -76,14 +73,13 @@
             end
         else
             if mod(me.order,2)==0
-                [~,mxi] = max(abs(Xfilt).*repmat(smpw(:)',size(Xfilt,1),1));
+                [~,mxi] = max(abs(Xfilt).*repmat(smpw',size(Xfilt,1),1));
             else
-                [~,mxi] = max(Xfilt.*repmat(smpw(:)',size(Xfilt,1),1));
+                [~,mxi] = max(Xfilt.*repmat(smpw',size(Xfilt,1),1));
             end
         end
         if mod(me.order,2)==0 
-           sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1)).*smpw(:)'); 
-           sgn(sgn==0)=1;
+           sgn = sign(Xfilt(mxi + (0:size(Xfilt,2)-1)*size(Xfilt,1)).*smpw'); 
         end
         if nargout >1 && return_shifted
 
