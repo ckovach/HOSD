@@ -39,7 +39,7 @@ classdef ecgonline  < handle
         type = 'stream'; %Use the streaming, non-iterative, algorithm.
         lowpass = 64; %Lowpass for hos estimation
         fs = 250; %Sampling rate
-        hoswin = 8; %Analysis window duration in s
+        hoswin = 2; %Analysis window duration in s
         buffersize = 7500; %Input duration in samples
         Nsamp = 0; %Cumulative number of segments sampled in HOSD estimation
         pre_highpass = 0.5 %Highpass before HOSD estimation
