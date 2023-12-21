@@ -74,7 +74,10 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
          else
              wgt = ~any(sum(isnan(FFX),3))'/sum(~any(sum(isnan(FFX),3)));
          end
+    else
+             wgt = me.sampweight'.*(~any(sum(isnan(FFX),3))/sum(~any(sum(isnan(FFX),3))))';
     end
+
     for kk =1:me.order
             FFXpart{kk}(isnan(FFXpart{kk})) = 0;
     end

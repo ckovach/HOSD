@@ -182,6 +182,20 @@
         apply_window = false;
         use_shifted=false;
 %                 initialize = true;
+        if isempty(me(1).sampweight)
+            smpw = 1;
+        else
+            smpw = me(1).sampweight;
+            if length(smpw) == size(xin,1) 
+                SMPW = me(1).chop_input(smpw,false);
+                smpw = nanmean(SMPW(:,~hasnans));
+                me(1).sampweight = smpw;
+            elseif length(smpw) == length(hasnans)
+                smpw = smpw(~hasnans);
+                me(1).sampweight = smpw;
+            end
+        end
+
         if me(1).use_partial_delay_method
             updatebsp = me(1).do_bsp_update;
             me(1).do_bsp_update = false; %Avoid updating the bispectrum estimate twice unnecessarily here.
@@ -193,8 +207,10 @@
                 Xwin = Xwin.*sgn;
             end
             Gpart(isnan(Gpart))=0;
-            if me(1).do_filter_update
-                me(1).G = mean(Gpart,2);
+
+
+            if me(1).do_filter_update                
+                me(1).G = mean(Gpart.*smpw,2);
             end
 %                     me(1).apply_filter(Xsh,false,true);
 %                     newdt = me(1).delay;
@@ -251,12 +267,12 @@
                end
                Gpart = (sgn.*exp(-1i.*delt)).*Gpart;
                Gpart(isnan(Gpart))=0;
-               G = mean(Gpart,2);
+               G = mean(Gpart.*smpw,2);
                if me(1).do_filter_update
                    me(1).G = G;
                end
                if me(1).do_wave_update
-                me(1).feature = nanmean(Xsh,2);
+                  me(1).feature = nanmean(Xsh.*smpw,2);
                end
               
                if me(1).adjust_lag && me(1).do_filter_update
@@ -317,7 +333,7 @@
         %%% the feature waveform is centered with respect to the maximum!
      
          Xsh = real(ifft(FXsh));
-         me(1).feature = nanmean(Xsh,2);
+         me(1).feature = nanmean(Xsh.*smpw,2);
         [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
         if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
             me(1).filterfun = circshift(me(1).filterfun,ceil(-me(1).sampt(mxi)/2));

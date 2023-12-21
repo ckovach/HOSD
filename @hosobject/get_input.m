@@ -66,6 +66,11 @@ function out = get_input(me,xin,apply_window,use_shifted,initialize)
 % 
 %                     T = repmat(tindx,1,length(wint))+repmat(wint,length(tindx),1);
 %                     Xchop = xin(T);
+            % if ~isempty(me(1).sampweight) && length(me(1).sampweight) == nxin
+            %     SMPW = me(1).chop_input(me(1).sampweight,false);
+            %     me(1).sampweight = nanmean(SMPW);
+            % end
+
             for k = 1:me(1).nchannels
                 [Xchop(:,:,k),T] = me(1).chop_input(xin(:,k),false); %#ok<*AGROW>
                 if k==1
@@ -80,6 +85,9 @@ function out = get_input(me,xin,apply_window,use_shifted,initialize)
             Xchop = xin;
         end
         isn = any(any(isnan(Xchop)),3);
+        if length(me(1).sampweight) == length(isn)
+            me(1).sampweight = me(1).sampweight(~isn);
+        end
         me(1).do_updates(Xchop(:,~isn,:),apply_window,use_shifted,initialize)
    
     else
