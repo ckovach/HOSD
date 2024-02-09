@@ -26,7 +26,7 @@ opts.redo_hosd = false;
 opts.dbt_denoise = true;
 opts.save_space = false; %Save space by removing all HOS statistics, keeping only features and filters; 
 opts.run_phase_randomized=false; %Run on phase randomized data as well as original for comparison
-opts.multivariate = -1; %Run multivariate. Defaultis -1 = run multivariate if number of columns is greater than 1. NOT IMPLEMENTED YET
+opts.multivariate = -1; %Run multivariate. Defaultis -1 = run multivariate if number of columns is greater than 1. 
 opts.cumulant_threshold = 0;% By default rely on the number ncomps rather than cumulant threshold to decide the number of components
 opts.lookahead = 2; %Stop after this many components in sequence fall under cumulant_threshold.
 % opts.autodep = struct('order',8,'tau',.025);
