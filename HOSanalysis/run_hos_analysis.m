@@ -237,6 +237,8 @@ z = zscore(double(dat.dat));
 
 if opts.multivariate == -1 && size(z,2)>1
     opts.multivariate = true;
+else
+    opts.multivariate = false;
 end
     
 hosargs = [{size(T,1),dat.fs(1),opts.lowpass,[],[]},opts.hosargs];
