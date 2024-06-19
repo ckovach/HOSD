@@ -93,7 +93,8 @@ classdef ecgonline  < handle
             end
             if isnan( me.running_average), keyboard;end
      
-            xin(isn,:) = repmat(me.running_average,sum(isn),1);
+            % xin(isn,:) = repmat(me.running_average,sum(isn),1);
+            xin(isn,:) = repmat(nanmedian(xin),sum(isn),1);
             xprefilt = filtfilt(me.pre_filter,1,xin);
             xprefilt(isn,:) = nan;
             
