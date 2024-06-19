@@ -199,7 +199,7 @@ for i = 1:length(R1)
             RX(rxind).value = kron( Vi,ones(1,size( Vj,2))).*repmat( Vj ,1,size( Vi,2));     
         else
             RX(rxind).value =[];
-            RX(rxind).fun = makemefun([R1,R2]);
+            RX(rxind).function = makemefun([R1,R2]);
 %             continue
         end
         RX(rxind).levmat = cat(1,kron( R1.levmat,ones(1,R2.Npar)), repmat( R2.levmat ,1,R1.Npar));

@@ -91,7 +91,7 @@ classdef ecgonline  < handle
                 me.running_average = nanmean(xin);
                 me.running_median = nanmedian(xin);
             end
-            if isnan( me.running_average), keyboard;end
+           % if isnan( me.running_average), keyboard;end
      
             % xin(isn,:) = repmat(me.running_average,sum(isn),1);
             xin(isn,:) = repmat(nanmedian(xin),sum(isn),1);
