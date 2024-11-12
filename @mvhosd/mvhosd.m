@@ -388,7 +388,7 @@ classdef mvhosd < hosobject
                 in = permute(in,[1 3 2]);
             end
             Xthr=me(1).xthresh(in);
-            out = Xthr>0;
+            out = abs(Xthr)>0;
             if size(me,2)>1
                out = cat(sum(size(in)>1),out,me(:,2:end).ximp(in-me(:,1).xrec(in,[],apply_window),apply_window));
             end
