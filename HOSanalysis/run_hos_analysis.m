@@ -289,7 +289,7 @@ else
          zresid = zresid-squeeze(xrec);
      end
      keepcomps = cumulant(xfilts,hos(1).order)>opts.cumulant_threshold;
-     if isempty(keepcomps)
+     if isempty(keepcomps) || ~any(keepcomps)
          keepcomps=true; %Always keep at least the 1st component to avoid empty array errors
      end
      hos = hos(keepcomps);
