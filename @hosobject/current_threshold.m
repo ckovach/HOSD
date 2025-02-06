@@ -24,12 +24,23 @@ if nargin < 2 || isempty(Xcent) %||true % Find threshold based on empirical CDF
     Xcent =  me.CDFbuffer(:,1);
     Xcent2 = me.CDFbuffer(:,2);
     XcentK = me.CDFbuffer(:,me(1).threshold_order);
+    if me.threshold_order == 4
+        Xcent3 = me.CDFbuffer(:,3);
+    end
 else %Find threshold based on input moment
-    Xcent = sort(Xcent(:));
+    if all(isnan(Xcent))
+        out = nan;
+        return
+    end
+    Xcent = sort(Xcent(~isnan(Xcent)));
 
 
     Xcent2 = Xcent.^2;
     XcentK = Xcent.^me.threshold_order;
+    if me.threshold_order == 4
+        Xcent3 = Xcent.^3;
+    end
+
 end
 if nargin<3 || isempty(thresh)
     thresh = me.thresh;
@@ -63,7 +74,40 @@ end
     if ~any(out)
         out=Inf;
     end
-else
+ elseif me.threshold_order == 4
+    Xcent(isnan(Xcent))=0;
+    Xcent2(isnan(Xcent2))=0;
+    Xcent3(isnan(Xcent3)) = 0;
+    XcentK(isnan(XcentK))=0;
+    [Xsrt,srti] = sort(XcentK);
+%                 Xpow = Xcent(srti).^2;
+    Xcent = Xcent(srti,:);
+    Xcent2 = Xcent2(srti,:);
+    Xcent3 = Xcent3(srti,:);
+    XcentK = Xsrt;
+
+    keepsamples = ones(size(Xcent));
+ 
+    m1 = cumsum(Xcent)./cumsum(keepsamples); % cumulative mean on sorted peaks
+    m2 = cumsum(Xcent2)./cumsum(keepsamples); % cumulative 2nd moment
+    m3 = cumsum(Xcent3)./cumsum(keepsamples); % cumulative 3rd moment
+    m4 = cumsum(XcentK)./cumsum(keepsamples);
+    %  Fourth cumulant
+    c4 = m4 - 4.*m3.*m1 - 3.*m2.^2 + 12*m2.*m1.^2 -6.*m1.^4;
+
+    %c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+
+    Xthr = c4>thresh & c4(end)>0;
+    Xthr = cumsum(diff([zeros(2,size(Xthr,2));Xthr])>0,'reverse')==0; % Use the last threshold crossing if there are multiple
+ 
+  %  keepsrt = Xcent2>0 & c4>  thresh;
+   out = nansum(XcentK.*(diff(Xthr)>0),1);
+
+    if ~any(out)
+        out=Inf;
+    end
+
+ else
     % For now, apply a simple threshold on the standardized moment for
     % orders > 3. This should be improved to use the proper
     % cumulant.
