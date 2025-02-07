@@ -19,7 +19,7 @@ if ~isempty(fn)
     for kk =1 :length(in)
         for k = 1:length(fn)
             try
-                out.(fn{k})=me.cleangpu(in.(fn{k}));
+                out(kk).(fn{k})=me.cleangpu(in(kk).(fn{k}));
             catch 
             end
         end
