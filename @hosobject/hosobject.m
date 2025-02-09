@@ -814,11 +814,11 @@ classdef hosobject < handle
         end
         function set.pad(me,in)
             me.padN = in;
-            if islogical(me.padN) && me.padN
+            % if islogical(me.padN) && me.padN
+            %     me.fftN = me.bufferN+me.padN;
+            % else
                 me.fftN = me.bufferN+me.padN;
-            else
-                me.fftN = me.bufferN+me.padN;
-            end
+            % end
         end
         
          %%%% These following lines declare methods that are defined in separate files within the
@@ -864,6 +864,8 @@ classdef hosobject < handle
         initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
         %%
         out = cleangpu(me,in)
+        %%
+        varargout = modgram(me)
     end
     
     methods (Static)
