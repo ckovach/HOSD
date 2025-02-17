@@ -865,7 +865,7 @@ classdef hosobject < handle
         %%
         out = cleangpu(me,in)
         %%
-        varargout = modgram(me)
+        varargout = modgram(me,varargin)
     end
     
     methods (Static)
