@@ -109,7 +109,9 @@
                    Xchop =  gpuArray(Xchop);
                 catch err
                     warning(err.identifier,'GPU error: %s\nSwitching to non-GPU mode',err.message)
-                    me.use_gpu = false;
+                    for k = 1:length(me)
+                        me(k).use_gpu = false;
+                    end
                 end
             end
 
