@@ -14,6 +14,11 @@ if nargin < 3 || isempty(ord)
     ord = 4;
 end
 
+if any(isnan(X0(:)))
+    isn = any(isnan(X0),2);
+    warning('Excluding %i rows with NaNs',sum(isn));
+    X0 = X0(~isn,:);
+end
 if nargin < 6 || isempty(verbose)
     verbose = true;
 end
