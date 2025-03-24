@@ -85,7 +85,7 @@ methods
                 me.hos = hos;
             end
             [~,~,plh] = me.hos(compi).get_block(xresid,me.niter,plh,[],compi);
-            xf = me.hos(compi).xfilt(x);
+            xf = me.hos(compi).xfilt(xresid);
             
             if me.multivariate
                 me.hosf(compi) = hosobject(hos0);
@@ -99,6 +99,8 @@ methods
             xresid = xresid-squeeze(xr);
             
             cml(end) = [];
+                
+
             fprintf('\nComp. %i cumulant %0.2f',compi,cml(1));
 
             compi = compi+1;
