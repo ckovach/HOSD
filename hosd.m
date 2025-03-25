@@ -21,42 +21,56 @@ methods
     function me = hosd(varargin)
         
         if nargin > 0
-        if isa(varargin{1},'mvhosd')
-           
-            me.hos = mvhosd(varargin{1});
-            me.multivariate = true;
+            if isa(varargin{1},'hosd')
+                obj = varargin{1};
+                me.hos = hosobject(obj.hos);
+                props = setdiff(fieldnames(obj),'hos');
+                for k = 1:length(props)
+                    me.(props{k}) = obj.(props{k});
+                end
 
-        elseif isa(varargin{1},'hosobject')
-            
-            me.hos = hosobject(varargin{1});
-            me.multivariate = false;
-        end
-        end
-        
-        props = fieldnames(me);
-        rm = [];
-        for k = 1:length(props)
-            idx = find(strcmpi(varargin,props{k}));
-            if ~isempty(idx)
-                rm = [rm,idx,idx+1];    
-                me.(props{k}) = varargin{idx+1};
-            end
-        end
-        varargin(rm) = [];
-
-        if isempty(me.hos)
-            if me.multivariate
-                me.hos = mvhosd(varargin{:});
             else
-                me.hos = hosobject(varargin{:});
+                
+                if isa(varargin{1},'mvhosd')
+                   
+                    me.hos = mvhosd(varargin{1});
+                    me.multivariate = true;
+        
+                elseif isa(varargin{1},'hosobject')
+                    
+                    me.hos = hosobject(varargin{1});
+                    me.multivariate = false;
+                  elseif isa(varargin{1},'hosd')
+                    me.hos = hosobject(varargin{1});
+        
+                end
+                
+                props = fieldnames(me);
+                rm = [];
+                for k = 1:length(props)
+                    idx = find(strcmpi(varargin,props{k}));
+                    if ~isempty(idx)
+                        rm = [rm,idx,idx+1];    
+                        me.(props{k}) = varargin{idx+1};
+                    end
+                end
+                varargin(rm) = [];
+        
+                if isempty(me.hos)
+                    if me.multivariate
+                        me.hos = mvhosd(varargin{:});
+                    else
+                        me.hos = hosobject(varargin{:});
+                    end
+                end
+                me.order = unique([me.hos.order]);
             end
         end
-        me.order = unique([me.hos.order]);
 
     end
 
 
-    function run(me,x,varargin)
+    function [XF,xthr,ximp,betas] = run(me,x,varargin)
         
         compi = 1;
         xresid = x;
@@ -85,8 +99,13 @@ methods
                 me.hos = hos;
             end
             [~,~,plh] = me.hos(compi).get_block(xresid,me.niter,plh,[],compi);
-            xf = me.hos(compi).xfilt(xresid);
-            
+            [xr,xf,xthr,beta]  = me.hos(compi).xrec(xresid);
+          %  xf = me.hos(compi).xfilt(xresid);
+            if nargout > 1
+                XF(:,compi) = xf;
+                xthr(:,compi) = xthr;
+                betas(:,compi) = beta;
+            end
             if me.multivariate
                 me.hosf(compi) = hosobject(hos0);
                 me.hosf(compi).get_input(xf);
@@ -94,8 +113,7 @@ methods
 
             cml = [cumulant(xf,me.hos(compi).order),cml];
             
-            xr  = me.hos(compi).xrec(xresid);
-
+          
             xresid = xresid-squeeze(xr);
             
             cml(end) = [];
