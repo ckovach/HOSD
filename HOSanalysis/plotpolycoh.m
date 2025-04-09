@@ -224,7 +224,7 @@ for hi = 1:length(hos)
                 q.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk}(:,:,imk{:}));
             end
              q=imh(imk{:}).DataTipTemplate;
-             q.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',double(B(:,:,imk{:})));
+             q.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',B(:,:,imk{:}));
             for kk = 3:length(wb)-1
                 if kk==3
                     txt{kk-2} = sprintf('%0.2f',wb{kk}(K(k,kk-2)));

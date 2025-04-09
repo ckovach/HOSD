@@ -114,9 +114,4 @@
 
     end
 
-    if length(me)>1
-        yres = yin-me(1).xrec(yin);
-        out = [out,me(2:end).hos_regress(yres,xin,do_permtest,varargin{:})];
-    end
-
 end

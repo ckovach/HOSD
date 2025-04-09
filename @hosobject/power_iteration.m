@@ -31,18 +31,8 @@ switch piter_method
         
 end
 
-if me(1).adjust_lag 
-%                            ffun = ifftshift(real(ifft(me(1).filterftlag)));                   
-   ffun = ifftshift(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),1);   
-   mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
-   mph = mph./(abs(mph)+eps);
-   if ~isnan(mph)
-     me(1).lag = mph; % Circular shift to keep filter energy centered on the window
-   end
-
-end
 [~,FXsh] = me.apply_filter(X,false);
 
 me.wavefft = nanmean(FXsh,2);
 
- 
+        
