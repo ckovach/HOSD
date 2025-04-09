@@ -152,7 +152,7 @@ classdef mvhosd < hosobject
                     samptc=(me(1).sampt);
                      dt = samptc(mxi);
                      me(1).delay = dt;             
-                    
+                    me(1).sign = sgn;
                     delt = me(1).radw*dt;
                     FXshift = exp(1i*delt).*FXwin;
        

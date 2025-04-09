@@ -10,7 +10,13 @@ fun = @(x)x;
 
 for cmpi = 1:length(me)
     if nargin < 2
-        Bplot = fftshift(me(cmpi).bicoh);
+        B0 = me(cmpi).bicoh;
+        inds = [repmat({':'},1,me.order-1),{1}];
+        Bplot =  B0(inds{:});
+        for k = 2:size(B0,me(cmpi).order)
+            inds(me.order) = {k};
+             Bplot = cat(me(cmpi).order,Bplot,fftshift(B0(inds{:})));
+        end
         fun = @abs;
     elseif isa(Bplot0,'function_handle')
         Bplot = fftshift(me(cmpi).bicoh);
@@ -19,7 +25,9 @@ for cmpi = 1:length(me)
         Bplot = Bplot0(:,cmpi);
         Bplot = fftshift(Bplot(me(cmpi).fullmap));
     else 
-        Bplot = Bplot0;
+        inds = [repmat({':'},1,me.order-1),{1}];
+        B0 = Bplot0;
+        Bplot =  B0(inds{:});
     end
 
     wb0 = cellfun(@fftshift,me(cmpi).freqindx.Bfreqs,'uniformoutput',false);
@@ -33,16 +41,28 @@ for cmpi = 1:length(me)
     
     [P,M] = meshgrid(power,modfreq);
     [W1,W2,W3] = meshgrid(wb0{:});
-    B = nan*M;
-    Bpart = B;
-    B(:) = interp3(W1,W2,W3,Bplot,P(:),P(:),-P(:)+M(:));
-    if nargout > 3
+    Bout =[];
+    for k = 1:size(Bplot,me(cmpi).order)
+        B = nan*M;
+        Bpart = B;
+         inds{me.order} = k;
+   
+        B(:) = interp3(W1,W2,W3,Bplot(inds{:}),P(:),P(:),-P(:)+M(:));
+        Bout = cat(me(cmpi).order-1,Bout,B);
+    end
+    if nargout > 3 %Not implemented for mvhos yet
         Bpart(:) = interp3(W1,W2,W3,fftshift((me(cmpi).partialbicoh)),P(:),P(:),-P(:)+M(:));
         Bpart(isnan(B))=nan;
     end    
-    if nargout ==0
+    if nargout ==0 %Not implemented for mvhos yet
         ax(cmpi,1)=subplot(1,length(me),cmpi);
-        imh = pcolor(power,modfreq,fun(B));
+        if length(size(Bout))>2
+            warning('Plot is averaged over channels')
+            while length(size(Bout))>2
+                Bout = squeeze(mean(fun(Bout),3));
+            end
+        end
+        imh = pcolor(power,modfreq,fun(Bout));
              set(imh,'facecolor','flat','edgecolor','none');
         if cmpi==1
                 ylabel('Envelope modulation freq.(Hz)')
@@ -60,7 +80,7 @@ for cmpi = 1:length(me)
     end
 end
 if nargout >3
-    varargout = {B,power,modfreq, Bpart };
+    varargout = {Bout,power,modfreq, Bpart };
 elseif nargout >0
-        varargout = {B,power,modfreq};
+        varargout = {Bout,power,modfreq};
 end

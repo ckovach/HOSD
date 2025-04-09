@@ -7,7 +7,7 @@ classdef model
 %
 %  Response is a struct with two fields:
 %       .dat : Response data
-%       .type: data type : 'binary' for binary data,'count' for count
+%       .type: data type : 'binomial' for binary data,'count' for count
 %                          data,'times' for event times.
 %       .fs : sampling rate.
 % 

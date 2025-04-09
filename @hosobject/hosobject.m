@@ -167,6 +167,7 @@ classdef hosobject < handle
         
         % Vector of feature delays in the most recent input windows
         delay = 0;
+        sign =1;
         waveftlag = [];
         win = sasaki(1024);
       G = []; 
@@ -414,7 +415,7 @@ classdef hosobject < handle
           out = me.B(me.freqindx.remap);
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
         end
-        function BC = get.bicoh(me)
+        function BCrm = get.bicoh(me)
            %%% Bicoherence in square form
           BC = me.B./me.D;
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
@@ -424,10 +425,13 @@ classdef hosobject < handle
       
           prm = circshift(1:me.order,-1);
           remap = remap + permute( cast(0:size(BC,me.order)-1,class(remap))',prm)*size(BC,1);
-          BC = BC(remap);
+          BCrm = BC(remap);
+          for k = 2:size(BC,3)
+              BCrm = cat(me.order,BCrm,BC(remap+size(BC,1)*(k-1)));
+          end
           
-          pdc = repmat(me.freqindx.PDconj,[ones(1,me.order-1) size(BC,me.order)]);
-          BC(pdc) = conj(BC(pdc));
+          pdc = repmat(me.freqindx.PDconj,[ones(1,me.order-1) size(BCrm,me.order)]);
+          BCrm(pdc) = conj(BCrm(pdc));
           
         end
         function BC = get.bicohreduced(me)

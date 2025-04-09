@@ -88,7 +88,7 @@
              dt = samptc(mxi);
 
              me.delay = dt;             
-            
+             me.sign = sgn;
             if isa(FXwin,'gpuArray')
                 delt = gpuArray(me.radw)*gpuArray(dt);
             else
