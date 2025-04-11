@@ -10,7 +10,7 @@ fun = @(x)x;
 
 for cmpi = 1:length(me)
     if nargin < 2
-        B0 = me(cmpi).bicoh;
+        B0 = fftshift(me(cmpi).bicoh);
         inds = [repmat({':'},1,me.order-1),{1}];
         Bplot =  B0(inds{:});
         for k = 2:size(B0,me(cmpi).order)
@@ -27,7 +27,7 @@ for cmpi = 1:length(me)
     else 
         inds = [repmat({':'},1,me.order-1),{1}];
         B0 = Bplot0;
-        Bplot =  B0(inds{:});
+        Bplot =  fftshift(B0(inds{:}));
     end
 
     wb0 = cellfun(@fftshift,me(cmpi).freqindx.Bfreqs,'uniformoutput',false);
