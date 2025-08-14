@@ -1,4 +1,4 @@
- function out = hos_regress(me,yin,xin,do_permtest,varargin)
+ function varargout = hos_regress(me,yin,xin,do_permtest,do_cluster_test,varargin)
 
 % out = hos_regress(me,Y,[X],[do_permtest])
 % Linear regression on each element of the HOS array
@@ -33,7 +33,7 @@
 %
 % Copyright Christopher K. Kovach, University of Iowa 2018-2021
 
-    if nargin < 4
+    if nargin < 4 || isempty(do_permtest)
         do_permtest = false; %Do a permutation test to verify significant results
     end
     if  nargin > 3 && do_permtest > 1
@@ -41,6 +41,10 @@
     else
         maxpermn = 5e5;
     end
+    if nargin < 5 || isempty(do_clustertest)
+        do_clustertest = false;
+    end
+    
     
     reg_args = {};
     if nargin < 3 || isempty(xin)
@@ -78,7 +82,7 @@
         FFY = FFY.*FYk;
     end
 %             [~,out.dev0] = complexglm(FFX',ones(size(x,1),1),'diagonly',false,'intercept',false);
-    [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY',x,'diagonly',false,reg_args{:});
+    [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY.',x,'diagonly',false,reg_args{:});
     out.beta(:,end+1) = nan;
     out.dev(end+1) = nan;
     out.pval(end+1)=nan;
@@ -117,6 +121,13 @@
     if length(me)>1
         yres = yin-me(1).xrec(yin);
         out = [out,me(2:end).hos_regress(yres,xin,do_permtest,varargin{:})];
+    end
+
+    varargout{1} = out;
+    if nargout > 1
+        varargout{2} = FFY.';
+        varargout{3} = x;
+        varargout{4} = reg_args;
     end
 
 end
