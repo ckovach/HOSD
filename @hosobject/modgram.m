@@ -6,6 +6,10 @@ if me(1).order~=4
     error('Spectrum is not 4th order');
 end
 
+if nargin > 1 && length(Bplot0) == length(me.B)
+    Bplot0 = Bplot0(me.fullmap);
+end
+
 fun = @(x)x;
 
 for cmpi = 1:length(me)
@@ -31,16 +35,18 @@ for cmpi = 1:length(me)
     end
 
     wb0 = cellfun(@fftshift,me(cmpi).freqindx.Bfreqs,'uniformoutput',false);
-         
+    [W1,W2,W3] = meshgrid(wb0{:});
+     
     power = wb0{1};
    % power = power(power>0 & power >me(cmpi).highpass &power< me(cmpi).lowpass);
     power = power(power>0);
     modfreq = wb0{end}-min(wb0{end});
+    modfreq = modfreq(abs(modfreq)<me.slowpass);
+
   %  modfreq = modfreq(abs(modfreq)>me(cmpi).shighpass & abs(modfreq)<=me(cmpi).slowpass);
     modfreq = modfreq(abs(modfreq)>0);
     
     [P,M] = meshgrid(power,modfreq);
-    [W1,W2,W3] = meshgrid(wb0{:});
     Bout =[];
     for k = 1:size(Bplot,me(cmpi).order)
         B = nan*M;
