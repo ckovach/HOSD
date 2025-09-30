@@ -863,6 +863,8 @@ classdef hosobject < handle
         %%
         out = xthresh(me,xin,return_sparse,apply_window)
         %%
+        out = xprob(me,xin,return_sparse,apply_window)
+        %%
         out = ximp(me,xin,return_sparse,apply_window)
         %%
         initialize(me,N,sampling_rate,lowpass,freqs,freqindex,varargin)
