@@ -71,6 +71,10 @@ methods
                 end
                 me.order = unique([me.hosica.order]);
             end
+            if ~islogical(me.apply_ICA) && max(size(me.apply_ICA))>1
+                me.ICA_unmixing = me.apply_ICA;
+                me.apply_ICA = true;
+            end
         end
 
     end
@@ -105,12 +109,17 @@ methods
         else
             compi = start_at_component;
         end
-  
-        if me.apply_ICA && (me.blank || isempty(me.ICA_unmixing))
+        if ~islogical(me.apply_ICA) & size(me.apply_ICA,1) == size(x,2)
+            me.ICA_unmixing = me.apply_ICA;
+            me.apply_ICA = true;
+        elseif ~islogical(me.apply_ICA)
+            error('apply_ICA must be either a logical or an unmixing matrix matching the dimension of the input')
+        end
+        if me.apply_ICA && size(me.ICA_unmixing,1) ~= size(x,2)
             fi = which('fastica');
             if ~isempty(fi)
                 if me.order == 3
-                    g = 'pow2';
+                    g = 'skew';
                 else
                     g = 'pow3';
                 end
@@ -118,6 +127,7 @@ methods
                 me.ICA_unmixing = UM';
             else
                 UM = pica(x,[],me.order);
+                me.ICA_unmixing = UM;
             end
         elseif ~me.apply_ICA
             me.ICA_unmixing =1;
@@ -185,7 +195,7 @@ methods
     end
 %%%%%%
     function out = get.hos(me)
-        if me.apply_ICA && ~me.blank && isa(me.hosica,'mvhosd') 
+        if ~isempty(me.apply_ICA) && me.apply_ICA && ~me.blank && isa(me.hosica,'mvhosd') 
             for k = 1:length(me.hosica)
                 out(k) = mvhosd(me.hosica(k));
                 out(k).filterfun = permute(squeeze(out(k).filterfun)*me.ICA_unmixing',[1 3 2]);
