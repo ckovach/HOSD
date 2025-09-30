@@ -50,8 +50,11 @@
                 in = in(:,~discard);
             end
         end
-        
-        X = zeros(me(1).buffersize,length(segment.wint),nchan);
+        if ~isempty(segment)
+             X = zeros(me(1).buffersize,length(segment.wint),nchan);
+        elseif size(in,1)==me(1).buffersize
+            X =in;
+        end
         if me(1).use_gpu
             try 
                 X = gpuArray(X);
@@ -61,16 +64,17 @@
             end
         end
         Gpart = X;
-        for k = 1:nchan
-            nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
-            X(:,:,k) = me(1).chop_input(in(:,:,k),true,0,segment);
-            Gpart(:,:,k) = me(1).partial_delay_filt(X(:,:,k),true,true); 
-            if k==1
-                X(:,:,nchan)=0;
-                Gpart(:,:,nchan)=0;
+        if ~isempty(segment) 
+            for k = 1:nchan
+                nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
+                X(:,:,k) = me(1).chop_input(in(:,:,k),true,0,segment);
+                Gpart(:,:,k) = me(1).partial_delay_filt(X(:,:,k),true,true); 
+                if k==1
+                    X(:,:,nchan)=0;
+                    Gpart(:,:,nchan)=0;
+                end
             end
         end
-
 
         me(1).use_adaptive_threshold=false;
 
