@@ -53,11 +53,11 @@ for cmpi = 1:length(me)
         Bpart = B;
          inds{me.order} = k;
    
-        B(:) = interp3(W1,W2,W3,Bplot(inds{:}),P(:),P(:),-P(:)+M(:));
+        B(:) = interp3(W1,W2,W3,Bplot(inds{:}),P(:),P(:),-P(:)+M(:),'nearest');
         Bout = cat(me(cmpi).order-1,Bout,B);
     end
     if nargout > 3 %Not implemented for mvhos yet
-        Bpart(:) = interp3(W1,W2,W3,fftshift((me(cmpi).partialbicoh)),P(:),P(:),-P(:)+M(:));
+        Bpart(:) = interp3(W1,W2,W3,fftshift((me(cmpi).partialbicoh)),P(:),P(:),-P(:)+M(:),'nearest');
         Bpart(isnan(B))=nan;
     end    
     if nargout ==0 %Not implemented for mvhos yet
