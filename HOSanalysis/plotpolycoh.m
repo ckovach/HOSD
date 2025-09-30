@@ -75,8 +75,8 @@ for hi = 1:length(hos)
         [W1,W2,W3] = meshgrid(wb0{:});
         B = nan*M;
         Bpart = B;
-        B(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:));
-        Bpart(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:));
+        B(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).bicoh)),P(:),P(:),-P(:)+M(:),'nearest');
+        Bpart(:) = interp3(W1,W2,W3,fftshift(inputfun(hos(hi).partialbicoh)),P(:),P(:),-P(:)+M(:),'nearest');
         Bpart(isnan(B))=nan;
          if hi>size(ax,1)
              ax(hi,1) = subplot(subxy(1),subxy(2),1 + 2*(hi-1));
