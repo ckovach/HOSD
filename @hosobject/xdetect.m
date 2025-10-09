@@ -4,12 +4,11 @@ function [out,snr] = xdetect(me,x)
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
 % ximp and xthresh in that it applies a smoothing window whose width is determined from
-% xthresh applied to the feature waveform  is that someestimate. The
-% ratinale is that (in particular narrow band or periodic) features may generate multiple
+% xthresh applied to the feature waveform, swerving as a proxy for the timing ambiguity
+% of individual feature instances. Detections are identified at peaks in the smoothed output.
+% The ratinale is that (in particular narrow band or periodic) features may generate multiple
 % super-threshold peaks per feature instance, reflecting ambiguity in the
-% timing of a single feature rather than multiple features. To address this, XDETECT smooths
-% the magnitude of the output of XTHRESH using a kernel of an appropriate scale for
-% the feature and assigns detections at the peaks of the smoothed output.
+% timing of a single feature rather than multiple features. 
 %
 % Input:
 %   obj - hosobject object.
