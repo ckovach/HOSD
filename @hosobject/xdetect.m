@@ -1,16 +1,27 @@
-function [out,snr] = xdetect(me,x); 
+function [out,snr] = xdetect(me,x)
 
-% xdet = xdetect(obj,x); 
+% [xdet,xsnr] = xdetect(obj,x); 
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
-% XIMP and XTHRESH in that it applies a smoothing window whose width is determined from
-% XTHRESH applied to the feature waveform. The reason for this is that some
-% (in particular narrow band or periodic) features may generate multiple
+% ximp and xthresh in that it applies a smoothing window whose width is determined from
+% xthresh applied to the feature waveform  is that someestimate. The
+% ratinale is that (in particular narrow band or periodic) features may generate multiple
 % super-threshold peaks per feature instance, reflecting ambiguity in the
-% timing of a a bandlimited or otherwise periodic feature. To avoid the inappropriate
-% detection of multiple features instances in such caseses, XDETECT smooths
+% timing of a single feature rather than multiple features. To address this, XDETECT smooths
 % the magnitude of the output of XTHRESH using a kernel of an appropriate scale for
-% the feature and identifies features at the peak of the smoothed output.
+% the feature and assigns detections at the peaks of the smoothed output.
+%
+% Input:
+%   obj - hosobject object.
+%   x   - input signal.
+% Output: 
+%   xdet - logical array indicating whether a detection is present at each sample
+%         of x.
+%   xsnr - array giving the signal-to-noise ratio for each detaction according to RMS power of
+%         xthresh within the smoothing window, normalized by the std dev. of
+%         subthreshold samples of the filter output.
+%
+% See also XIMP, XTHRESH and XFILT
 
 %C. Kovach 2025
 
@@ -49,7 +60,7 @@ if length(me)>1
         [outnext,snrnext] = me(2:end).xdetect(x-xrec);
     end
 else
-    outnext = [];
+    outnext = logical([]);
     snrnext = [];
 end
 
@@ -63,6 +74,5 @@ if nargout > 1
 
     snr = [rmspow.*(pk==1)/xfsd,snrnext];
 end
-%g = gausswin(12*smwin,6);
 
 
