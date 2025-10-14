@@ -37,7 +37,7 @@ wgt = wgt./sum(wgt);
 smsd = sqrt(me(1).sampt.^2*wgt); %Standard deviation.
 
 %Create a finite smoothing window with the same SD
-g = hann(smsd.*5.5334);
+g = hann(round(smsd.*pi./sqrt(pi^2/12-1/2)));
 g=g./sum(g);
 
 %Get component, filter output and thresholded filter output
@@ -54,9 +54,9 @@ xfsd = nanstd(xfilt(~xthr));
 
 if length(me)>1
     if nargout == 1
-         outnext = me(2:end).xdetect(x-xrec);
+         outnext = me(2:end).xdetect(x-squeeze(xrec));
     else
-        [outnext,snrnext] = me(2:end).xdetect(x-xrec);
+        [outnext,snrnext] = me(2:end).xdetect(x-squeeze(xrec));
     end
 else
     outnext = logical([]);
