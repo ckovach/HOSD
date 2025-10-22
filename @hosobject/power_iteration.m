@@ -45,4 +45,16 @@ end
 
 me.wavefft = nanmean(FXsh,2);
 
- 
+   ffun = ifftshift(real(ifft(me(1).filterftlag.*abs(me(1).waveftlag+eps))),1);   
+   mph = sum(exp(-1i*2*pi*me(1).sampt(:)./me(1).fftN).*abs(ffun).^2)./sum(abs(ffun).^2);                   
+   mph = mph./(abs(mph)+eps);
+   if ~isnan(mph)
+     me(1).lag = mph; % Circular shift to keep filter energy centered on the window
+   end
+
+ [~,mxi] = max(real(ifft(me(1).filterftlag.*me(1).waveftlag+eps)));
+if mxi~=1 && ~isnan(mxi) && me(1).do_filter_update
+    me(1).filterfun = circshift(me(1).filterfun,ceil(-me(1).sampt(mxi)/2));
+    me(1).feature= circshift(me(1).feature,floor(-me(1).sampt(mxi)/2));
+end
+        
