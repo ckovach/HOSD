@@ -16,7 +16,7 @@ end
 
 if any(isnan(X0(:)))
     isn = any(isnan(X0),2);
-    warning('Excluding %i rows with NaNs',sum(isn));
+    fprintf('\nExcluding %i rows with NaNs (0.1%f%%)',sum(isn),mean(isn)*100);
     X0 = X0(~isn,:);
 end
 if nargin < 6 || isempty(verbose)
