@@ -30,6 +30,8 @@ opts.multivariate = -1; %Run multivariate. Defaultis -1 = run multivariate if nu
 opts.cumulant_threshold = 0;% By default rely on the number ncomps rather than cumulant threshold to decide the number of components
 opts.lookahead = 2; %Stop after this many components in sequence fall under cumulant_threshold.
 % opts.autodep = struct('order',8,'tau',.025);
+opts.timeInterval = []; %Time range to include in the analysis.
+
 outcode = char(java.util.UUID.randomUUID);
 
 reseed;
@@ -145,6 +147,15 @@ if isempty(opts.resamp)
     end
 elseif length(opts.resamp)==1  % Scalar value for resampling is treated as decimation factor
     opts.resamp = [1 opts.resamp];
+end
+
+timeInterval =opts.timeInterval;  % line addded by sk
+if ~isempty(timeInterval)
+    tIdx =[];
+    for tt =1:size(timeInterval,1)
+        tIdx =[tIdx round(timeInterval(tt,1)*dat.fs)+1:round(timeInterval(tt,2)*dat.fs)];
+    end
+    dat.dat =dat.dat(tIdx);
 end
 
 if opts.dbt_denoise && (~isfield(dat,'denoised')  ||  ~dat.denoised)
