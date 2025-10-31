@@ -1,6 +1,6 @@
-function [out,snr] = xdetect(me,x)
+function [out,snr,xrsm] = xdetect(me,x)
 
-% [xdet,xsnr] = xdetect(obj,x); 
+% [xdet,xsnr,xfsm] = xdetect(obj,x); 
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
 % ximp and xthresh in that it applies a smoothing window whose width is determined from
@@ -19,6 +19,7 @@ function [out,snr] = xdetect(me,x)
 %   xsnr - array giving the signal-to-noise ratio for each detaction according to RMS power of
 %         xthresh within the smoothing window, normalized by the std dev. of
 %         subthreshold samples of the filter output.
+%   xrsm - smoothed thresholded output from whose peaks xdet is obtained.
 %
 % See also XIMP, XTHRESH and XFILT
 
@@ -56,11 +57,12 @@ if length(me)>1
     if nargout == 1
          outnext = me(2:end).xdetect(x-squeeze(xrec));
     else
-        [outnext,snrnext] = me(2:end).xdetect(x-squeeze(xrec));
+        [outnext,snrnext,xrsmnext] = me(2:end).xdetect(x-squeeze(xrec));
     end
 else
     outnext = logical([]);
     snrnext = [];
+    xrsmnext = [];
 end
 
 
@@ -72,6 +74,8 @@ if nargout > 1
     rmspow = sqrt(convn(abs(xthr).^2,g,'same'));
 
     snr = [rmspow.*(pk==1)/xfsd,snrnext];
+
+    xrsm = [xrsm./xfsd,xrsmnext];
 end
 
 
