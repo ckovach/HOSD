@@ -154,7 +154,11 @@ methods
                end
             else
                 hos = hosobject(hos0);
-
+                if compi == 1
+                    me.hosf = hos;
+                else
+                    me.hosf(compi) = hos;
+                end
             end
             if compi > 1
                 me.hosica(compi) = hos;
