@@ -97,10 +97,11 @@ methods
     
     end
 
+    %%%%% functions defined in separate files
+    [XF,xthr,betas] = addcomp(me,x,varargin)        
+    [XF,xthr,betas] = run(me,x,start_at_component,varargin)
+
 end
 
-%%%%% functions defined in separate files
-[XF,xthr,betas] = addcomp(me,x,varargin)        
-[XF,xthr,betas] = run(me,x,start_at_component,varargin)
 
 end
