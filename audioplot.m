@@ -4,7 +4,7 @@ ncascade = 2;
 
 % h = dsp.AudioRecorder;
 h = audioDeviceReader;
-h.SampleRate = 1000;
+h.SampleRate = 8000;
 h.SamplesPerFrame = 2000;
 h.NumChannels=1;
 Fs = h.SampleRate;
