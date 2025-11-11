@@ -258,7 +258,7 @@ if nargin > 1 && exist('outputfile','var')&&exist(outputfile,'file') && ~opts.re
         load(outputfile,'hos','segment')
     catch err
         delete(outputfile)
-        error(err)
+        rethrow(err)
     end
     segment = segment(1);
     segment.wintadj=[];
@@ -394,7 +394,7 @@ catch
 end
 if useclust
     bsidout = stripfunctions(bsidout);
-    save(outputfile,'-struct','bsidout');
+    save(outputfile,'-v7.3','-struct','bsidout');
     fid = fopen(fullfile(outputdir,'manifest.txt'),'a+');
     fprintf(fid,'\n%s\t0\tOUTPUT\t%s\t%0.3fs',outfn,outcode,toc(t0));
     fclose(fid);
