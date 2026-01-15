@@ -26,23 +26,32 @@ function [out,snr,xrsm] = xdetect(me,x)
 %C. Kovach 2025
 
 
+%Get component, filter output and thresholded filter output
+[xrec,xfilt,xthr] = me(1).xrec(x);
+
 % Get a characteristic duraion for the feature using fthresh
 % This is a proxy for how the feature appears after filtering and
 % thresholding in the original signal
+
+ff = me(1).xfilt(me(1).feature);
 fthr = me(1).xthresh(me(1).feature);
 
 %Treat the magnitude of the thresholded feature like a probability
 %distribution and compute the standard deviation.
 wgt = abs(fthr);
+%%%Additionally, limit to the region with 99% of the total energy
+toteng = ifftshift(cumsum(fftshift(abs(ff).^2)))./sum(abs(ff).^2);
+wgt = wgt.*(toteng>.005 & toteng < .995);
+
+%Normalize
 wgt = wgt./sum(wgt);
+
 smsd = sqrt(me(1).sampt.^2*wgt); %Standard deviation.
 
 %Create a finite smoothing window with the same SD
 g = hann(round(smsd.*pi./sqrt(pi^2/12-1/2)));
 g=g./sum(g);
 
-%Get component, filter output and thresholded filter output
-[xrec,xfilt,xthr] = me(1).xrec(x);
 
 
 %Apply smoothing
