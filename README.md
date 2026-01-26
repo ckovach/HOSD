@@ -5,7 +5,7 @@ This is a software implementation of the Higher Order Spectral Decomposition alg
 
 See https://doi.org/10.1016/j.sigpro.2019.07.007
 
-Copyright University of Iowa 2018 - 2019
+Copyright University of Iowa 2018 - 2023
 
 This software is provided for evaluation only. No rights are granted to copy, modify, publish, use, compile, sell or distribute this software either in source code form or executable form, for any purpose, commercial or non-commercial. 
 
