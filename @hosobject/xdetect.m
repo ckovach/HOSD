@@ -1,0 +1,90 @@
+function [out,snr,xrsm] = xdetect(me,x)
+
+% [xdet,xsnr,xfsm] = xdetect(obj,x); 
+%
+% XDETECT detects instances of the feature in the input signal, x. It differs from
+% ximp and xthresh in that it applies a smoothing window whose width is determined from
+% xthresh applied to the feature waveform, swerving as a proxy for the timing ambiguity
+% of individual feature instances. Detections are identified at peaks in the smoothed output.
+% The ratinale is that (in particular narrow band or periodic) features may generate multiple
+% super-threshold peaks per feature instance, reflecting ambiguity in the
+% timing of a single feature rather than multiple features. 
+%
+% Input:
+%   obj - hosobject object.
+%   x   - input signal.
+% Output: 
+%   xdet - logical array indicating whether a detection is present at each sample
+%         of x.
+%   xsnr - array giving the signal-to-noise ratio for each detaction according to RMS power of
+%         xthresh within the smoothing window, normalized by the std dev. of
+%         subthreshold samples of the filter output.
+%   xrsm - smoothed thresholded output from whose peaks xdet is obtained.
+%
+% See also XIMP, XTHRESH and XFILT
+
+%C. Kovach 2025
+
+
+%Get component, filter output and thresholded filter output
+[xrec,xfilt,xthr] = me(1).xrec(x);
+
+% Get a characteristic duraion for the feature using fthresh
+% This is a proxy for how the feature appears after filtering and
+% thresholding in the original signal
+
+ff = me(1).xfilt(me(1).feature);
+fthr = me(1).xthresh(me(1).feature);
+
+%Treat the magnitude of the thresholded feature like a probability
+%distribution and compute the standard deviation.
+wgt = abs(fthr);
+%%%Additionally, limit to the region with 99% of the total energy
+toteng = ifftshift(cumsum(fftshift(abs(ff).^2)))./sum(abs(ff).^2);
+wgt = wgt.*(toteng>.005 & toteng < .995);
+
+%Normalize
+wgt = wgt./sum(wgt);
+
+smsd = sqrt(me(1).sampt.^2*wgt); %Standard deviation.
+
+%Create a finite smoothing window with the same SD
+g = hann(round(smsd.*pi./sqrt(pi^2/12-1/2)));
+g=g./sum(g);
+
+
+
+%Apply smoothing
+xrsm = convn(abs(xthr),g,'same');
+
+
+xfsd = nanstd(xfilt(~xthr));
+
+[~,pk] = getpeak2(xrsm);
+
+if length(me)>1
+    if nargout == 1
+         outnext = me(2:end).xdetect(x-squeeze(xrec));
+    else
+        [outnext,snrnext,xrsmnext] = me(2:end).xdetect(x-squeeze(xrec));
+    end
+else
+    outnext = logical([]);
+    snrnext = [];
+    xrsmnext = [];
+end
+
+
+out = [pk==1,outnext];
+
+if nargout > 1
+    %Get the SNR of each peak based on root mean square power
+    
+    rmspow = sqrt(convn(abs(xthr).^2,g,'same'));
+
+    snr = [rmspow.*(pk==1)/xfsd,snrnext];
+
+    xrsm = [xrsm./xfsd,xrsmnext];
+end
+
+

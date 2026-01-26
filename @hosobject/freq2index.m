@@ -1,51 +1,92 @@
-function out = freq2index(freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing)
+function out = freq2index(me,freqsin,order,lowpass,highpass,keepfreqs,condense,frequency_spacing,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig)
 
-% [Is,remap] = freq2index(freqs,order)
+% out = freq2index(freqs,order,lowpass,highpass)
 %
 % Function to generate indexing for polyspectra of a given order.
 %
 % INPUT:
 %
-% freqs - vector or 1 x order cell array of vectors containing frequencies.
+%   freqs - vector or 1 x order cell array of vectors containing frequencies.
+%   lowpass - lowpass frequency
+%   highpass - highpass frequency
 %
+% OUTPUT:
 %
+%   out - struct with fields:
+%       .Is : indices into the signal spectrum to produce a non-redundant
+%             set of coefficients in the HOS of given order.
+%       .remap : mapping from the non-redundant vector to the full HOS
+%                array.
+%       .principal_domain: Indicates the principal domain. 
+%       .PDconj: Indicates regions related to the principal domain by
+%                complex conjugate.
 
-% Copyright Christohpher Kovach, University of Iowa 2018.
+% Copyright Christopher Kovach, University of Iowa 2018.
 
-if nargin < 7 || isempty(frequency_spacing)
+if nargin < 15 || isempty(include_sig)
+    include_sig = [];
+end
+if nargin < 14 || isempty(diagonal_slice)
+    diagonal_slice = false;
+end
+if nargin < 13 || isempty(shighpass)
+    shighpass = [];
+    
+end
+if nargin < 12 || isempty(slowpass)
+    slowpass = [];
+end
+if nargin < 11 || isempty(xhighpass)
+    xhighpass = 0;
+end
+if nargin < 10 || isempty(xlowpass)
+    xlowpass = Inf;
+end
+
+if nargin < 9 || isempty(mask)
+    mask = true;
+end
+if nargin < 8 || isempty(frequency_spacing)
     frequency_spacing = 'linear';
 end
-if nargin < 2 || isempty(order)
+if nargin < 3 || isempty(order)
     if iscell(freqsin)
         order = length(freqsin);
     else 
         order = 3;
     end
 end
-if nargin < 3 || isempty(lowpass)
+if nargin < 4 || isempty(lowpass)
     lowpass = .5;
 end
-if nargin < 4 || isempty(highpass)
+if nargin < 5 || isempty(highpass)
     highpass = 0;
 end
 
 if isscalar(lowpass)
     lowpass = ones(1,order)*lowpass;
 end
+if isscalar(xlowpass)
+    xlowpass = ones(1,order)*xlowpass;
+end
 
 if isscalar(highpass)
     highpass= ones(1,order)*highpass;
 end
+if isscalar(xhighpass)
+    xhighpass = ones(1,order)*xhighpass;
+end
+
 %%
 if isnumeric(freqsin)
     freqsin = repmat({freqsin},1,order);
-    if nargin < 6 || isempty(condense)
+    if nargin < 7 || isempty(condense)
         condense = true;
     end
-elseif nargin < 6 || isempty(condense)
+elseif nargin < 7 || isempty(condense)
     condense = false; % If the indexing is the same for the different frequencies, then we will give the mapping into the principal domain
 end
-if nargin < 5 || isempty(keepfreqs)
+if nargin < 6 || isempty(keepfreqs)
    keepfreqs = cellfun(@(x)1:length(x),freqsin,'uniformoutput',false);
 elseif isnumeric(keepfreqs)
     keepfreqs = repmat({keepfreqs},1,order);
@@ -53,12 +94,21 @@ elseif length(keepfreqs)<order
     keepfreqs(end+1:order) = keepfreqs(end);
 end
 
-%%
+
+
 %%% For cross-polyspectra involving fewer signals than the specified order,
 %%% assume that the last signal is repeated.
 if length(freqsin) < order
     freqsin(end+1:order) = freqsin(end);
 end
+
+
+keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+
+keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
+dims = cellfun(@(x)sum(x),keeplp);
+keepregion = false(dims);
+keepregion(keeplp2{:})=true;
 
 %%% Check if negative frequencies are explicitly represented
 %%% Will index into the negative frequencies if so.
@@ -68,7 +118,11 @@ nneg = sum(freqs{end}<0);
 npos = sum(freqs{end}>0);
 two_sided = nneg>npos/2; %%% Assume that negative frequencies are just padding if there aren't at least as many negative frequencies as half the number of positive frequencies.
 
-[PD,Ws,Is,keep] = find_principal_domain(freqs,order,lowpass,highpass);
+if ~isscalar(mask)
+    mask = mask(keepregion);
+end
+
+[PD,Ws,Is,keep] = find_principal_domain(me,freqs,order,lowpass,highpass,mask,xlowpass,xhighpass,slowpass,shighpass,diagonal_slice,include_sig);
 Fsum = Ws{end};
 
 %%% Efficiently map the nearest elements of Fsum to elements of frinds{end} with
@@ -90,7 +144,7 @@ switch frequency_spacing
 end
 
 %   frsrti(end+1) = length(freqs{order})+1;
-[srt,srti] = sort([(-1)^two_sided*Fsum(:);frcent(:)]);
+[srt,srti] = sort([-Fsum(:);frcent(:)]);
 E = [zeros(n,1);ones(length(frcent),1)];
 E = E(srti); 
 IND = zeros(size(E));
@@ -123,10 +177,12 @@ useInt = intTypes{logical(diff([false,size(Is,1)<maxInts]))};
 subremap = zeros(size(keep),useInt);
 subremap(keep) = find(keep);
 
-tol = min(abs(diff([freqs{:}])))/2;
-
+tol = min(abs(diff([freqs{:}])));
+tol = 2.^floor(log2(tol)-5); %Use power of 2 to avoid precision error
 if condense %for auto-spectra we only need the principal domain. This is not so for cross-spectra
-    [Wsrt,wsrti] = sort(round(abs(W)./tol)*tol);
+    [Wsrt,wsrti] = sort(abs(W)+tol/32*(W<0)); %For frequencies of equal magnitude and different sign, force consistent sorting of negative and positive values
+    Wsrt = round(abs(Wsrt)./tol)*tol;
+    %[Wsrt,wsrti] = sort(round(abs(W)./tol)*tol);
     wsrti = wsrti + order*repmat(0:size(W,2)-1,order,1);
     Wsrt = Wsrt.*sign(W(wsrti));
    
@@ -179,12 +235,12 @@ end
 
 
 
-keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
-keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
-dims = cellfun(@(x)sum(x),keeplp);
+% keeplp = arrayfun(@(fr,lp)abs(fr{1})<=lp,freqsin(1:end-1),lowpass(1:end-1),'uniformoutput',false);
+% keeplp2 = cellfun(@(kpfr,kplp)kpfr(kplp),keepfreqs(1:end-1),keeplp,'uniformoutput',false);
+% dims = cellfun(@(x)sum(x),keeplp);
 
-keepregion = false(dims);
-keepregion(keeplp2{:})=true;
+% keepregion = false(dims);
+% keepregion(keeplp2{:})=true;
 keepall = false(dims);
 keepall(keepregion) = keep;
 Z = zeros(dims,useInt);

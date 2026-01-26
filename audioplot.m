@@ -1,21 +1,23 @@
 
-ncascade = 6;
+ncascade = 2;
 
 
-h = dsp.AudioRecorder;
+% h = dsp.AudioRecorder;
+h = audioDeviceReader;
 h.SampleRate = 8000;
-h.SamplesPerFrame = 1200;
+h.SamplesPerFrame = 2000;
 h.NumChannels=1;
 Fs = h.SampleRate;
 clear hoss
 for k = 1:ncascade
-hos = hosobject(3,400,h.SampleRate,h.SampleRate/2);
-%hos.window= @(x)kaiser(x,3);
+hos = hosobject(3,800,h.SampleRate,h.SampleRate/2);
+hos.window= @(x)hann(x);
 
-hos.glowpass = h.SampleRate/2*.99;
-hos.hos_learning_rate = .001;
-hos.burnin = 1./hos.hos_learning_rate;
-hos.filter_adaptation_rate = .001;
+hos.glowpass = h.SampleRate/2*.999;
+hos.hos_learning_rate = .025;
+hos.hos_burnin = 1./hos.hos_learning_rate;
+hos.filter_adaptation_rate = .025;
+
 % Xn = ecgfn(T);
 hos.reset
 hos.update_frequency_indexing
@@ -76,17 +78,18 @@ for kkk = 1:nfr*1e6
     hoss.get_input(Xn);
     Xf = hoss.xfilt(Xn);
     Xr = hoss.xrec(Xn);
+    Xr(isnan(Xr))=0;
     Xresid = Xn-sum(Xr,2);
     set(im(1),'CData',fftshift(abs(hoss(1).bicoh(:,:)))), 
    % set(im(2), 'Ydata',fftshift(hoss(1).shiftbuffer)*0), 
 %    set(im(3), 'Ydata',fftshift([hoss.waveform]));
     for kk = 1:ncascade
-        set(imwf(kk), 'Ydata',fftshift(zscore([hoss(kk).waveform]),1) + 5*kk);
+        set(imwf(kk), 'Ydata',zscore([hoss(kk).waveform]) + 5*(kk-1));
     end
-    set(im(4), 'Ydata',Xn);
+    set(im(4), 'Ydata',Xn./(5*std(Xn)));
 %     set(im(5), 'Ydata',X(:,k));
  
-     set(im(5), 'Ydata',sum(Xr,2));
+     set(im(5), 'Ydata',sum(Xr,2)./(5*std(Xn)));
     %k%[hos.EDF hos.current_threshold]
 %     [k, hos.EDF],
 %     pause(.1),

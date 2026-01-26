@@ -12,7 +12,7 @@ if ~exist('d_default','var')
     d_default =1;
 end
 
-d = input(sprintf('Which demo to run?\n1) Normal sinus rhythm in Gaussian noise.\n2) Normal sinus rhythm in non-Gaussian noise.\n3) Abnormal rhythm.\n4) Artificial test signal (does not require WFDB)\n[%i]:',d_default));
+d = input(sprintf('Which demo to run?\n1) Normal sinus rhythm in Gaussian noise.\n2) Normal sinus rhythm in non-Gaussian noise (Performance depends on random similarity of noise and signal phase spectra).\n3) Abnormal rhythm.\n4) Artificial test signal (does not require WFDB)\n[%i]:',d_default));
 
 if isempty(d), d=d_default;end
 d_default = d;
@@ -103,7 +103,7 @@ end
 
 switch example
     case {'nsr_ecg_noise','nsr_ecg_chi2_noise'}  % Denoising of Normal ECG
-        ekg.nsamp = Fs*120; % Get two minutes of data
+        ekg.nsamp = Fs*600; % Get two minutes of data
         ekg.recstart =Fs*5*60; %Starting 5 minutes into the recording
     
     case 'arrhythmia'
@@ -166,10 +166,11 @@ NoiseCombined = 10.^(InbandNoise/20)*NoiseInband + 10.^(OutbandNoise/20)*NoiseOu
 
 ecgz_noise = ecgz+NoiseCombined;
 
+%%
 %%% Initialize the HOS object
 clear hos;
 hos(n_components_out) = hosobject(3);
-hos.initialize(N,Fs,lowpass);
+hos.initialize(N,Fs,lowpass,[],[],'window',@sasaki);
 
 %%% Train on the input data through a maximum of 25 iterations
 hos.get_block(ecgz_noise,25);
@@ -192,15 +193,15 @@ end
 cr = corr([components,sum_components],[ecgz_noise,recovered_ecg,sum_recovered]);
     
     
-snr_improvement = lodDB(cr)-lodDB(cr(:,1));
+snr_improvement = lodDB(cr)-repmat(lodDB(cr(:,1)),1,size(cr,2));
 [mxcr,mxi] = max(cr(:,2:end));
 [srt,srti] = sort(max(cr(:,2:end-~isempty(sum_components)),[],1),'descend');
 
 colsi=[];
 colsi(srti) = 1:length(srti);
-cols = 'rmcgby';
+cols = 'rbcgbym';
 cols = cols(mod(colsi-1,length(cols))+1);
-%% Make a plot
+%%% Make a plot
 t = (0:length(ecgz)-1)/Fs;
 
 figure('units','normalized','position',[ 0   0    1    1])
@@ -211,7 +212,7 @@ plh2=[];
 switch example
     case {'nsr_ecg_noise','nsr_ecg_chi2_noise','artificial_signal'}
         plh(end+1)= plot(t,ecgz_noise,'color',[1 1 1]*.5);
-        title(sprintf('ECG + %idB in-band noise + %idB out-band noise',InbandNoise,OutbandNoise))
+        title(sprintf('ECG + %0.1fdB in-band noise + %0.1fdB out-band noise',InbandNoise,OutbandNoise))
         legend({'Signal + Noise'})
          ylim(yl)
         pause(2)
