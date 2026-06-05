@@ -1,4 +1,4 @@
- function varargout = hos_regress(me,yin,xin,do_permtest,do_cluster_test,varargin)
+ function varargout = hos_regress(me,yin,xin,do_permtest,do_clustertest,varargin)
 
 % out = hos_regress(me,Y,[X],[do_permtest])
 % Linear regression on each element of the HOS array

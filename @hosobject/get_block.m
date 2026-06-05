@@ -259,6 +259,7 @@
                end
                if me(1).do_wave_update
                 me(1).feature = nanmean(Xsh,2);
+                me(1).wavesem = sqrt((nanmean(Xsh.^2,2)-me(1).feature.^2)./(size(Xsh,2)-1));
                end
               
                if me(1).adjust_lag && me(1).do_filter_update

@@ -1,10 +1,10 @@
 
 classdef hosobject < handle
-   
+
     % Class implementing higher-order spectral filtering based on Kovach
     % and Howard 2019.
     %
-    % Usage: 
+    % Usage:
     %   To create a hos object
     %        hos = hosobject(order,N,sampling_rate,lowpass)
     %
@@ -13,12 +13,12 @@ classdef hosobject < handle
     %
     %   To add a segment of data in computing a running average (online mode):
     %        hos.get_input(data)
-    %   
+    %
     %   To initialize an M component decomposition:
     %        hos(M) = hosobject;
     %        hos.initialize(N,sampling_rate,lowpass)
-    %   
-    % Inputs: 
+    %
+    % Inputs:
     %       HOS order - order (default = 3)
     %       N - buffer length in samples used to compute HOS
     %       sampling_rate - sample rate
@@ -28,159 +28,161 @@ classdef hosobject < handle
     %               overlapping N point segments.
     %       maxiter - maximum iterations (default - 25)
     %
-    % Outputs: 
+    % Outputs:
     %       hos.waveform - Recovered feature waveform(s)
     %       hos.filterfun - Feature detection filter(s)
     %       hos.bicoh  -  Bicoherence of the input signal (or polycoherence for orders > 3)
     %       xfilt = hos.apply_filter(data) - apply the detection filter to the data
     %       xthresh = hos.xthresh(data) - Thresholded signal used in the reconstruction.
     %       ximp = hos.ximp(data) - Suprathreshold samples (samples at which the feature is detected).
-    %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.       
-    %                  
+    %       xrec = hos.xrec(data) - Reconstructs the signal(s) associated with one or more features.
+    %
     %
     %
     % Copyright Christopher K. Kovach, University of Iowa 2018-2023
-    
+
     properties
-        
+
        % HOS order (3=bispectrum, 4=trispectrum, etc.)
        order = 3;
-       
+
        % Axis frequencies
-       freqs       
-       
+       freqs
+
        % Power spectral density estimate
        PSD = 0;
-      
-       
+
+
        % Sampling rate of the input data
-       sampling_rate = 1; 
+       sampling_rate = 1;
 
        % Normalization used in computing bi-(or poly-)coherence
-       normalization = 'awplv'; 
-       
+       normalization = 'awplv';
+
        %HOS learning rate for online mode
-       hos_learning_rate = .01; 
-       
+       hos_learning_rate = .01;
+
        % Filter adaptation rate for online mode
-       filter_adaptation_rate = .02; 
+       filter_adaptation_rate = .02;
 %        learningrate = .02; % Asymptotic learning rate
        filter_burnin = 20;
        hos_burnin = 20;
-       
+
         % Nunmber of window processed
-       window_number = 0; 
-       
+       window_number = 0;
+
        % Default overlap between adjacent windows as the  proportion of step size to window width (poverlap = 1  is no overlap, poverlap = 2 interleaves a gap of 1 window duration between windows, etc.)
-       poverlap = .5;    
-      
+       poverlap = .5;
+
        do_update = true;
        do_bsp_update = true;
        do_wave_update = true;
        do_filter_update = true;
        do_CDF_update = true;
-       
-       
+
+
        power_iterate = false; %Refine estimates with power iteration
-       
+
        % Automatically apply a circular shift to the filter and waveforms to center the energy in both
-       adjust_lag = true; 
-       
+       adjust_lag = true;
+
        % A phasor representing the amount of circuglar shift added to the filter estimate according to angle (1 = no shift, +/-1i = max shift = buffersize/2)
-       lag = 1; 
+       lag = 1;
        thresh = 0;
        threshtemp = 1;
        threshold_type = 'hard';
        threshold_order = [];
        keepfreqs
-       
+
        % Use only the principal domain in the estimates
        pdonly = true;
        dat = [];
-       
+
        %For odd orders, reject negative outliers beyond this value. This improves the ability to recover features in the presence of noise and interference from similar features with opposite sign.
        outlier_threshold = 5;
        fftN = 1024;
        regstat = [];
        regweight=[];
        sampweight = [];
-       
+
        mask = [];  %Mask applied to HOS domain. Only computes coefficients where the value is true;
-       diagonal_slice = false; %Only compute coefficients on slices where at least one Wi==Wj, if true. If an integer, n, require at least n equalities.  
+       diagonal_slice = false; %Only compute coefficients on slices where at least one Wi==Wj, if true. If an integer, n, require at least n equalities.
        %Matrices to integrate over all but 1st dimension of square form bicoherence, from the reduced form.
        Imats = {};
        Iconjmats = {};
-       
+
        %Structure describing the segmentation of the input signal (if applicable)
        segment = struct('wint',[],'wintadj',[],'Trange',[],'fs',1,'discarded',[]);
-       
+
        %(inverse) CDF is sampled at evenly spaced CDFupsample.*buffersize quantiles
-       CDFupsample = 4; 
-       
+       CDFupsample = 4;
+
         %Buffer for the CDF of the filter output and moments up to order
        CDFbuffer=[];
         use_adaptive_threshold = false;
           running_mean=0;
         running_ssq = 1;
         running_var = 1;
-        
+
         % During iteration use positive peaks only. Default true
         % if mod(order,2)=1 and false if mod(order,2) = 0.
         check_sign = false;
-      
+
         %Include regions with these signatures, given as absolute
         %difference between the number of positive and negative
         %frequencies.
-        include_signatures = []; 
-        
+        include_signatures = [];
+
         % Normalize each sample by its integrated magnitude spectrum to
         % suppress outliers.
         integrated_magnitude_normalization = false;
-        
+
         use_gpu = false; %Use GPU when available
-        
+
         chanweight =1; %Channel weighting in filter.
+        wavesem = []; %Standard error of the waveform
+
      end
-  
+
     properties (GetAccess = public, SetAccess=protected)
-       
+
         % Current input buffer
-        inputbuffer = []; 
-        
+        inputbuffer = [];
+
          % Current outputbuffer
         outputbuffer = [];
         reconbuffer = [];
         residualbuffer = [];
         shiftbuffer = [];
-        
+
         % Structure containing information on frequency indexing
         freqindx = [];
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
-        
+
         % Vector of sample frequencies in radian units
-        radw = [];  
-        
+        radw = [];
+
         % Vector of sample indices
-        sampt = []; 
-        
+        sampt = [];
+
         % Vector of feature delays in the most recent input windows
         delay = 0;
         sign =1;
         waveftlag = [];
         win = sasaki(1024);
-      G = []; 
+      G = [];
 
     end
-    
+
     properties (Access = protected)
       bufferN = 1024;
-      
+
 
 %      wintype = 'hann'; % Default window type
       wintype = 'sasaki'; % Default window type
- 
+
       BCpart = 0;
        highpassval = 0;
        lowpassval = .5; %%% Lowpass on the edges (max freq)
@@ -190,92 +192,93 @@ classdef hosobject < handle
        xlowpassval = .5; %%% OR lowpass
        xhighpassval = 0; %%% OR lowpass
       BIASnum = 0;
-        
+
        Bval = 0;
        Bpartval = {};
        Dval = 1;
-       padN = 0;       
+       padN = 0;
        regval=[];
-       
+
         %%% If false, uses the older method which computed HOS  before
         %%% filer estimation, which is unnecessary in iterated estimation.
         %%% If true, then the partial_delay_filters are estimated for each
-        %%% segment and the detection filter is obtained by shifting and 
-        %%% averaging the segment filters. This option is included for the 
-        %%% sake of debugging and will be removed eventually. 
+        %%% segment and the detection filter is obtained by shifting and
+        %%% averaging the segment filters. This option is included for the
+        %%% sake of debugging and will be removed eventually.
          use_partial_delay_method = true;
-       
+
        do_indexing_update = true;
     end
     properties (Dependent = true)
-        
+
 %         inputfft
-%         inputfiltered  
+%         inputfiltered
 %         input_shifted
         % Size of the input window
         buffersize
-        
+
         % The feature waveform
-        waveform; 
+        waveform;
         %FFT of the feature waveform
         wavefft;
-        
-        % The ifftshifted filter function 
+
+       
+        % The ifftshifted filter function
         filterfun %
-        
+
         % FFT of the filterfunction
         filterfft %
-        
+
         filterftlag;
-        
+
         % Window applied to sample intervals
-        window 
-        
+        window
+
         %Bicoherence (or polycoherence) in square form
-        bicoh 
-        
+        bicoh
+
         %Bicoherece (or polycoherence) in reduced form, as vector of non-redundant coefficients
-        bicohreduced 
+        bicohreduced
         partialbicoh
         H
         EDF
         highpass  ;
-        
+
         % Lowpass on the edges (max freq); exclude regions in which the frequency axes exceeds this value
         lowpass ; %
-        
+
         % Global lowpass: Exclude regions for which any frequency exceeds this value.
         glowpass ; %%
-        
+
         % Highpass applied to sums of frequency pairs for order > 3.
         shighpass ; %%
-        
-        % Lowpass applied to sums of frequency pairs for order > 3.        
+
+        % Lowpass applied to sums of frequency pairs for order > 3.
         slowpass ; %%
-        
-       % "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion 
-       xlowpass ; 
-       
+
+       % "OR" lowpass and highpass: include regions in which ANY of the frequencies meet the criterion
+       xlowpass ;
+
        % "OR" highpass.This is useful to design filters selective for the interior or exterior regions of the bispectrum.
        xhighpass ;
        %Bispectrum (unnormalized) in square form
-        Bfull 
+        Bfull
         BIAS
         fullmap
         feature
-        
+
         % Bispectrum (unnormalized) in reduced form, as vector of non-redundant coefficients.
-        B 
+        B
         Bpart ;
         D ;
         pad; %
         regressor;
         nchannels;
     end
-    
+
     methods
-       
-       
+
+
         %%%% The following methods are defined within this file.
         function me = hosobject(order,varargin)
             % Hosobject contructor
@@ -288,13 +291,19 @@ classdef hosobject < handle
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
               fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'});
-             
+
                metac = metaclass(me);
                props = metac.PropertyList;
+               if iscell(props)
+                 getprops = cellfun(@(x)strcmp(x.SetAccess,'public'),props);
+                 propnames = cellfun(@(x)x.Name,props(getprops),'uniformoutput',false);
+                 fns = [{'BIASnum'};intersect(fns,propnames)]; %This ensures that only fields with public set access are set to avoid unexpected behavior.
+               else
 
-               getprops = strcmp({props.SetAccess},'public');
-               fns = [{'BIASnum'};intersect(fns,{props(getprops).Name})]; %This ensures that only fields with public set access are set to avoid unexpected behavior.
-               
+                 getprops = strcmp({props.SetAccess},'public');
+                 fns = [{'BIASnum'};intersect(fns,{props(getprops).Name})]; %This ensures that only fields with public set access are set to avoid unexpected behavior.
+               end
+
                if isa(order,'struct')
                    fnsunset = setdiff({'fftN','bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
                    for k = 1:length(fnsunset)
@@ -302,27 +311,27 @@ classdef hosobject < handle
                            obj(kk).(fnsunset{k})=gather(me(1).(fnsunset{k}));
                        end
                    end
-               end               
+               end
                if length(obj)==1
                    obj(2:length(me)) = obj;
                elseif length(obj)>length(me)
                    me(length(obj)) = hosobject;
                end
-               
-               
-               me(1).order = obj(1).order; 
+
+
+               me(1).order = obj(1).order;
                if obj(1).check_sign
                     me(1).check_sign = mod(obj(1).order,2)~=0;
                end
                me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
-               
+
                me(1).do_indexing_update = false;
                priority = intersect({'order','buffersize','pad','lag','sampling_rate','keepfreqs'},fns);% These fields should be set first
                for k = 1:length(priority)
                    me(1).(priority{k}) = obj(1).(priority{k});
                end
                fns = setdiff(fns,priority);
-               for k = 1:length(fns)  
+               for k = 1:length(fns)
                    if isprop(me(1),fns{k})
                         try
                        me(1).(fns{k}) = gather(obj(1).(fns{k}));
@@ -341,8 +350,8 @@ classdef hosobject < handle
             elseif  me(1).check_sign
                me(1).check_sign = mod(order,2)~=0;
             end
-            
-            if nargin < 1 
+
+            if nargin < 1
                 return
             elseif nargin == 1
                 me.order = order;
@@ -350,15 +359,15 @@ classdef hosobject < handle
             else
                 me.order = order;
             end
-                
+
             me.initialize(varargin{:});
         end
-        
-     
+
+
         function reset(me)
-            
+
             me(1).radw = ifftshift((0:me(1).fftN - 1 )' - floor((me(1).fftN)/2))/(me(1).fftN)*2*pi;
-            me(1).sampt = ifftshift((0:me(1).fftN - 1 ) - floor((me(1).fftN)/2)'); 
+            me(1).sampt = ifftshift((0:me(1).fftN - 1 ) - floor((me(1).fftN)/2)');
             me(1).window_number = 0;
             me(1).sumlr =0;
             me(1).sumlr2 = 0;
@@ -372,7 +381,7 @@ classdef hosobject < handle
             me(1).bufferPos = 0;
             me(1).B(:)=1;me(1).B=double(me(1).B);
             me(1).G(:)=1;me(1).G=double(me(1).G);
-            me(1).D(:)=1; me(1).D=double(me(1).D);         
+            me(1).D(:)=1; me(1).D=double(me(1).D);
             me(1).BIASnum(:)=1; me(1).BIASnum = double(me(1).BIASnum);
             me(1).window_number=0;
             me(1).lag=1;
@@ -390,27 +399,27 @@ classdef hosobject < handle
             for k = 1:length(me(1).Bpart)
                 me(1).Bpart{k}(:) = 0; me(1).Bpart{k} = double( me(1).Bpart{k});
             end
-      
+
             me(1).waveform = z2;
 
             if isempty(me(1).threshold_order)
                 me(1).threshold_order = me(1).order;
             end
             me(1).CDFbuffer=repmat(z2(:,ones(1,me(1).threshold_order)),me(1).CDFupsample,1);
-            
+
             if length(me)>1
                 me(2:end).reset();
             end
-            
+
             %Set these to default values
             h = hosobject([]);
             fld =  {'do_bsp_update','do_bsp_update','do_filter_update','do_wave_update','do_update'};
             for k = 1:length(fld)
                 me(1).(fld{k})=h.(fld{k});
-            end            
+            end
         end
-        
-        
+
+
         function out = get.Bfull(me)
           out = me.B(me.freqindx.remap);
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
@@ -422,17 +431,17 @@ classdef hosobject < handle
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
           remap = me.freqindx.remap;
           BC(end+1:max(remap(:)),:)=nan;
-      
+
           prm = circshift(1:me.order,-1);
           remap = remap + permute( cast(0:size(BC,me.order)-1,class(remap))',prm)*size(BC,1);
           BCrm = BC(remap);
           for k = 2:size(BC,3)
               BCrm = cat(me.order,BCrm,BC(remap+size(BC,1)*(k-1)));
           end
-          
+
           pdc = repmat(me.freqindx.PDconj,[ones(1,me.order-1) size(BCrm,me.order)]);
           BCrm(pdc) = conj(BCrm(pdc));
-          
+
         end
         function BC = get.bicohreduced(me)
             %%% Bicoherence (or polycoherence) in reduced form (non-redundat coefficients as a
@@ -440,7 +449,7 @@ classdef hosobject < handle
           BC = me.B./me.D;
            bias = sqrt(me.BIASnum./(me.D.^2+eps));
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
-          
+
         end
          function pBC = get.partialbicoh(me)
            %Component of bicoherence attributed to the feature
@@ -451,7 +460,7 @@ classdef hosobject < handle
           pBC = FF./me.D;
           pBC = pBC(me.freqindx.remap);
           pBC(me.freqindx.PDconj) = conj(pBC(me.freqindx.PDconj));
-          
+
          end
         function pbcorr = pbcorr(me)
            %Correlation of feature partial polycohherence and sample polycoherence
@@ -463,20 +472,20 @@ classdef hosobject < handle
           bc = me.bicohreduced;
           pbcorr = real((pBC'*bc)./sqrt(sum(abs(pBC).^2.).*sum(abs(bc).^2)));
         end
-        function out = get.BIAS(me)        
+        function out = get.BIAS(me)
           bias = sqrt(me.BIASnum./(me.D.^2+eps));
           out = bias(me.freqindx.remap);
         end
         function set.BIAS(me,in)
              in(isnan(in))=0;
              if min(size(in))==1
-                me.BIASnum = in.*me.D.^2; 
+                me.BIASnum = in.*me.D.^2;
             else
                 me.BIASnum = [in(me.freqindx.reduce);0].*me.D.^2;
              end
         end
         function out = get.fullmap(me)
-           out = me.freqindx.remap; 
+           out = me.freqindx.remap;
         end
         function set.lowpass(me,a)
            me.lowpassval = a./me.sampling_rate;
@@ -531,7 +540,7 @@ classdef hosobject < handle
             out = me.bufferN;
         end
         function set.buffersize(me,N)
-           
+
            Norig = me.bufferN;
            me.bufferN = N;
            if islogical(me.padN)&& me.padN
@@ -541,10 +550,10 @@ classdef hosobject < handle
            else
                me.fftN = me.padN + me.bufferN;
            end
-           me.win = window(me.wintype,N); 
+           me.win = window(me.wintype,N);
            me.radw = ifftshift((0:me.fftN - 1 )' - floor((me.fftN)/2))/(me.fftN)*2*pi;
-           me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)'); 
-           if me.do_indexing_update && (N ~= Norig || length(me.freqs{1})~=me.fftN) 
+           me.sampt = ifftshift((0:me.fftN - 1 ) - floor((me.fftN)/2)');
+           if me.do_indexing_update && (N ~= Norig || length(me.freqs{1})~=me.fftN)
                 freqs = {me.fftfreq(me.fftN)*me.sampling_rate};
                 freqs(1:me.order) = freqs;
                 me.freqs = freqs;
@@ -565,10 +574,10 @@ classdef hosobject < handle
             out(me.keepfreqs{1},:,:) = me.G;
         end
         function out = get.filterfft(me)
-           
+
             %%% Filter with lag adjustment
             out =me.filterftlag;
-           
+
             %Adjust centering.
            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
            delt = me.radw*dt;
@@ -579,21 +588,21 @@ classdef hosobject < handle
 
         end
         function set.filterfft(me,in)
-           
+
            in(isnan(in))=0;
            dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
            delt = me.radw*dt;
            F= exp(1i*delt).*in;
-           
+
            me.G = F(me.keepfreqs{1},:,:) ;
-            
+
         end
         function out = get.filterfun(me)
            %%% Filter function with lag adjustment
             F = me.filterfft;
 %             out = ifftshift(real(ifft(F)));
             out = real(ifft(F));
-            
+
         end
         function out = get.nchannels(me)
             out = size(me.filterfft,3);
@@ -625,22 +634,22 @@ classdef hosobject < handle
             end
         end
         function out = get.wavefft(me)
-           
+
             F = me.waveftlag;
         %    [~,mxi] = max(ifft(F.*me.filterftlag));
-            
+
                %Adjust centering.
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;% + me.sampt(mxi);
             delt = me.radw*dt;
             out = exp(1i*delt).*F;
-         
+
 %             out = real(ifft(F));
-            
+
         end
          function set.wavefft(me,in)
-           
+
              F = in;
-           
+
             F(isnan(F))=0;
             %Adjust centering.
             dt = atan2(imag(me.lag),real(me.lag))/(2*pi)*me.fftN;
@@ -650,24 +659,24 @@ classdef hosobject < handle
             end
             if ~isempty(F)
                 me.waveftlag = exp(-1i*delt).*F;
-            end        
+            end
         end
         function out = get.waveform(me)
-           
+
             out = real(ifft(me.wavefft));
-                                 
+
         end
         function set.waveform(me,in)
-           
+
             if ~isempty(in)
-               in(isnan(in))=0; 
+               in(isnan(in))=0;
                F = fft(in);
                me.wavefft = F;
-            end   
+            end
         end
-        
+
         function set.filterfun(me,in)
-           
+
             if length(in)>me.bufferN
                 warning('Filter function size does not match current buffer. Filter will be truncated.')
                in(me.bufferN+1:end)=[];
@@ -680,22 +689,22 @@ classdef hosobject < handle
 %             F =fft(fftshift(in));
             F =fft((in));
             me.filterfft = F;
-            
+
         end
-     
+
 %         %%%%%%%
 %         function out = get.current_learning_rate(me)
 %             out = me.learningfunction;
 %         end
         %%%%%%%%
         function out = get.EDF(me)
-            
+
             % Cumulative effective degrees of freedom based on learning rate
             out = me.sumlr./me.sumlr2;
         end
         %%%%%%%
         function set.EDF(me,in)
-            
+
             % When setting the EDF, take it to be a simple sample size
             me.sumlr = 1;
             me.sumlr2 = 1./in;
@@ -703,30 +712,30 @@ classdef hosobject < handle
         end
         %%%%%%%
         function out = get.feature(me)
-%             out = ifftshift(me.waveform); 
+%             out = ifftshift(me.waveform);
              out = me.waveform;
         end
          %%%%%%%
         function set.feature(me,in)
-%            me.waveform = fftshift(in); 
-           me.waveform = in; 
+%            me.waveform = fftshift(in);
+           me.waveform = in;
         end
         %%%%%%%%
-     
-       
+
+
         function out = get.B(me)
-           out = me.Bval; 
+           out = me.Bval;
         end
         function out = get.D(me)
-           out = me.Dval; 
+           out = me.Dval;
         end
         function out = get.Bpart(me)
-           out = me.Bpartval; 
+           out = me.Bpartval;
         end
         function set.B(me,in)
 %             in(isnan(in))=0;
             if min(size(in))==1
-                me.Bval = in; 
+                me.Bval = in;
             else
                 me.Bval = [in(me.freqindx.reduce);nan];
             end
@@ -734,17 +743,17 @@ classdef hosobject < handle
         function set.D(me,in)
             in(isnan(in))=0;
             if min(size(in))==1
-              	me.Dval=in; 
+              	me.Dval=in;
             else
                 me.Dval  = [in(me.freqindx.reduce);0];
             end
         end
-        function  set.Bpart(me,in)          
+        function  set.Bpart(me,in)
             if isnumeric(in)
                 me.Bpartval={};
-            
+
             elseif isempty(in) || min(size(in{1}))<=1
-               	me.Bpartval=in; 
+               	me.Bpartval=in;
             else
                 for kk = 1:length(in)
                     me.Bpartval{kk} = [in{kk}(me.freqindx.reduce);0];
@@ -753,7 +762,7 @@ classdef hosobject < handle
         end
         %%%%%%%
         function out = get.H(me)
-            
+
 %             B = me.B(me.freqindx.remap); %#ok<*PROP>
 %             B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
 %             out = conj(B)./me.D(me.freqindx.remap).^2;
@@ -763,7 +772,7 @@ classdef hosobject < handle
            BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
            h = BC./(me.D+eps);
           q = repmat({':'},1,me.order);
-       
+
            for k = 1:size(h,3)
                hh = h(me.freqindx.remap + (k-1)*size(h,1));
                hh(me.freqindx.PDconj) = conj(hh(me.freqindx.PDconj));
@@ -771,7 +780,7 @@ classdef hosobject < handle
                out(q{:}) = conj(hh);
            end
         end
-        
+
         %%%%%%%
         function set.regressor(me,xin)
             setreg(me,xin);
@@ -779,19 +788,19 @@ classdef hosobject < handle
         function out = get.regressor(me)
             out = me.regval;
         end
-        
+
         function factreg(me,Fin,varargin)
-            
+
             R = fact2reg(Fin,'ignore',Fin==0,varargin{:});
-                      
+
             me.regressor = R;
         end
         %%%%%%%
-      
-      
+
+
         %%%
-       
-        
+
+
         function write_buffer(me,snip)
             if length(snip)>me.bufferN
                 me.get_input(snip);
@@ -807,12 +816,12 @@ classdef hosobject < handle
             me.inputbuffer(1:length(snip),1:size(snip,2)) = snip;
             me.bufferPos = me.bufferPos + length(snip);
         end
-      
+
         function out = update_criteria(me,Xfilt) %#ok<INUSL>
             out = ~any(isnan(Xfilt));
       %      out = true(1,size(Xfilt,2)); % Placeholder for now
         end
-     
+
         function out = get.pad(me)
             out = me.padN;
         end
@@ -824,7 +833,7 @@ classdef hosobject < handle
                 me.fftN = me.bufferN+me.padN;
             % end
         end
-        
+
          %%%% These following lines declare methods that are defined in separate files within the
         %%%% @hosobject directory (see the files for explanations).
         update_frequency_indexing(me,freqindx,mask)
@@ -834,7 +843,7 @@ classdef hosobject < handle
         [Xfilt,FXshift,sgn] = apply_filter(me,X,apply_window,return_shifted,varargin)
         %%%
         FFXpart = update_bispectrum(me,FXs,initialize)
-        %%%        
+        %%%
         [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum,normalization)
         %%%
         power_iteration(me,X)
@@ -855,7 +864,7 @@ classdef hosobject < handle
         %%%
         do_updates(me,X,apply_window,use_shifted,initialize)
         %%%
-        out =current_threshold(me,Xcent,thresh)
+        out =current_threshold(me,Xcent,thresh,offset)
         %%%
         out = xfilt(me,xin,apply_window)
         %%%
@@ -865,7 +874,7 @@ classdef hosobject < handle
         %%
         out = xprob(me,xin,return_sparse,apply_window)
         %%
-        [out,snr,xrsm] = xdetect(me,xin,return_sparse,apply_window)
+        [out,snr,xrsm,noisesd,xfilt,xthr,g] = xdetect(me,xin,pow)
         %%
         out = ximp(me,xin,return_sparse,apply_window)
         %%
@@ -875,14 +884,14 @@ classdef hosobject < handle
         %%
         varargout = modgram(me,varargin)
     end
-    
+
     methods (Static)
         function out = fftfreq(N)
             out = ifftshift((0:N-1)-floor(N/2))/N;
-        end        
-    end    
+        end
+    end
 
-    
+
 end
 
-  
+

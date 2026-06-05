@@ -1,4 +1,4 @@
- function out =current_threshold(me,Xcent,thresh)
+ function out =current_threshold(me,Xcent,thresh,offset)
        
 % out =current_threshold(me,[Xcent],[thresh])
 %        
@@ -19,6 +19,10 @@
 %         
 %   
 % Copyright Christopher K. Kovach, University of Iowa 2018-2021
+
+if nargin < 4 || isempty(offset)
+    offset = 0; %Offset to apply to the cumulant.
+end
 
 if nargin < 2 || isempty(Xcent) %||true % Find threshold based on empirical CDF
     Xcent =  me.CDFbuffer(:,1);
@@ -67,7 +71,7 @@ end
     m2 = cumsum(Xcent2.*keepsamples)./cumsum(keepsamples); % cumulative 2nd moment
     m3 = cumsum(XcentK.*keepsamples)./cumsum(keepsamples); % cumulative 3rd moment
     %  Third cumulant
-    c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
+    c3 = m3 - 3*m2.*m1 + 2*m1.^3 - offset; % Third cumulant on sorted peaks
 
     keepsrt = Xcent>0 & c3>  thresh;
     out = sum ((diff(keepsrt)>0).*XcentK(2:end,:));
@@ -93,7 +97,7 @@ end
     m3 = cumsum(Xcent3)./cumsum(keepsamples); % cumulative 3rd moment
     m4 = cumsum(XcentK)./cumsum(keepsamples);
     %  Fourth cumulant
-    c4 = m4 - 4.*m3.*m1 - 3.*m2.^2 + 12*m2.*m1.^2 -6.*m1.^4;
+    c4 = m4 - 4.*m3.*m1 - 3.*m2.^2 + 12*m2.*m1.^2 -6.*m1.^4 - offset;
 
     %c3 = m3 - 3*m2.*m1 + 2*m1.^3; % Third cumulant on sorted peaks
 

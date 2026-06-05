@@ -26,9 +26,9 @@ classdef model
 
     properties
 
-       response;
-       labels;
-       modelType= 'binomial';
+       response; %Response variable
+       labels; %Model labels
+       modelType= 'binomial'; %Response variable type ('binomia','count',or 'times')
        autodep = struct('order',{0 4},'tau',{0 .025 });
        baseline= struct('order',4);
        event = struct('times',[],'evnt',[],'Trange',[]);
@@ -41,6 +41,7 @@ classdef model
        intercept=true;
        codeincr = 0;
        do_llr_tests=false;
+       observation_weight; %How much to weight each observation
     end
 
     properties( Dependent = true)
