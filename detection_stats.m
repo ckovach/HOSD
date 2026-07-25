@@ -14,23 +14,24 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier] = 
 %         as 'pow', val.
 %
 % INPUTS (name-value pairs):
-%   'noise_dist'   {'gamma','lognormal','weibull','chi2'} (default 'gamma')
+%   'noise_dist'   {'gamma','lognormal','weibull','chi2'} (default 'lognormal')
 %       Marginal noise family on the smoothed xrsm:
-%         'gamma'     : Z = xrsm^2 ~ Gamma(a, b).
 %         'lognormal' : X = xrsm  ~ LogN(mu, sigma). Heavier right tail.
+%                       Default based on superiority of fit in the MASS cohort  
+%         'gamma'     : Z = xrsm^2 ~ Gamma(a, b). Previous default.
 %         'weibull'   : X = xrsm  ~ Weibull(a, b).
 %         'chi2'      : Z = xrsm^2 ~ ChiSquared(nu). Single parameter; the
 %                       theoretically-correct family under iid Gaussian
 %                       xfilt/xfsd. Narrowest of the four.
-%   'signal_dist'  {'empirical','gamma','noncentral_gamma','lognormal'} (default 'gamma')
+%   'signal_dist'  {'empirical','gamma','noncentral_gamma','lognormal'} (default 'lognormal')
 %       Family of the signal component:
-%         'gamma'     : Gamma(a_s, b_s) closed-form M-step. The canonical
-%                       choice on the MASS cohort: wins F1 vs MODA-exp
-%                       (0.610 vs 0.599 empirical) with 5 params vs ~143
-%                       empirical bins.
-%         'lognormal' : LogN(mu_s, sigma_s). Heavier right tail than
-%                       gamma; safe with freeze_noise=true + any noise
-%                       family. With freeze_noise=false the joint EM
+%         'lognormal' : LogN(mu_s, sigma_s). New default
+%                       paired with noise_dist='lognormal' + freeze_noise=true.                       
+%         'gamma'     : Gamma(a_s, b_s) closed-form M-step. Previous default;
+%                       wins F1 vs MODA-exp marginally over the legacy
+%                       empirical signal (0.610 vs 0.599) but loses ~0.16
+%                       AUPRC vs lognormal on the n=100 cohort.
+%			 With freeze_noise=false the joint EM
 %                       requires noise_dist='gamma' (gamma noise +
 %                       lognormal signal) or noise_dist='lognormal'
 %                       (both components lognormal -- routed to
@@ -114,8 +115,8 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier] = 
 % ---- Argument parsing ----------------------------------------------------
 p = inputParser;
 p.addOptional ('pow',                   2,           @(v) isempty(v) || (isnumeric(v) && isscalar(v)));
-p.addParameter('noise_dist',            'gamma',     @(s) ischar(s) || isstring(s));
-p.addParameter('signal_dist',           'gamma',     @(s) ischar(s) || isstring(s));
+p.addParameter('noise_dist',            'lognormal', @(s) ischar(s) || isstring(s));
+p.addParameter('signal_dist',           'lognormal', @(s) ischar(s) || isstring(s));
 p.addParameter('freeze_noise',          [],          @(v) isempty(v) || islogical(v));
 p.addParameter('shared_scale',          false,       @islogical);
 p.addParameter('tail_quantile',         NaN,         @isnumeric);
@@ -130,6 +131,13 @@ p.addParameter('outlier_pi_max',        0.01,        @isnumeric);
 % bins on heavy-tailed z, parameter agreement is ~0.01% with 60-100x
 % speedup (see /tmp/verify_binned_em_log.m). Set to 0 to disable.
 p.addParameter('bin_em_K',              500,         @isnumeric);
+% Force pprob=0 wherever the amplitude statistic xrsm is below the fitted
+% noise mode. Below the noise mode the "signal" posterior is only the
+% left tail of the signal density overlapping the bulk of the noise, so
+% the posterior levitates slightly off zero with no real detection there.
+% Flooring it keeps the pprob trace on the floor between events. Default
+% true; pass false to recover the raw mixture posterior everywhere.
+p.addParameter('floor_below_noise_mode', true,       @islogical);
 p.parse(varargin{:});
 pow                   = p.Results.pow;        if isempty(pow), pow = 2; end
 noise_dist            = lower(char(p.Results.noise_dist));
@@ -141,6 +149,7 @@ outlier_trim_quantile = p.Results.outlier_trim_quantile;
 outlier_dist          = lower(char(p.Results.outlier_dist));
 outlier_u_quantile    = p.Results.outlier_u_quantile;
 outlier_pi_max        = p.Results.outlier_pi_max;
+floor_below_noise_mode = p.Results.floor_below_noise_mode;
 bin_em_K              = p.Results.bin_em_K;
 freeze_noise          = p.Results.freeze_noise;
 
@@ -230,7 +239,32 @@ for k = 1:length(hos)
     %                  much of it is genuinely noise-derived. This replaces
     %                  the older hard "dilated mask" (truncated the right
     %                  tail) and "point-only mask" (signal contamination).
-    xrsm = nthroot(convn(abs(xfilt./xfsd).^pow, g, 'same'), pow);
+    % Smoothed power from the rectified filter output. Handling differs
+    % by order parity:
+    %   EVEN orders have an unsigned detection statistic (symmetric
+    %   threshold [-thr, thr]), so z=|xfilt| is positive almost
+    %   everywhere -- plain smoothed power of |xfilt|.
+    %   ODD orders have a SIGNED statistic -- the feature has a skewness
+    %   direction and the threshold is one-sided ((-Inf, thr], see
+    %   @hosobject/xdetect) -- so only positive excursions are genuine
+    %   detections. Half-wave via the I(z>0) indicator and average over
+    %   the ACTIVE samples only:
+    %       xrsm^pow = [g * (I(z>0) .* z^pow)] / [g * I(z>0) + eps]
+    %   Discounting the sub-threshold samples (rather than letting them
+    %   dilute the average, which full-wave |xfilt| did) keeps a brief
+    %   but strong positive transient -- e.g. a K-complex, which is what
+    %   the odd/bispectral detector actually picks up -- from being
+    %   washed out by the surrounding quiet samples; it is also invariant
+    %   to the kernel's overall scale. The active-sample normalization is
+    %   skipped for even orders, where the denominator is ~1 anyway.
+    if mod(hos(k).order, 2) ~= 0
+        z    = xfilt ./ xfsd;   % signed; positive excursions are detections
+        pos  = z > 0;
+        xrsm = nthroot(convn(pos .* z.^pow, g, 'same') ...
+                       ./ (convn(double(pos), g, 'same') + eps), pow);
+    else
+        xrsm = nthroot(convn(abs(xfilt ./ xfsd).^pow, g, 'same'), pow);
+    end
     xsnr = xrsm .* (xdet ~= 0);
     event_mask = double(xthr ~= 0);
     g_norm = g(:) / max(sum(g(:)), eps);
@@ -715,7 +749,8 @@ for k = 1:length(hos)
         % collapse to the prior pi_s (or pi_s + pi_o under the outlier
         % branch), which downstream consumers read as a real high-posterior
         % event. There is no signal support at a gap -- force pprob = 0.
-        gap_mask = ~isfinite(xrsm) | xrsm < 1e-6;
+        gap_mask = ~isfinite(xrsm) | xrsm < 1e-6 ...
+                 | (floor_below_noise_mode & xrsm < noise_mode);
         pprob(gap_mask) = 0;
         pprob_outlier_all(gap_mask) = 0;
 
@@ -800,7 +835,9 @@ for k = 1:length(hos)
             % family may not be gamma), so signal alpha is free.
             a_s = 2.0;
             b_s = max(median(em_x_fit.^2)*2, eps);
-            pi_s = 0.10;
+            % Same data-driven signal-prior init used in the lognormal
+            % branch (see comment there for the audit rationale).
+            pi_s = min(max(1 - mean(sample_w), 1e-3), 0.95);
             logL_prev = -Inf;
             for it = 1:200
                 % E-step: responsibilities
@@ -845,13 +882,35 @@ for k = 1:length(hos)
             % at log_f_n_fit (in x-space). Uses the same log-binned x_fit
             % grid as the gamma-signal branch above.
             logx_fit = log(max(em_x_fit, eps));
-            % Init from a w-weighted approximation of the upper quantile and tail std
-            cumw = cumsum(em_w) / W_total;
-            mu_s    = logx_fit(find(cumw >= 0.6, 1, 'first'));
-            tail_sel = logx_fit >= logx_fit(find(cumw >= 0.5, 1, 'first'));
-            sigma_s = max(sqrt(sum(em_w(tail_sel) .* (logx_fit(tail_sel) - mean(logx_fit(tail_sel))).^2) ...
-                              / max(sum(em_w(tail_sel)), 1)), 0.3);
-            pi_s    = 0.10;
+            % M-step-first init: gamma_t^(0) = 1 - sample_w is the
+            % cumulant-derived signal-responsibility map already used
+            % to weight the noise fit. A single weighted lognormal MLE
+            % on the raw (un-binned) keep-set with weights gamma_t^(0)
+            % supplies (pi_s, mu_s, sigma_s) in one shot, with no
+            % heuristic quantile and no lower bound. Selected 2026-06-09
+            % after a 100-subject MASS audit (diag_mstep_first.m,
+            % diag_mstep_first_moda.m): median +1.37 logL improvement
+            % vs the older quantile heuristic, and ZERO subjects with
+            % measurable change in AUPRC against MODA gold-standard
+            % spindle annotations (median |dAUPRC| < 1e-4). The worst
+            % logL "losses" of the new init are visible misfits in
+            % the older one where the lognormal-signal component had
+            % stretched to cover the noise-mode bulk (see
+            % spindle_checker/qm_basins_*.png). Cumulant-consistency
+            % parallels the pi_s init audit (reference_detection_stats_pi_init).
+            g0_init = max(1 - sample_w(keep_fit), 0);
+            log_xkeep = log(max(x_fit, eps));
+            W0 = sum(g0_init);
+            if W0 > 0
+                mu_s    = sum(g0_init .* log_xkeep) / W0;
+                sigma_s = sqrt(max(sum(g0_init .* (log_xkeep - mu_s).^2) / W0, eps));
+                pi_s    = min(max(mean(g0_init), 1e-3), 0.95);
+            else
+                cumw     = cumsum(em_w) / W_total;
+                mu_s     = logx_fit(find(cumw >= 0.6, 1, 'first'));
+                sigma_s  = 0.3;
+                pi_s     = min(max(1 - mean(sample_w), 1e-3), 0.95);
+            end
             logL_prev = -Inf;
             for it = 1:200
                 log_f_s = -logx_fit - log(sigma_s) - 0.5*log(2*pi) - (logx_fit - mu_s).^2 / (2*sigma_s^2);
@@ -1000,7 +1059,8 @@ for k = 1:length(hos)
         % is the worst-affected branch because both f_X_bulk(x) and
         % f_X_signal(x) carry a 2x Jacobian -> both vanish at x=0 -> both
         % clamp to eps -> pprob collapses to pi_s. Zero out at gaps.
-        gap_mask = ~isfinite(xrsm) | xrsm < 1e-6;
+        gap_mask = ~isfinite(xrsm) | xrsm < 1e-6 ...
+                 | (floor_below_noise_mode & xrsm < noise_mode);
         pprob(gap_mask) = 0;
 
         outs(k) = out;
@@ -1344,7 +1404,8 @@ for k = 1:length(hos)
     % branch already gives pprob ~ 0 at gaps via the normest floor +
     % sigpdf-near-zero combination, but explicitly zeroing here keeps the
     % output semantics uniform across all three branches.
-    gap_mask = ~isfinite(xrsm) | xrsm < 1e-6;
+    gap_mask = ~isfinite(xrsm) | xrsm < 1e-6 ...
+             | (floor_below_noise_mode & xrsm < noise_mode);
     pprob(gap_mask) = 0;
 
     outs(k) = out;
