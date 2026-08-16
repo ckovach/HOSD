@@ -4,7 +4,7 @@ function [XF,xthr,betas] = run(me,x,start_at_component,varargin)
 
 if me.blank 
     compi = 1;
-elseif nargin < 3 || isempty(compi)
+elseif nargin < 3 || isempty(start_at_component)
     compi = length(me.hos)+1;
 else
     compi = start_at_component;

@@ -86,11 +86,12 @@ for kkk = 1:nfr*1e6
     for kk = 1:ncascade
         set(imwf(kk), 'Ydata',zscore([hoss(kk).waveform]) + 5*(kk-1));
     end
-    set(im(4), 'Ydata',Xn./(5*std(Xn)));
-%     set(im(5), 'Ydata',X(:,k));
+%    set(im(4), 'Ydata',Xn./(5*std(Xn)));
+     set(im(4), 'Ydata',Xn);
  
-     set(im(5), 'Ydata',sum(Xr,2)./(5*std(Xn)));
-    %k%[hos.EDF hos.current_threshold]
+ %    set(im(5), 'Ydata',sum(Xr,2)./(5*std(Xn)));
+     set(im(5), 'Ydata',sum(Xr,2));
+     %k%[hos.EDF hos.current_threshold]
 %     [k, hos.EDF],
 %     pause(.1),
     drawnow,
