@@ -16,6 +16,18 @@ properties
     apply_ICA = false; %Use ICA at outset
     ICA_unmixing = [];
     hosica
+    % Template hosobject for the NEXT component appended by run/addcomp.
+    % Empty (default) means each new component copies hosica(1), so every
+    % component shares the first one's parameters. Setting it -- normally
+    % via addcomp(x,template) -- appends a component with DIFFERENT
+    % parameters, e.g. a 4th-order component fit to the residual of a
+    % 3rd-order one. This works because the hosobject array already
+    % chains residually PER ELEMENT (see hosobject/xrec and /xdetect,
+    % which recurse me(1) then me(2:end) on the residual) and the
+    % hosobject copy constructor recurses element-wise, so heterogeneous
+    % parameters survive round-tripping through the `hos` getter.
+    % Consumed (reset to []) by the run that builds the component.
+    component_template = [];
 end
 
 properties (Dependent = true)

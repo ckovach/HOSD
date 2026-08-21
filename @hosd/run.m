@@ -40,7 +40,19 @@ xresid = x*me.ICA_unmixing;
 
 cml = Inf*ones(1,me.lookahead+1);
 
-hos0 = me.hosica(1);
+% Parameter template for the component(s) this call appends. Normally
+% every component copies hosica(1), so the whole array shares one
+% parameter set. A component_template (see hosd/addcomp) overrides that
+% for this call, allowing a component with different parameters -- e.g.
+% a different order -- to be appended; the residual chaining below (and
+% in hosobject/xrec, /xdetect) is per element, so mixed chains are fine.
+% Consumed here so it applies only to the components added by this run.
+if ~isempty(me.component_template)
+    hos0 = me.component_template;
+    me.component_template = [];
+else
+    hos0 = me.hosica(1);
+end
 
 plh = me.liveplot;
 
