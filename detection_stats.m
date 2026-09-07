@@ -1,4 +1,4 @@
-function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier] = detection_stats(hos, x, varargin)
+function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,local_scales] = detection_stats(hos, x, varargin)
 
 %[outs,pprob,xdet,xsnr,xrsm] = detection_stats(hos, x, 'noise_dist','gamma', ...)
 % Estimates a posterior probability on events detected by xdetect(hos,x)
@@ -14,15 +14,105 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier] = 
 %         as 'pow', val.
 %
 % INPUTS (name-value pairs):
+%   'options'      struct of any of the parameters below (e.g. the
+%                  outs(k).options field of a previous run). Missing fields
+%                  take the defaults; explicit name-value pairs given
+%                  after the struct override it. The struct may also be
+%                  passed as the third positional argument:
+%                      detection_stats(hos, x, opts)
+%   'local_scale_sec'  running robust noise scale for xfilt (seconds).
+%                  0 (default) reproduces the previous behaviour: one
+%                  global xfsd for the whole record. A positive value
+%                  divides xfilt by a time-varying scale (median |xfilt| in
+%                  local_scale_block_sec blocks, supra-threshold samples
+%                  excluded, moving median over local_scale_sec, x 1.4826)
+%                  before forming xrsm, which removes the scale-mixture
+%                  heaviness that non-stationary background produces.
+%                  'auto' chooses the span by 2-fold cross-validation on
+%                  the block medians: each block's noise level is
+%                  predicted from the moving median of the OTHER fold's
+%                  blocks and the span with the smallest squared log
+%                  prediction error wins (candidates 2..240 s, at least
+%                  20 kernel durations and at most a quarter of the
+%                  record, plus 'global' = no local scaling). The
+%                  candidate set can be given as local_scale_candidates.
+%                  Too short a span chases the block noise, too long a span
+%                  misses the drift; the CV error is minimal in between,
+%                  and if the global scale wins local scaling is switched
+%                  off (sec = 0). The scale is returned as local_scales(:,k)
+%                  and summarised in outs(k).local_scale (.candidates,
+%                  .cv_score show the curve).
+%   'local_scale_source'  what the running scale is measured on:
+%                  'residual' (default): the component's detection filter
+%                  applied to the residual x - sum_j xrec_j, i.e. after
+%                  EVERY component's reconstructed signal (thresholded
+%                  filter output convolved with the feature waveform,
+%                  hosobject/xrec) has been removed. Non-stationarity of
+%                  the components themselves - a stimulus-locked event
+%                  rate, say - then cannot leak into the noise scale; only
+%                  the background does. 'xfilt': the component's own filter
+%                  output (which for component k already has components
+%                  1..k-1 deflated), with supra-threshold samples excluded.
+%                  Supra-threshold samples are excluded from the block
+%                  medians in both cases (a safeguard against imperfect
+%                  reconstruction).
+%   'local_scale_block_sec'  block length of the running scale (default 1)
+%   'local_scale_candidates' spans (s) tried by 'auto' (default [] = the
+%                  built-in grid [2 3 5 7 10 15 20 30 60 120 240] subject to
+%                  the kernel/record limits; a user grid is used as given).
+%                  A span shorter than a few stimulus periods will track
+%                  stimulus-locked amplitude changes as if they were
+%                  background - see outs(k).local_scale.block_acf.
+%   'model_select' run several noise/signal/freeze (and optionally
+%                  local_scale_sec) combinations and keep, per component,
+%                  the best-fitting one. false (default) = off. true =
+%                  default grid {gamma,lognormal,weibull} x
+%                  {gamma,lognormal}, noise frozen, at the given
+%                  local_scale_sec. Or a struct with any of the fields
+%                  noise_dist (cellstr), signal_dist (cellstr),
+%                  freeze_noise (logical vector), local_scale_sec (numeric
+%                  vector); the full factorial grid of valid combinations is
+%                  run. Joint-EM candidates (freeze_noise false) are opt-in:
+%                  their free 'signal' component tends to absorb the
+%                  heteroskedastic bulk of the noise and wins the
+%                  likelihood with a prior of 10-20 % and an adjusted N
+%                  several times that of the frozen fits, so they should
+%                  only be compared against each other. Candidates that
+%                  error, whose EM did not converge, whose signal component
+%                  lies left of the noise, or whose signal mass is > 5x what
+%                  the detections can account for are excluded (in that
+%                  order, as long as something remains). The table of
+%                  candidates and scores is returned in
+%                  outs(k).model_selection.
+%   'select_criterion'  'bic' (default) | 'aic' | 'tail' | 'ks'.
+%                  Within one local_scale_sec the candidates are compared
+%                  on the mixture log-likelihood of the SAME xrsm samples
+%                  (BIC/AIC, as already computed by every branch). Across
+%                  different local_scale_sec values the likelihoods are not
+%                  comparable (the statistic itself changes), so the span
+%                  is chosen first by the family-free cross-validation
+%                  score described under local_scale_sec = 'auto', and the
+%                  family combination is then chosen within that span.
+%                  'tail' ranks by |log(observed/nominal exceedance of the
+%                  MIXTURE cdf at its 99.9 percent quantile)| and 'ks' by
+%                  the weighted KS distance of the noise family (frozen
+%                  fits only).
+%   'sanity_checks'  'warn' (default) | 'off' | 'error'. Runs the checks
+%                  listed under outs(k).checks below and warns (or errors)
+%                  when any fails.
 %   'noise_dist'   {'gamma','lognormal','weibull','chi2'} (default 'lognormal')
 %       Marginal noise family on the smoothed xrsm:
 %         'lognormal' : X = xrsm  ~ LogN(mu, sigma). Heavier right tail.
 %                       Default based on superiority of fit in the MASS cohort  
 %         'gamma'     : Z = xrsm^2 ~ Gamma(a, b). Previous default.
 %         'weibull'   : X = xrsm  ~ Weibull(a, b).
-%         'chi2'      : Z = xrsm^2 ~ ChiSquared(nu). Single parameter; the
-%                       theoretically-correct family under iid Gaussian
-%                       xfilt/xfsd. Narrowest of the four.
+%         'chi2'      : scaled chi-square, Z = xrsm^2 ~ s * ChiSquared(nu),
+%                       nu = 2 E[Z]^2 / Var[Z], s = E[Z]/nu (Satterthwaite
+%                       form of an average of n_eff half-normal squares; a
+%                       gamma with the shape tied to the variance). Before
+%                       2026-09 this family was the unscaled chi2(nu) with
+%                       nu = E[Z], which has variance 2 where the normalised
+%                       statistic has ~2/n_eff and could not fit.
 %   'signal_dist'  {'empirical','gamma','noncentral_gamma','lognormal'} (default 'lognormal')
 %       Family of the signal component:
 %         'lognormal' : LogN(mu_s, sigma_s). New default
@@ -104,15 +194,54 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier] = 
 %                                visual goodness-of-fit comparison.
 %       Per-family parameters that don't apply to the chosen distribution
 %       are simply not present in the substruct (no NaN clutter).
+%       outs(k).options        every input parameter as EFFECTIVELY used
+%                                (an 'auto' span is replaced by the chosen
+%                                span, model_select is off, the selected
+%                                families are filled in); pass it back as
+%                                'options' to reproduce the fit without
+%                                repeating the search. .requested keeps
+%                                the original local_scale_sec/model_select.
+%       outs(k).local_scale    .source ('residual' | 'xfilt'),
+%                                .sec (window used, 0 = global), .p05/.p50/
+%                                .p95 and .ratio95to5 of the running scale
+%       outs(k).gof_noise_tail_ratio  observed/nominal exceedance of the
+%                                fitted noise CDF at the 0.99/0.999/0.9999
+%                                quantiles on the noise-weighted xrsm
+%                                sample (1 = calibrated, >1 = noise tail too
+%                                light, <1 = too heavy/conservative). Note
+%                                that residual event mass in the "noise"
+%                                sample inflates it.
+%       outs(k).gof_mixture_tail_ratio  same for the full mixture CDF on
+%                                ALL xrsm samples (the quantity the sanity
+%                                check uses)
+%       outs(k).checks         sanity checks (.ok plus one logical per
+%                                check and .messages): pprob in [0,1] and
+%                                finite; posterior non-decreasing in xrsm
+%                                above the noise mode; signal component to
+%                                the right of the noise component; signal
+%                                prior in (0, 0.5); adjusted N <= raw N;
+%                                strongest detections classified as signal;
+%                                mixture tail calibrated within a factor 5;
+%                                EM converged; parameters finite
+%       outs(k).model_selection (model_select only) candidate table
 %   pprob  - per-sample posterior signal probability
 %   xdet,xsnr,xrsm,... - outputs of HOSOBJECT/XDETECT (xrsm/xsnr returned
 %       in their THRESHOLDED form; the EM internally uses unthresholded xrsm).
+%
+%   local_scales - [N x K] running noise scale used for each component
+%       (all xfsd when local_scale_sec = 0)
 %
 %See also HOSOBJECT/XDETECT
 
 %C. Kovach 2026
 
 % ---- Argument parsing ----------------------------------------------------
+% An options struct (a previous outs(k).options, or any subset of the
+% parameters) may be given as the third positional argument or as
+% 'options', S. Its fields are applied first; explicit name-value pairs
+% that follow override them. Non-parameter fields are ignored.
+[varargin, options_struct] = extract_options_struct(varargin);
+
 p = inputParser;
 p.addOptional ('pow',                   2,           @(v) isempty(v) || (isnumeric(v) && isscalar(v)));
 p.addParameter('noise_dist',            'lognormal', @(s) ischar(s) || isstring(s));
@@ -138,7 +267,22 @@ p.addParameter('bin_em_K',              500,         @isnumeric);
 % Flooring it keeps the pprob trace on the floor between events. Default
 % true; pass false to recover the raw mixture posterior everywhere.
 p.addParameter('floor_below_noise_mode', true,       @islogical);
-p.parse(varargin{:});
+% Running robust noise scale (see header). 0 = global xfsd (legacy).
+p.addParameter('local_scale_sec',       0,           @(v) isnumeric(v) || ischar(v) || isstring(v));
+p.addParameter('local_scale_block_sec', 1,           @(v) isnumeric(v) && isscalar(v) && v > 0);
+p.addParameter('local_scale_candidates', [],         @(v) isnumeric(v));
+p.addParameter('local_scale_source',    'residual',  @(s) ischar(s) || isstring(s));
+% Model selection over noise/signal/freeze/local-scale combinations.
+p.addParameter('model_select',          false,       @(v) islogical(v) || isstruct(v) || isempty(v));
+p.addParameter('select_criterion',      'bic',       @(s) ischar(s) || isstring(s));
+% Output sanity checks: 'warn' | 'off' | 'error'.
+p.addParameter('sanity_checks',         'warn',      @(v) ischar(v) || isstring(v) || islogical(v));
+% Internal: xdetect outputs from a previous call (used by model_select to
+% avoid re-running xdetect for every candidate).
+p.addParameter('xdetect_cache',         [],          @(v) isempty(v) || isstruct(v));
+p.KeepUnmatched = false;
+parse_args = merge_option_args(p, options_struct, varargin);
+p.parse(parse_args{:});
 pow                   = p.Results.pow;        if isempty(pow), pow = 2; end
 noise_dist            = lower(char(p.Results.noise_dist));
 signal_dist           = lower(char(p.Results.signal_dist));
@@ -152,6 +296,33 @@ outlier_pi_max        = p.Results.outlier_pi_max;
 floor_below_noise_mode = p.Results.floor_below_noise_mode;
 bin_em_K              = p.Results.bin_em_K;
 freeze_noise          = p.Results.freeze_noise;
+local_scale_sec       = p.Results.local_scale_sec;
+local_scale_block_sec = p.Results.local_scale_block_sec;
+local_scale_candidates = p.Results.local_scale_candidates(:)';
+local_scale_source    = lower(char(p.Results.local_scale_source));
+if ~any(strcmp(local_scale_source, {'residual', 'xfilt'}))
+    error('detection_stats:badLocalScaleSource', 'local_scale_source must be ''residual'' or ''xfilt''.');
+end
+model_select          = p.Results.model_select;
+select_criterion      = lower(char(p.Results.select_criterion));
+sanity_checks         = p.Results.sanity_checks;
+xdetect_cache         = p.Results.xdetect_cache;
+if islogical(sanity_checks)
+    if sanity_checks, sanity_checks = 'warn'; else, sanity_checks = 'off'; end
+end
+sanity_checks = lower(char(sanity_checks));
+assert(any(strcmp(sanity_checks, {'warn','off','error'})), ...
+    'sanity_checks must be ''warn'', ''off'' or ''error''');
+assert(any(strcmp(select_criterion, {'bic','aic','tail','ks'})), ...
+    'select_criterion must be one of {bic, aic, tail, ks}');
+if ischar(local_scale_sec) || isstring(local_scale_sec)
+    assert(strcmpi(char(local_scale_sec), 'auto'), ...
+        'local_scale_sec must be a number of seconds (0 = off) or ''auto''');
+    local_scale_sec = 'auto';
+else
+    assert(isscalar(local_scale_sec) && local_scale_sec >= 0, ...
+        'local_scale_sec must be a non-negative scalar or ''auto''');
+end
 
 % Legacy two_gamma* string -> map to (noise_dist, signal_dist, freeze_noise, shared_scale)
 switch noise_dist
@@ -207,8 +378,80 @@ if use_outlier && ~(any(strcmp(signal_dist, {'gamma','lognormal'})) && ~freeze_n
     use_outlier = false;
 end
 
-[xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs] = xdetect(hos,x,pow);
+% Record every parameter as used (after legacy remapping / validation).
+options = struct( ...
+    'pow',                    pow, ...
+    'noise_dist',             noise_dist, ...
+    'signal_dist',            signal_dist, ...
+    'freeze_noise',           freeze_noise, ...
+    'shared_scale',           shared_scale, ...
+    'tail_quantile',          tail_quantile, ...
+    'sample_w_pow',           sample_w_pow, ...
+    'outlier_trim_quantile',  outlier_trim_quantile, ...
+    'outlier_dist',           outlier_dist, ...
+    'outlier_u_quantile',     outlier_u_quantile, ...
+    'outlier_pi_max',         outlier_pi_max, ...
+    'bin_em_K',               bin_em_K, ...
+    'floor_below_noise_mode', floor_below_noise_mode, ...
+    'local_scale_sec',        local_scale_sec, ...
+    'local_scale_block_sec',  local_scale_block_sec, ...
+    'local_scale_candidates', local_scale_candidates, ...
+    'local_scale_source',     local_scale_source, ...
+    'model_select',           model_select, ...
+    'select_criterion',       select_criterion, ...
+    'sanity_checks',          sanity_checks);
+
+if isempty(xdetect_cache)
+    [xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs] = xdetect(hos,x,pow);
+    scale_src = [];
+else
+    xdets = xdetect_cache.xdets; xsnrs = xdetect_cache.xsnrs; xrsms = xdetect_cache.xrsms;
+    xfsds = xdetect_cache.xfsds; xfilts = xdetect_cache.xfilts; xthrs = xdetect_cache.xthrs;
+    gs = xdetect_cache.gs;
+    scale_src = xdetect_cache.scale_src;
+end
+% Signal the running scale is measured on (see 'local_scale_source'). Only
+% needed when a local scale is in play; the residual costs one xrec plus
+% one filter pass per component.
+needs_local = ischar(local_scale_sec) || any(local_scale_sec(:) > 0) || ...
+              (~isempty(model_select) && ~(islogical(model_select) && ~model_select));
+if needs_local && isempty(scale_src)
+    if strcmp(local_scale_source, 'residual')
+        [scale_src, ok_res] = residual_filter_output(hos, x, xfilts);
+        if ~ok_res
+            local_scale_source = 'xfilt'; options.local_scale_source = 'xfilt';
+        end
+    else
+        scale_src = xfilts;
+    end
+end
+
+% =====================================================================
+% Model selection: run every candidate combination (sharing this xdetect
+% result), score them, and keep the best per component. Each candidate is
+% an ordinary detection_stats call with model_select off.
+% =====================================================================
+if ~isempty(model_select) && ~(islogical(model_select) && ~model_select)
+    cache = struct('xdets', xdets, 'xsnrs', xsnrs, 'xrsms', xrsms, 'xfsds', xfsds, ...
+                   'xfilts', xfilts, 'xthrs', xthrs, 'gs', gs, 'scale_src', scale_src);
+    [outs, pprobs, pprobs_outlier, local_scales] = ...
+        run_model_selection(hos, x, options, model_select, select_criterion, cache);
+    for k = 1:numel(outs)
+        [outs(k).checks, msgs] = run_sanity_checks(outs(k), pprobs(:,k), xdets(:,k));
+        report_sanity(msgs, k, sanity_checks);
+    end
+    return
+end
+
 pprobs_outlier = zeros(size(xrsms));
+local_scales   = zeros(size(xfilts));
+xrsm_used      = zeros(size(xrsms));
+sample_w_used  = zeros(size(xrsms));
+local_scale_info = repmat(struct('sec', 0, 'block_sec', local_scale_block_sec, ...
+    'p05', NaN, 'p50', NaN, 'p95', NaN, 'ratio95to5', NaN, 'candidates', [], 'cv_score', [], ...
+    'cv_se', [], 'block_acf', [], 'block_log_level', [], 'kernel_sec', NaN, ...
+    'source', local_scale_source), 1, length(hos));
+kernel_sec_used = nan(1, length(hos));
 
 % %%% Peak weighted xrsms
 % xrsms = nthroot(convn((xthrs./xfsds).^pow,gs,'same')./(convn((xthrs>0),gs,'same')+.1),pow);
@@ -257,13 +500,53 @@ for k = 1:length(hos)
     %   washed out by the surrounding quiet samples; it is also invariant
     %   to the kernel's overall scale. The active-sample normalization is
     %   skipped for even orders, where the denominator is ~1 anyway.
+    % --- Noise scale: global xfsd (legacy) or a running robust scale ---
+    % A slowly drifting background makes the marginal of xrsm a scale
+    % mixture that no single family fits in the tail; dividing xfilt by
+    % a local scale removes that before the statistic is formed.
+    fs_k = hos(k).sampling_rate;
+    cv_cands = []; cv_score = []; cv_se = [];
+    kern_sec = sum(g > 0) / fs_k;
+    kernel_sec_used(k) = kern_sec;
+    if isempty(scale_src), src_k = xfilt; else, src_k = scale_src(:,k); end
+    if ischar(local_scale_sec)          % 'auto': cross-validated span
+        [span_sec, cv_cands, cv_score, cv_se] = choose_local_scale_span(src_k, xthr, fs_k, ...
+            local_scale_block_sec, kern_sec, local_scale_candidates);
+    else
+        span_sec = local_scale_sec;
+    end
+    if span_sec > 0
+        scale_t = running_robust_scale(src_k, xthr, fs_k, span_sec, local_scale_block_sec, xfsd);
+    else
+        scale_t = xfsd * ones(size(xfilt));
+    end
+    local_scales(:,k) = scale_t;
+    local_scale_info(k).sec = span_sec;
+    if ~ischar(local_scale_sec) && span_sec <= 0, local_scale_info(k).source = 'none'; end
+    local_scale_info(k).candidates = cv_cands;
+    local_scale_info(k).cv_score = cv_score;
+    local_scale_info(k).cv_se = cv_se;
+    local_scale_info(k).kernel_sec = kern_sec;
+    % Autocorrelation of the block noise levels (lags 1..10 blocks): tells
+    % whether the level fluctuates on a few-second scale (short spans win
+    % the CV) or drifts slowly.
+    if span_sec > 0 || ischar(local_scale_sec)
+        blk_k = block_medians(src_k, xthr, fs_k, local_scale_block_sec);
+        local_scale_info(k).block_acf = block_acf(log(blk_k), 10);
+        local_scale_info(k).block_log_level = log(blk_k(:))';
+    end
+    local_scale_info(k).p05 = prctile(scale_t, 5);
+    local_scale_info(k).p50 = prctile(scale_t, 50);
+    local_scale_info(k).p95 = prctile(scale_t, 95);
+    local_scale_info(k).ratio95to5 = local_scale_info(k).p95 / max(local_scale_info(k).p05, eps);
+
     if mod(hos(k).order, 2) ~= 0
-        z    = xfilt ./ xfsd;   % signed; positive excursions are detections
+        z    = xfilt ./ scale_t;   % signed; positive excursions are detections
         pos  = z > 0;
         xrsm = nthroot(convn(pos .* z.^pow, g, 'same') ...
                        ./ (convn(double(pos), g, 'same') + eps), pow);
     else
-        xrsm = nthroot(convn(abs(xfilt ./ xfsd).^pow, g, 'same'), pow);
+        xrsm = nthroot(convn(abs(xfilt ./ scale_t).^pow, g, 'same'), pow);
     end
     xsnr = xrsm .* (xdet ~= 0);
     event_mask = double(xthr ~= 0);
@@ -276,6 +559,8 @@ for k = 1:length(hos)
     % xthr zero-crossings inside spindles -- those samples have falsely
     % high (1 - wgt) and bias the noise-gamma scale upward.
     sample_w = max(1 - wgt, 0) .^ sample_w_pow;
+    xrsm_used(:,k)     = xrsm;       % kept for the post-loop diagnostics
+    sample_w_used(:,k) = sample_w;
 
     % =====================================================================
     % Joint-EM parametric mixture (freeze_noise=false, parametric signal).
@@ -829,111 +1114,91 @@ for k = 1:length(hos)
         % but pass log_f_n as an external 'log_noise_pdf' so the noise
         % parameters are not updated. The helper supports this via the
         % 'frozen_noise_log_pdf' option (see gamma_noncentral_mixture_em.m).
-        if strcmp(signal_dist, 'gamma')
-            % Closed-form EM: signal-only weighted gamma MLE on responsibilities.
-            % We don't have a shared-shape constraint with the noise (noise
-            % family may not be gamma), so signal alpha is free.
-            a_s = 2.0;
-            b_s = max(median(em_x_fit.^2)*2, eps);
-            % Same data-driven signal-prior init used in the lognormal
-            % branch (see comment there for the audit rationale).
-            pi_s = min(max(1 - mean(sample_w), 1e-3), 0.95);
-            logL_prev = -Inf;
-            for it = 1:200
-                % E-step: responsibilities
-                log_f_s = log(max(2*em_x_fit .* gampdf(em_x_fit.^2, a_s, b_s), eps));
-                log_pi_n = log(max(1-pi_s, eps));
-                log_pi_s = log(max(pi_s,   eps));
-                m = max(log_pi_n + log_f_n_fit, log_pi_s + log_f_s);
-                lden = m + log(exp(log_pi_n + log_f_n_fit - m) + exp(log_pi_s + log_f_s - m));
-                gamma_t = exp(log_pi_s + log_f_s - lden);
-                logL = sum(em_w .* lden);
-                W_s = sum(em_w .* gamma_t);
-                pi_s = W_s / W_total;
-                % Weighted gamma MLE on z = em_x_fit^2 with weights em_w .* gamma_t
-                if W_s > 1
-                    z_eff   = em_x_fit.^2;
-                    mu_z    = sum(em_w .* gamma_t .* z_eff) / W_s;
-                    logmu_z = log(mu_z);
-                    mlog_z  = sum(em_w .* gamma_t .* log(max(z_eff, eps))) / W_s;
-                    s_ = logmu_z - mlog_z;
-                    % Initial via approximation, then 1 Newton step
-                    a_s = (3 - s_ + sqrt((s_-3)^2 + 24*s_)) / (12*s_);
-                    for ni = 1:50
-                        f  = log(a_s) - psi(a_s) - s_;
-                        fp = 1/a_s - psi(1, a_s);
-                        a_new = a_s - f/fp;
-                        if abs(a_new - a_s) < 1e-6*abs(a_s)+1e-9, a_s = a_new; break, end
-                        a_s = max(a_new, 1e-3);
-                    end
-                    b_s = mu_z / a_s;
-                end
-                if it>1 && abs(logL - logL_prev) < 1e-6*max(abs(logL), 1), break, end
-                logL_prev = logL;
-            end
-            a_signal = a_s; b_signal = b_s; lam_signal = 0;
-            mu_s_logn = NaN; sigma_s_logn = NaN;
-            em.n_iter = it; em.converged = (it < 200);
-            f_X_signal = @(xx) 2 .* xx .* gampdf(xx.^2, a_s, b_s);
-            signal_mode = sqrt(max(b_signal * (2*a_signal + lam_signal - 1) / 2, 0));
-        elseif strcmp(signal_dist, 'lognormal')
-            % Closed-form EM: signal-only weighted lognormal MLE on log x with
-            % weights em_w .* gamma_t; the frozen noise log-pdf is held fixed
-            % at log_f_n_fit (in x-space). Uses the same log-binned x_fit
-            % grid as the gamma-signal branch above.
-            logx_fit = log(max(em_x_fit, eps));
-            % M-step-first init: gamma_t^(0) = 1 - sample_w is the
-            % cumulant-derived signal-responsibility map already used
-            % to weight the noise fit. A single weighted lognormal MLE
-            % on the raw (un-binned) keep-set with weights gamma_t^(0)
-            % supplies (pi_s, mu_s, sigma_s) in one shot, with no
-            % heuristic quantile and no lower bound. Selected 2026-06-09
-            % after a 100-subject MASS audit (diag_mstep_first.m,
-            % diag_mstep_first_moda.m): median +1.37 logL improvement
-            % vs the older quantile heuristic, and ZERO subjects with
-            % measurable change in AUPRC against MODA gold-standard
-            % spindle annotations (median |dAUPRC| < 1e-4). The worst
-            % logL "losses" of the new init are visible misfits in
-            % the older one where the lognormal-signal component had
-            % stretched to cover the noise-mode bulk (see
-            % spindle_checker/qm_basins_*.png). Cumulant-consistency
-            % parallels the pi_s init audit (reference_detection_stats_pi_init).
+        if any(strcmp(signal_dist, {'gamma', 'lognormal'}))
+            % Signal-only EM with the noise density frozen (helper
+            % frozen_signal_em; closed-form weighted MLE M-steps).
+            %
+            % Initialisation is M-step-first: gamma_t^(0) = 1 - sample_w
+            % is the cumulant-derived signal-responsibility map already
+            % used to weight the noise fit, and one weighted MLE on the raw
+            % keep-set with those weights supplies the signal parameters
+            % and pi_s in one shot (selected 2026-06-09 after a 100-subject
+            % MASS audit for the lognormal branch: median +1.37 logL vs the
+            % older quantile heuristic, zero subjects with measurable AUPRC
+            % change against MODA; the gamma branch used a fixed
+            % a=2, b=2*median(x^2) start that placed the signal component on
+            % the shoulder of the noise bulk and, with a 5-10 % starting
+            % prior, could settle there - 640-076 ch73 component 3:
+            % prior 0.06, adjusted N 0.1, EM not converged).
+            %
+            % Degeneracy guard: if the converged signal component's median
+            % lies below the noise 95 % quantile, or its prior exceeds 0.25,
+            % it is modelling the bulk, not events. The EM is then restarted
+            % from a tail init (samples above the noise 99.5 % quantile) and
+            % that solution is kept if it is non-degenerate. Which init won
+            % is recorded in out.em_init.
             g0_init = max(1 - sample_w(keep_fit), 0);
-            log_xkeep = log(max(x_fit, eps));
             W0 = sum(g0_init);
-            if W0 > 0
-                mu_s    = sum(g0_init .* log_xkeep) / W0;
-                sigma_s = sqrt(max(sum(g0_init .* (log_xkeep - mu_s).^2) / W0, eps));
-                pi_s    = min(max(mean(g0_init), 1e-3), 0.95);
-            else
-                cumw     = cumsum(em_w) / W_total;
-                mu_s     = logx_fit(find(cumw >= 0.6, 1, 'first'));
-                sigma_s  = 0.3;
-                pi_s     = min(max(1 - mean(sample_w), 1e-3), 0.95);
-            end
-            logL_prev = -Inf;
-            for it = 1:200
-                log_f_s = -logx_fit - log(sigma_s) - 0.5*log(2*pi) - (logx_fit - mu_s).^2 / (2*sigma_s^2);
-                log_pi_n = log(max(1-pi_s, eps));
-                log_pi_s = log(max(pi_s,   eps));
-                m = max(log_pi_n + log_f_n_fit, log_pi_s + log_f_s);
-                lden = m + log(exp(log_pi_n + log_f_n_fit - m) + exp(log_pi_s + log_f_s - m));
-                gamma_t = exp(log_pi_s + log_f_s - lden);
-                logL = sum(em_w .* lden);
-                W_s = sum(em_w .* gamma_t);
-                pi_s = W_s / W_total;
-                if W_s > 1
-                    mu_s    = sum(em_w .* gamma_t .* logx_fit) / W_s;
-                    sigma_s = sqrt(max(sum(em_w .* gamma_t .* (logx_fit - mu_s).^2) / W_s, 1e-6));
+            init1 = struct('pi_s', min(max(1 - mean(sample_w), 1e-3), 0.95));
+            if strcmp(signal_dist, 'gamma')
+                init1.a = 2.0; init1.b = max(median(em_x_fit.^2) * 2, eps);
+                if W0 > 10
+                    try
+                        [init1.a, init1.b] = weighted_gamma_mle(x_fit.^2, g0_init);
+                        init1.pi_s = min(max(mean(g0_init), 1e-3), 0.95);
+                    catch
+                    end
                 end
-                if it>1 && abs(logL - logL_prev) < 1e-6*max(abs(logL), 1), break, end
-                logL_prev = logL;
+            else
+                log_xkeep = log(max(x_fit, eps));
+                if W0 > 0
+                    init1.mu    = sum(g0_init .* log_xkeep) / W0;
+                    init1.sigma = sqrt(max(sum(g0_init .* (log_xkeep - init1.mu).^2) / W0, eps));
+                    init1.pi_s  = min(max(mean(g0_init), 1e-3), 0.95);
+                else
+                    cumw       = cumsum(em_w) / W_total;
+                    init1.mu    = log(max(em_x_fit(find(cumw >= 0.6, 1, 'first')), eps));
+                    init1.sigma = 0.3;
+                end
             end
-            a_signal = NaN; b_signal = NaN; lam_signal = 0;
-            mu_s_logn = mu_s; sigma_s_logn = sigma_s;
-            em.n_iter = it; em.converged = (it < 200);
-            f_X_signal = @(xx) lognpdf(max(xx, eps), mu_s, sigma_s);
-            signal_mode = exp(mu_s - sigma_s^2);
+            [prm, it, em_conv, ~] = frozen_signal_em(signal_dist, em_x_fit, em_w, log_f_n_fit, init1, 200);
+            em_init_used = 'mstep_first';
+            q95  = noise_quantile(F_X_bulk, 0.95,  max(x_fit));
+            q995 = noise_quantile(F_X_bulk, 0.995, max(x_fit));
+            if signal_median_of(signal_dist, prm) < q95 || prm.pi_s > 0.25
+                sel = x_fit > q995;
+                if sum(sel) >= 10
+                    init2 = struct('pi_s', min(max(mean(sel), 1e-3), 0.95));
+                    if strcmp(signal_dist, 'gamma')
+                        try
+                            [init2.a, init2.b] = weighted_gamma_mle(x_fit(sel).^2, ones(sum(sel), 1));
+                        catch
+                            init2.a = 2.0; init2.b = max(mean(x_fit(sel).^2) / 2, eps);
+                        end
+                    else
+                        lxs = log(max(x_fit(sel), eps));
+                        init2.mu = mean(lxs); init2.sigma = max(std(lxs), 0.05);
+                    end
+                    [prm2, it2, em_conv2, ~] = frozen_signal_em(signal_dist, em_x_fit, em_w, log_f_n_fit, init2, 200);
+                    if signal_median_of(signal_dist, prm2) >= q95 && prm2.pi_s <= 0.25
+                        prm = prm2; it = it2; em_conv = em_conv2; em_init_used = 'tail';
+                    end
+                end
+            end
+            pi_s = prm.pi_s;
+            em.n_iter = it; em.converged = em_conv; em.init = em_init_used;
+            if strcmp(signal_dist, 'gamma')
+                a_s = prm.a; b_s = prm.b;
+                a_signal = a_s; b_signal = b_s; lam_signal = 0;
+                mu_s_logn = NaN; sigma_s_logn = NaN;
+                f_X_signal = @(xx) 2 .* xx .* gampdf(xx.^2, a_s, b_s);
+            else
+                mu_s = prm.mu; sigma_s = prm.sigma;
+                a_signal = NaN; b_signal = NaN; lam_signal = 0;
+                mu_s_logn = mu_s; sigma_s_logn = sigma_s;
+                f_X_signal = @(xx) lognpdf(max(xx, eps), mu_s, sigma_s);
+            end
+            signal_mode = signal_mode_of(signal_dist, prm);
         else
             error('detection_stats:nyiFrozenSignalNC', ...
                 ['signal_dist=''%s'' with freeze_noise=true is not yet implemented. ', ...
@@ -992,6 +1257,7 @@ for k = 1:length(hos)
         end
         out.em_iters     = em.n_iter;
         out.em_converged = em.converged;
+        if isfield(em, 'init'), out.em_init = em.init; else, out.em_init = ''; end
         out.outlier_trim_quantile = outlier_trim_quantile;
         out.outlier_trim_thresh   = trim_thresh;
         out.pprob_outlier         = zeros(sum(xdet),1);
@@ -1418,6 +1684,515 @@ for k = 1:length(hos)
     % the outer xrsms with the unthresholded version produces many extra
     % local maxima and breaks downstream struct-construction.
 end
+
+% ---- Post-loop diagnostics common to every branch ----------------------
+for k = 1:numel(outs)
+    % Effective parameters: an 'auto' span is replaced by the span that was
+    % chosen, so passing outs(k).options back reproduces this fit without
+    % repeating the search. The original request is kept in .requested.
+    o_opt = options;
+    o_opt.requested = struct('local_scale_sec', options.local_scale_sec, 'model_select', options.model_select);
+    if ischar(options.local_scale_sec), o_opt.local_scale_sec = local_scale_info(k).sec; end
+    outs(k).options     = o_opt;
+    outs(k).local_scale = local_scale_info(k);
+    outs(k).kernel_sec  = kernel_sec_used(k);
+    outs(k).sampling_rate_used = hos(k).sampling_rate;
+    outs(k).gof_noise_tail_ratio = noise_tail_ratio(xrsm_used(:,k), sample_w_used(:,k), ...
+        outs(k).thresholds, outs(k).noisepdf, [0.99 0.999 0.9999]);
+    mixpdf = outs(k).est_prior * outs(k).sigpdf(:) + (1 - outs(k).est_prior) * outs(k).noisepdf(:);
+    outs(k).gof_mixture_tail_ratio = noise_tail_ratio(xrsm_used(:,k), ones(size(xrsm_used(:,k))), ...
+        outs(k).thresholds, mixpdf, [0.99 0.999 0.9999]);
+    outs(k).gof_tail_quantiles = [0.99 0.999 0.9999];
+    outs(k).model_selection = [];
+    [outs(k).checks, msgs] = run_sanity_checks(outs(k), pprobs(:,k), xdets(:,k));
+    report_sanity(msgs, k, sanity_checks);
+end
+end
+
+
+% =========================================================================
+function [args, S] = extract_options_struct(args)
+%EXTRACT_OPTIONS_STRUCT  Pull an options struct out of varargin.
+% Accepts detection_stats(hos, x, S, ...) and/or ..., 'options', S, ...
+S = struct();
+if ~isempty(args) && isstruct(args{1})
+    S = args{1}; args = args(2:end);
+end
+k = 1;
+while k <= numel(args) - 1
+    if (ischar(args{k}) || isstring(args{k})) && strcmpi(char(args{k}), 'options')
+        if isstruct(args{k+1})
+            f = fieldnames(args{k+1});
+            for j = 1:numel(f), S.(f{j}) = args{k+1}.(f{j}); end
+        end
+        args(k:k+1) = [];
+    else
+        k = k + 1;
+    end
+end
+end
+
+function args = merge_option_args(p, S, explicit)
+%MERGE_OPTION_ARGS  Struct fields first (known parameters only), then the
+% explicit name-value pairs, so that explicit pairs win.
+known = p.Parameters;
+args = {};
+lead = {};
+% keep a leading positional pow if one was given explicitly
+if ~isempty(explicit) && ~(ischar(explicit{1}) || isstring(explicit{1}))
+    lead = explicit(1); explicit = explicit(2:end);
+end
+f = fieldnames(S);
+skipped = {};
+for j = 1:numel(f)
+    if any(strcmpi(f{j}, known))
+        if strcmpi(f{j}, 'pow')
+            if isempty(lead), lead = {S.(f{j})}; end
+        elseif strcmpi(f{j}, 'xdetect_cache')
+            % never carried in an options struct
+        else
+            args(end+1:end+2) = {f{j}, S.(f{j})};
+        end
+    else
+        skipped{end+1} = f{j}; %#ok<AGROW>
+    end
+end
+if ~isempty(skipped)
+    % Output structs carry many non-parameter fields; only complain about
+    % names that look like parameters (short, lower-case, no 'est_'/'gof_').
+    odd = skipped(cellfun(@(s) isempty(regexp(s, '^(est_|gof_|pot_|n_|em_|requested$)', 'once')) && numel(s) < 24, skipped));
+    if ~isempty(odd) && numel(odd) < 8
+        warning('detection_stats:unknownOptionFields', ...
+            'Ignoring unknown option field(s): %s', strjoin(odd, ', '));
+    end
+end
+args = [lead, args, explicit];
+end
+
+function [xsrc, ok] = residual_filter_output(hos, x, xfilts)
+%RESIDUAL_FILTER_OUTPUT  Each component's detection filter applied to the
+% residual after removing EVERY component's reconstructed signal
+% (hosobject/xrec: thresholded filter output * feature waveform, LMSE
+% scaled). Falls back to the plain filter outputs if the reconstruction is
+% unavailable (e.g. hos is not a hosobject).
+xsrc = xfilts; ok = true;
+try
+    xr = xrec(hos, x(:));                     % N x K (deflated, all components)
+    xr(isnan(xr)) = 0;
+    xres = x(:) - sum(xr, 2);
+    for k = 1:numel(hos)
+        xf = apply_filter(hos(k), xres, false, false);
+        xsrc(:,k) = xf(:);
+    end
+catch ME
+    ok = false;
+    warning('detection_stats:residualScale', ...
+        'Could not form the residual filter output (%s); the running scale is measured on xfilt instead.', ME.message);
+end
+end
+
+function [blk, nb, nBlk] = block_medians(xfilt, xthr, fs, block_sec)
+%BLOCK_MEDIANS  Median |xfilt| per block_sec block, supra-threshold samples
+% excluded (NaN where a block has no usable sample).
+nb   = max(1, round(block_sec * fs));
+nBlk = ceil(numel(xfilt) / nb);
+xa = abs(xfilt(:)); xa(xthr(:) ~= 0) = NaN;
+xa(end+1:nBlk*nb) = NaN;
+blk = median(reshape(xa, nb, nBlk), 1, 'omitnan')';
+end
+
+function [best, cands, score, se] = choose_local_scale_span(xfilt, xthr, fs, block_sec, kern_sec, user_cands)
+%CHOOSE_LOCAL_SCALE_SPAN  Cross-validated span for the running scale.
+% Leave-one-block-out CV on the block medians: the log level of each block
+% is predicted by the moving median (span) of the OTHER blocks in its
+% window; score = mean squared log prediction error, se = its standard
+% error. Inf = global scale (median of all other blocks). The candidate
+% with the smallest score wins; 0 is returned when the global scale wins
+% (local scaling off).
+[blk, ~, nBlk] = block_medians(xfilt, xthr, fs, block_sec);
+T = nBlk * block_sec;
+if nargin < 6 || isempty(user_cands)
+    cands = [2 3 5 7 10 15 20 30 60 120 240];
+    cands = cands(cands >= 20 * kern_sec & cands <= T / 4);
+else
+    cands = sort(user_cands(isfinite(user_cands) & user_cands > 0));
+end
+cands = [cands, Inf];
+score = nan(size(cands)); se = nan(size(cands));
+for c = 1:numel(cands)
+    [score(c), se(c)] = cv_span_score(blk, nBlk, block_sec, cands(c));
+end
+[~, j] = min(score);
+if isempty(j) || ~isfinite(score(j)) || isinf(cands(j))
+    best = 0;
+else
+    best = cands(j);
+end
+end
+
+function [sc, se] = cv_span_score(blk, nBlk, block_sec, span_sec)
+%CV_SPAN_SCORE  Leave-one-block-out squared log prediction error of the
+% block levels for one span (0/Inf = global). Returns the mean and its SE.
+ok = isfinite(blk) & blk > 0; lb = log(blk); lb(~ok) = NaN;
+if span_sec <= 0 || isinf(span_sec)
+    h = nBlk;
+else
+    h = floor(max(3, round(span_sec / block_sec)) / 2);
+end
+pred = loo_moving_median(lb, h);
+e = lb(ok) - pred(ok); e = e(isfinite(e));
+if isempty(e), sc = Inf; se = Inf; else, sc = mean(e.^2); se = std(e.^2) / sqrt(numel(e)); end
+end
+
+function m = loo_moving_median(v, h)
+%LOO_MOVING_MEDIAN  Median of the finite values in window i-h..i+h EXCLUDING
+% block i itself (NaN where the window has no other finite value).
+v = v(:); N = numel(v); m = nan(N, 1);
+for i = 1:N
+    lo = max(1, i - h); hi = min(N, i + h);
+    w = [v(lo:i-1); v(i+1:hi)]; w = w(isfinite(w));
+    if ~isempty(w), m(i) = median(w); end
+end
+end
+
+function r = block_acf(v, maxlag)
+%BLOCK_ACF  Sample autocorrelation of a (NaN-tolerant) block series, lags 1..maxlag.
+v = v(:); v = v(isfinite(v)); v = v - mean(v); n = numel(v);
+r = nan(1, maxlag);
+if n < 3 * maxlag, return, end
+den = sum(v.^2);
+for L = 1:maxlag
+    r(L) = sum(v(1:end-L) .* v(1+L:end)) / max(den, eps);
+end
+end
+
+function m = moving_median_omitnan(v, n)
+%MOVING_MEDIAN_OMITNAN  Centred moving median of length n ignoring NaNs
+% (NaN where a window has no finite value). Block-level vectors only.
+v = v(:); N = numel(v); h = floor(n / 2); m = nan(N, 1);
+for i = 1:N
+    w = v(max(1, i - h):min(N, i + h)); w = w(isfinite(w));
+    if ~isempty(w), m(i) = median(w); end
+end
+end
+
+function scale_t = running_robust_scale(xfilt, xthr, fs, span_sec, block_sec, xfsd)
+%RUNNING_ROBUST_SCALE  Time-varying noise scale of the filter output.
+% Median |xfilt| in block_sec blocks (supra-threshold samples excluded),
+% moving median over span_sec, linear interpolation back to samples,
+% x 1.4826 (median |x| -> SD for Gaussian noise). Falls back to xfsd
+% wherever the estimate is undefined.
+[blk, nb, nBlk] = block_medians(xfilt, xthr, fs, block_sec);
+nspan = max(3, round(span_sec / block_sec));
+blk = moving_median_omitnan(blk, nspan);
+bad = ~isfinite(blk) | blk <= 0;
+if all(bad)
+    blk(:) = xfsd / 1.4826;
+elseif any(bad)
+    blk(bad) = interp1(find(~bad), blk(~bad), find(bad), 'nearest', 'extrap');
+end
+tb = ((0:nBlk-1)' + 0.5) * nb;
+scale_t = interp1(tb, blk, (1:numel(xfilt))', 'linear', 'extrap') * 1.4826;
+scale_t(~isfinite(scale_t) | scale_t <= 0) = xfsd;
+scale_t = reshape(scale_t, size(xfilt));
+end
+
+function tr = noise_tail_ratio(xrsm, sample_w, px0, noisepdf, qs)
+%NOISE_TAIL_RATIO  observed/nominal exceedance of the fitted noise CDF on
+% the noise-weighted xrsm sample. noisepdf is the bin-mass vector on the
+% px0 edges (as stored in out.noisepdf / out.thresholds).
+tr = nan(size(qs));
+keep = isfinite(xrsm) & xrsm >= 0.1 & sample_w > 0;
+xs = xrsm(keep); ws = sample_w(keep);
+if isempty(xs) || sum(ws) <= 0 || isempty(noisepdf), return, end
+Fn = [0; cumsum(noisepdf(:))]; Fn = Fn / max(Fn(end), eps);
+px0 = px0(:);
+if numel(px0) ~= numel(Fn), return, end
+for i = 1:numel(qs)
+    j = find(Fn >= qs(i), 1, 'first');
+    if isempty(j), continue, end
+    if j == 1, thr = px0(1);
+    else, thr = px0(j-1) + (qs(i) - Fn(j-1)) / max(Fn(j) - Fn(j-1), eps) * (px0(j) - px0(j-1));
+    end
+    tr(i) = (sum(ws(xs > thr)) / sum(ws)) / (1 - qs(i));
+end
+end
+
+function [checks, msgs] = run_sanity_checks(out, pprob, xdet)
+%RUN_SANITY_CHECKS  Does the fitted mixture make sense?
+checks = struct('ok', true);
+msgs = {};
+
+% 1. posterior values
+bad = ~isfinite(pprob) | pprob < 0 | pprob > 1;
+[checks, msgs] = mark(checks, msgs, 'pprob_in_range', ~any(bad), ...
+    sprintf('pprob has %d non-finite or out-of-range values', sum(bad)));
+
+% 2. posterior non-decreasing in xrsm above the noise mode (on the model grid)
+px = out.snrx(:); ps = out.est_prior;
+mix = ps * out.sigpdf(:) + (1 - ps) * out.noisepdf(:);
+post = ps * out.sigpdf(:) ./ max(mix, eps);
+nm = out.noise_params.mode; if ~isfinite(nm), nm = 0; end
+use = find(px >= nm & mix > 1e-4 * max(mix));   % ignore the numerically empty far tail
+mono = true; msg2 = '';
+if numel(use) >= 3
+    d = diff(post(use));
+    [dmin, imin] = min(d);
+    mono = dmin >= -0.02;
+    if ~mono
+        msg2 = sprintf(['posterior decreases with xrsm above the noise mode ' ...
+            '(largest drop %.3f at xrsm ~ %.2f); check that the signal component lies to the right of the noise'], ...
+            -dmin, px(use(imin)));
+    end
+end
+[checks, msgs] = mark(checks, msgs, 'pprob_monotone', mono, msg2);
+
+% 3. signal component to the right of the noise component
+mn = sum(px .* out.noisepdf(:)) / max(sum(out.noisepdf), eps);
+ms = sum(px .* out.sigpdf(:))   / max(sum(out.sigpdf),   eps);
+[checks, msgs] = mark(checks, msgs, 'signal_right_of_noise', ms > mn, ...
+    sprintf('signal mean (%.2f) is not above the noise mean (%.2f)', ms, mn));
+
+% 4. signal prior
+[checks, msgs] = mark(checks, msgs, 'prior_reasonable', isfinite(ps) && ps > 0 && ps < 0.5, ...
+    sprintf('estimated signal prior %.3g is outside (0, 0.5)', ps));
+
+% 5. adjusted N
+okN = out.adjusted_N_estimate <= out.raw_N_estimate + 1e-9 && out.adjusted_N_estimate >= 0;
+[checks, msgs] = mark(checks, msgs, 'adjustedN_le_rawN', okN, ...
+    sprintf('adjusted N (%.1f) exceeds raw N (%d)', out.adjusted_N_estimate, out.raw_N_estimate));
+
+% 6. the strongest detections should be classified as signal
+okTop = true; top = NaN;
+if any(xdet)
+    ppd = pprob(xdet); sn = out.snrs(:);
+    [~, ord] = sort(sn, 'descend');
+    ntop = max(1, ceil(0.02 * numel(ord)));
+    top = mean(ppd(ord(1:ntop)));
+    okTop = top >= 0.5;
+end
+[checks, msgs] = mark(checks, msgs, 'top_detections_are_signal', okTop, ...
+    sprintf(['mean posterior of the top 2%% of detections is %.2f: the signal component ' ...
+             'does not capture the strongest events (nothing is detected)'], top));
+
+% 7. mixture tail calibration (0.999 quantile of the fitted mixture on all samples)
+okTail = true; msg7 = '';
+if isfield(out, 'gof_mixture_tail_ratio') && numel(out.gof_mixture_tail_ratio) >= 2
+    tr = out.gof_mixture_tail_ratio(2);
+    okTail = ~isfinite(tr) || (tr > 1/5 && tr < 5);
+    if ~okTail
+        trn = NaN; if isfield(out, 'gof_noise_tail_ratio'), trn = out.gof_noise_tail_ratio(2); end
+        msg7 = sprintf(['mixture mis-calibrated in the tail: observed/nominal exceedance at its ' ...
+            '99.9%% quantile = %.2f (%s; noise-only ratio %.2f)'], tr, ...
+            ternary(tr > 1, 'tail too light -> false positives', 'tail too heavy'), trn);
+    end
+end
+[checks, msgs] = mark(checks, msgs, 'mixture_tail_calibrated', okTail, msg7);
+
+% 8. EM convergence
+okEM = ~(isfield(out, 'em_converged') && ~isempty(out.em_converged) && ~out.em_converged);
+itn = NaN; if isfield(out, 'em_iters'), itn = out.em_iters; end
+[checks, msgs] = mark(checks, msgs, 'em_converged', okEM, sprintf('EM did not converge (%d iterations)', itn));
+
+% 9. parameters finite
+okp = true;
+fn = fieldnames(out.noise_params);
+for i = 1:numel(fn)
+    v = out.noise_params.(fn{i}); if isnumeric(v) && any(~isfinite(v)), okp = false; end
+end
+fn = fieldnames(out.sig_params);
+for i = 1:numel(fn)
+    v = out.sig_params.(fn{i});
+    if isnumeric(v) && any(~isfinite(v)) && ~strcmp(fn{i}, 'mode'), okp = false; end
+end
+[checks, msgs] = mark(checks, msgs, 'params_finite', okp, 'non-finite noise/signal parameters');
+
+% 10. signal-component mass vs what the detections can account for.
+% Each detected event raises xrsm over roughly one kernel support, so the
+% signal prior should be of the order raw_N * kernel_samples / N. A
+% component holding many times that mass is modelling the background
+% (typically the joint-EM 'signal' absorbing the heteroskedastic bulk).
+okMass = true; ratio = NaN;
+if isfield(out, 'kernel_sec') && isfinite(out.kernel_sec) && out.kernel_sec > 0 && out.raw_N_estimate > 0 ...
+        && isfield(out, 'sampling_rate_used') && isfinite(out.sampling_rate_used)
+    kern_samples = max(1, out.kernel_sec * out.sampling_rate_used);
+    ratio = ps * numel(pprob) / (out.raw_N_estimate * kern_samples);
+    okMass = ratio <= 5;
+end
+[checks, msgs] = mark(checks, msgs, 'signal_mass_vs_detections', okMass, ...
+    sprintf(['signal component holds %.1f x the mass the %d detections can account for ' ...
+             '(prior %.3g); it is probably absorbing background rather than events'], ...
+             ratio, out.raw_N_estimate, ps));
+checks.messages = msgs;
+end
+
+function [checks, msgs] = mark(checks, msgs, name, ok, msg)
+checks.(name) = logical(ok);
+if ~ok
+    checks.ok = false;
+    msgs{end+1} = msg;
+end
+end
+
+function s = ternary(c, a, b)
+if c, s = a; else, s = b; end
+end
+
+function report_sanity(msgs, k, mode)
+if isempty(msgs) || strcmp(mode, 'off'), return, end
+txt = sprintf('detection_stats sanity checks failed for component %d:\n  - %s', k, strjoin(msgs, sprintf('\n  - ')));
+if strcmp(mode, 'error')
+    error('detection_stats:sanityCheck', '%s', txt);
+else
+    warning('detection_stats:sanityCheck', '%s', txt);
+end
+end
+
+function [outs, pprobs, pprobs_outlier, local_scales] = ...
+    run_model_selection(hos, x, options, model_select, criterion, cache)
+%RUN_MODEL_SELECTION  Fit every candidate combination and keep the best per
+% component.
+G = struct('noise_dist', {{'gamma','lognormal','weibull'}}, ...
+           'signal_dist', {{'gamma','lognormal'}}, ...
+           'freeze_noise', true, ...
+           'local_scale_sec', {{options.local_scale_sec}});
+if isstruct(model_select)
+    if isfield(model_select, 'noise_dist'),   G.noise_dist   = cellstr(model_select.noise_dist);   end
+    if isfield(model_select, 'signal_dist'),  G.signal_dist  = cellstr(model_select.signal_dist);  end
+    if isfield(model_select, 'freeze_noise'), G.freeze_noise = logical(model_select.freeze_noise(:))'; end
+    if isfield(model_select, 'local_scale_sec')
+        v = model_select.local_scale_sec;
+        if isnumeric(v), G.local_scale_sec = num2cell(v(:))'; else, G.local_scale_sec = cellstr(v); end
+    end
+end
+% Candidate grid (valid combinations only)
+C = struct('noise_dist', {}, 'signal_dist', {}, 'freeze_noise', {}, 'local_scale_sec', {});
+for ls = 1:numel(G.local_scale_sec)
+  for fz = G.freeze_noise
+    for nd = G.noise_dist
+      for sd = G.signal_dist
+        okc = true;
+        if strcmp(sd{1}, 'empirical') && ~fz, okc = false; end
+        if ~fz && ~(strcmp(nd{1}, 'gamma') || (strcmp(nd{1}, 'lognormal') && strcmp(sd{1}, 'lognormal'))), okc = false; end
+        if okc
+            C(end+1) = struct('noise_dist', nd{1}, 'signal_dist', sd{1}, 'freeze_noise', fz, ...
+                              'local_scale_sec', G.local_scale_sec{ls}); %#ok<AGROW>
+        end
+      end
+    end
+  end
+end
+nC = numel(C); K = numel(hos); N = numel(x);
+fprintf('detection_stats model selection: %d candidate(s) x %d component(s)\n', nC, K);
+res = cell(1, nC);
+for c = 1:nC
+    oc = options;
+    oc.noise_dist = C(c).noise_dist; oc.signal_dist = C(c).signal_dist;
+    oc.freeze_noise = C(c).freeze_noise; oc.local_scale_sec = C(c).local_scale_sec;
+    oc.model_select = false; oc.sanity_checks = 'off';
+    if ~strcmp(oc.signal_dist, 'noncentral_gamma'), oc.shared_scale = false; end
+    try
+        [o_c, pp_c, ~, ~, ~, ~, ~, ~, ~, ppo_c, ls_c] = detection_stats(hos, x, oc, 'xdetect_cache', cache);
+        res{c} = struct('outs', o_c, 'pprobs', pp_c, 'pprobs_outlier', ppo_c, 'local_scales', ls_c, 'err', '');
+    catch ME
+        res{c} = struct('outs', [], 'pprobs', [], 'pprobs_outlier', [], 'local_scales', [], 'err', ME.message);
+        fprintf('  candidate %d (%s/%s, freeze=%d, scale=%s) failed: %s\n', c, C(c).noise_dist, ...
+            C(c).signal_dist, C(c).freeze_noise, num2str(C(c).local_scale_sec), ME.message);
+    end
+end
+% Score table and selection per component
+pprobs = zeros(N, K); pprobs_outlier = zeros(N, K); local_scales = zeros(N, K);
+outs = [];
+for k = 1:K
+    T = repmat(struct('noise_dist', '', 'signal_dist', '', 'freeze_noise', false, 'local_scale_sec', 0, ...
+        'bic', NaN, 'aic', NaN, 'logL', NaN, 'n_params', NaN, 'tail_ratio_999', NaN, 'noise_tail_ratio_999', NaN, ...
+        'ks_noise', NaN, 'cv_span_score', NaN, ...
+        'adjusted_N', NaN, 'est_prior', NaN, 'signal_right_of_noise', false, 'em_converged', true, ...
+        'mass_ok', true, 'error', '', 'selected', false), 1, nC);
+    for c = 1:nC
+        T(c).noise_dist = C(c).noise_dist; T(c).signal_dist = C(c).signal_dist;
+        T(c).freeze_noise = C(c).freeze_noise; T(c).local_scale_sec = C(c).local_scale_sec;
+        T(c).error = res{c}.err;
+        if isempty(res{c}.outs), continue, end
+        o = res{c}.outs(k);
+        T(c).bic = o.bic; T(c).aic = o.aic; T(c).logL = o.logL; T(c).n_params = o.n_params;
+        T(c).tail_ratio_999 = o.gof_mixture_tail_ratio(2); T(c).ks_noise = o.gof_ks_noise;
+        T(c).noise_tail_ratio_999 = o.gof_noise_tail_ratio(2);
+        T(c).cv_span_score = NaN;
+        T(c).adjusted_N = o.adjusted_N_estimate; T(c).est_prior = o.est_prior;
+        px = o.snrx(:);
+        T(c).signal_right_of_noise = sum(px .* o.sigpdf(:)) / max(sum(o.sigpdf), eps) > ...
+                                     sum(px .* o.noisepdf(:)) / max(sum(o.noisepdf), eps);
+        T(c).em_converged = ~(isfield(o, 'em_converged') && ~isempty(o.em_converged) && ~o.em_converged);
+        if isfinite(o.kernel_sec) && o.kernel_sec > 0 && o.raw_N_estimate > 0
+            T(c).mass_ok = o.est_prior * N / (o.raw_N_estimate * max(1, o.kernel_sec * o.sampling_rate_used)) <= 5;
+        end
+    end
+    % Validity, in order of preference: converged EM and both structural
+    % checks (signal right of noise, signal mass consistent with the
+    % detections), then just signal right of noise, then anything that fit.
+    valid = arrayfun(@(t) isempty(t.error) && isfinite(t.bic) && t.signal_right_of_noise ...
+                          && t.em_converged && t.mass_ok, T);
+    if ~any(valid)
+        valid = arrayfun(@(t) isempty(t.error) && isfinite(t.bic) && t.signal_right_of_noise, T);
+    end
+    if ~any(valid)
+        valid = arrayfun(@(t) isempty(t.error) && isfinite(t.bic), T);
+    end
+    if ~any(valid), error('detection_stats:modelSelectFailed', 'No candidate produced a usable fit for component %d.', k); end
+    tailScore = arrayfun(@(t) abs(log(max(t.tail_ratio_999, eps))), T);
+    switch criterion
+        case 'tail'
+            score = tailScore;
+        case 'ks'
+            score = arrayfun(@(t) t.ks_noise, T);
+            score(~isfinite(score)) = arrayfun(@(t) t.bic, T(~isfinite(score)));  % joint-EM branch has no KS
+        otherwise   % 'bic' | 'aic': within a local-scale value; across values by tail calibration
+            score = arrayfun(@(t) t.(criterion), T);
+    end
+    score(~valid) = Inf;
+    spanKey = cellfun(@(v) sprintf('%g', double(v)), {C.local_scale_sec}, 'UniformOutput', false);
+    ukeys = unique(spanKey);
+    if numel(ukeys) > 1 && any(strcmp(criterion, {'bic','aic'}))
+        % Likelihoods are not comparable across spans (different data), so
+        % rank the spans by the family-free CV score of the block levels
+        % (Inf/0 = global), then pick the family within the winning span.
+        fs_k = hos(k).sampling_rate;
+        if isempty(cache.scale_src), src_k = cache.xfilts(:,k); else, src_k = cache.scale_src(:,k); end
+        [blk, ~, nBlk] = block_medians(src_k, cache.xthrs(:,k), fs_k, options.local_scale_block_sec);
+        spanScore = inf(1, numel(ukeys)); best = nan(1, numel(ukeys));
+        for u = 1:numel(ukeys)
+            idx = find(strcmp(spanKey, ukeys{u}) & valid);
+            if isempty(idx), continue, end
+            sv = C(idx(1)).local_scale_sec;
+            if ischar(sv), sv = res{idx(1)}.outs(k).local_scale.sec; end
+            spanScore(u) = cv_span_score(blk, nBlk, options.local_scale_block_sec, sv);
+            [~, j] = min(score(idx)); best(u) = idx(j);
+            for i = idx, T(i).cv_span_score = spanScore(u); end
+        end
+        [~, u] = min(spanScore); sel = best(u);
+    else
+        [~, sel] = min(score);
+    end
+    T(sel).selected = true;
+    o = res{sel}.outs(k);
+    o.model_selection = T;
+    % Effective parameters of the winner (model_select off, numeric span) so
+    % that detection_stats(hos, x, outs(k).options) reproduces it directly;
+    % the selection request itself is kept in options.requested.
+    o.options.noise_dist = C(sel).noise_dist; o.options.signal_dist = C(sel).signal_dist;
+    o.options.freeze_noise = C(sel).freeze_noise;
+    o.options.local_scale_sec = o.local_scale.sec;
+    o.options.model_select = false; o.options.select_criterion = criterion;
+    o.options.requested = struct('local_scale_sec', options.local_scale_sec, 'model_select', model_select);
+    if isempty(outs), outs = o; else, outs(k) = o; end
+    pprobs(:,k) = res{sel}.pprobs(:,k);
+    pprobs_outlier(:,k) = res{sel}.pprobs_outlier(:,k);
+    local_scales(:,k) = res{sel}.local_scales(:,k);
+    fprintf('  component %d: selected %s noise / %s signal, freeze=%d, local_scale_sec=%s (BIC %.1f, tail ratio %.2f)\n', ...
+        k, C(sel).noise_dist, C(sel).signal_dist, C(sel).freeze_noise, num2str(o.local_scale.sec), ...
+        T(sel).bic, T(sel).tail_ratio_999);
+end
 end
 
 % =========================================================================
@@ -1447,21 +2222,16 @@ function [a_n, b_n, mu_n, sig_n, a_w, b_w, nu_c, mode_x, F_X_bulk, f_X_bulk] = .
 a_n = NaN; b_n = NaN; mu_n = NaN; sig_n = NaN;
 a_w = NaN; b_w = NaN; nu_c = NaN;
 sw = max(sum(w_obs), eps);
-% For gamma and Weibull we need numerical MLE; rather than running
-% fminsearch on the full sample with continuous weights (slow on
-% millions of samples), draw a weighted random subsample and call
-% MATLAB's optimized built-in gamfit/wblfit on the equal-weighted
-% subsample. Subsampling noise on 100 k samples is well below
-% model-misspecification error for our applications.
-N_SUB = 100000;
-draw_weighted_sub = @(x, w, n) x(randsample(numel(x), min(n, numel(x)), true, max(w, 0) + eps));
+% Gamma and Weibull are fitted by exact WEIGHTED maximum likelihood on
+% the full sample (one-dimensional root finds on the weighted sufficient
+% statistics; see weighted_gamma_mle / weighted_weibull_mle). This
+% replaces the earlier gamfit/wblfit on a random weighted subsample,
+% which made every fit - and therefore the posterior - depend on the
+% RNG state (runs were not reproducible to ~5 % in adjusted N).
 switch noise_dist
     case 'gamma'
         try
-            x_sub = draw_weighted_sub(x_obs, w_obs, N_SUB);
-            gam_params = gamfit(x_sub.^2);
-            a_n = gam_params(1);
-            b_n = gam_params(2);
+            [a_n, b_n] = weighted_gamma_mle(x_obs.^2, w_obs);
         catch
             % method-of-moments fallback
             z = x_obs.^2;
@@ -1485,20 +2255,21 @@ switch noise_dist
         F_X_bulk = @(x) logncdf(x, mu_n, sig_n);
         f_X_bulk = @(x) lognpdf(x, mu_n, sig_n);
     case 'chi2'
+        % Scaled chi-square (Satterthwaite): Z = x^2 ~ s * chi2(nu) with
+        % nu = 2 E[Z]^2 / Var[Z] and s = E[Z] / nu, i.e. an average of
+        % ~nu/2 half-normal squares. (The former unscaled chi2(E[Z]) had
+        % variance 2 where the normalised statistic has ~2/n_eff.)
         z = x_obs.^2;
-        nu_c = max(sum(w_obs .* z) / sw, 1);
-        % Mode of f_X(x) = 2x * chi2pdf(x^2, nu) — same Jacobian fix as
-        % the gamma branch (chi2(nu) = gamma(nu/2, 2), so x_mode = sqrt(nu-1)
-        % for nu > 1; mode at 0 otherwise).
-        mode_x = sqrt(max(nu_c - 1, 0));
-        F_X_bulk = @(x) chi2cdf(x.^2, nu_c);
-        f_X_bulk = @(x) 2 .* x .* chi2pdf(x.^2, nu_c);
+        mu_z  = sum(w_obs .* z) / sw;
+        var_z = max(sum(w_obs .* (z - mu_z).^2) / sw, eps);
+        nu_c  = [max(2 * mu_z^2 / var_z, 1), mu_z / max(2 * mu_z^2 / var_z, 1)];   % [nu, scale s]
+        % f_X(x) = 2x * chi2pdf(x^2/s, nu)/s ; x_mode = sqrt(s (nu - 2) + s) = sqrt(s (nu-1))
+        mode_x = sqrt(max(nu_c(2) * (nu_c(1) - 1), 0));
+        F_X_bulk = @(x) chi2cdf(x.^2 / nu_c(2), nu_c(1));
+        f_X_bulk = @(x) 2 .* x .* chi2pdf(x.^2 / nu_c(2), nu_c(1)) / nu_c(2);
     case 'weibull'
         try
-            x_sub = draw_weighted_sub(x_obs, w_obs, N_SUB);
-            wbl_params = wblfit(x_sub);
-            a_w = wbl_params(1);
-            b_w = wbl_params(2);
+            [a_w, b_w] = weighted_weibull_mle(x_obs, w_obs);
         catch
             a_w = max(sum(w_obs .* x_obs) / sw, 1e-3);
             b_w = 2;
@@ -1511,6 +2282,146 @@ switch noise_dist
         F_X_bulk = @(x) wblcdf(x, a_w, b_w);
         f_X_bulk = @(x) wblpdf(x, a_w, b_w);
 end
+end
+
+% =========================================================================
+function [prm, it, converged, logL] = frozen_signal_em(family, xe, we, log_f_n, prm, maxit)
+%FROZEN_SIGNAL_EM  EM over one parametric signal component (gamma on x^2 or
+% lognormal on x) with the noise log-density log_f_n frozen, on (binned)
+% samples xe with weights we. Closed-form weighted MLE M-steps.
+W_total = sum(we); logL_prev = -Inf; logL = -Inf; it = 0;
+lx = log(max(xe, eps));
+for it = 1:maxit
+    switch family
+        case 'gamma'
+            log_f_s = log(max(2 * xe .* gampdf(xe.^2, prm.a, prm.b), eps));
+        otherwise
+            log_f_s = -lx - log(prm.sigma) - 0.5 * log(2 * pi) - (lx - prm.mu).^2 / (2 * prm.sigma^2);
+    end
+    log_pi_n = log(max(1 - prm.pi_s, eps));
+    log_pi_s = log(max(prm.pi_s, eps));
+    m = max(log_pi_n + log_f_n, log_pi_s + log_f_s);
+    lden = m + log(exp(log_pi_n + log_f_n - m) + exp(log_pi_s + log_f_s - m));
+    gamma_t = exp(log_pi_s + log_f_s - lden);
+    logL = sum(we .* lden);
+    W_s = sum(we .* gamma_t);
+    prm.pi_s = W_s / W_total;
+    if W_s > 1
+        switch family
+            case 'gamma'
+                z_eff   = xe.^2;
+                mu_z    = sum(we .* gamma_t .* z_eff) / W_s;
+                mlog_z  = sum(we .* gamma_t .* log(max(z_eff, eps))) / W_s;
+                s_ = log(mu_z) - mlog_z;
+                if s_ > 1e-10
+                    a_s = (3 - s_ + sqrt((s_ - 3)^2 + 24 * s_)) / (12 * s_);
+                    for ni = 1:50
+                        f  = log(a_s) - psi(a_s) - s_;
+                        fp = 1 / a_s - psi(1, a_s);
+                        a_new = a_s - f / fp;
+                        if abs(a_new - a_s) < 1e-6 * abs(a_s) + 1e-9, a_s = a_new; break, end
+                        a_s = max(a_new, 1e-3);
+                    end
+                    prm.a = a_s; prm.b = mu_z / a_s;
+                end
+            otherwise
+                prm.mu    = sum(we .* gamma_t .* lx) / W_s;
+                prm.sigma = sqrt(max(sum(we .* gamma_t .* (lx - prm.mu).^2) / W_s, 1e-6));
+        end
+    end
+    if it > 1 && abs(logL - logL_prev) < 1e-6 * max(abs(logL), 1), break, end
+    logL_prev = logL;
+end
+converged = it < maxit;
+end
+
+function m = signal_mode_of(family, prm)
+%SIGNAL_MODE_OF  Mode in x of the signal component.
+switch family
+    case 'gamma'
+        m = sqrt(max(prm.b * (2 * prm.a - 1) / 2, 0));
+    otherwise
+        m = exp(prm.mu - prm.sigma^2);
+end
+end
+
+function m = signal_median_of(family, prm)
+%SIGNAL_MEDIAN_OF  Median in x of the signal component (location measure
+% that, unlike the mode, is not pulled to zero by a wide lognormal).
+switch family
+    case 'gamma'
+        m = sqrt(max(gaminv(0.5, prm.a, prm.b), 0));
+    otherwise
+        m = exp(prm.mu);
+end
+end
+
+function q = noise_quantile(F, p, xmax)
+%NOISE_QUANTILE  x at which the frozen noise CDF F reaches p (grid + interpolation).
+xs = linspace(0, max(xmax, 1), 20000);
+Fx = F(xs); Fx(~isfinite(Fx)) = 0;
+j = find(Fx >= p, 1, 'first');
+if isempty(j), q = xs(end); elseif j == 1, q = xs(1);
+else, q = xs(j-1) + (p - Fx(j-1)) / max(Fx(j) - Fx(j-1), eps) * (xs(j) - xs(j-1));
+end
+end
+
+% =========================================================================
+function [a, b] = weighted_gamma_mle(z, w)
+%WEIGHTED_GAMMA_MLE  Gamma(shape a, scale b) MLE with sample weights w >= 0.
+% Score equations: log(a) - psi(a) = log(mean_w z) - mean_w(log z) =: s,
+% b = mean_w(z) / a. The left side is monotone in a, so a single fzero on
+% log(a) suffices; Minka's closed-form start is used as the bracket centre.
+keep = isfinite(z) & z > 0 & isfinite(w) & w > 0;
+z = z(keep); w = w(keep);
+if numel(z) < 10, error('weighted_gamma_mle:tooFew', 'too few samples'); end
+sw = sum(w);
+m  = sum(w .* z) / sw;
+ml = sum(w .* log(z)) / sw;
+s  = log(m) - ml;
+if ~(s > 1e-10)            % essentially degenerate (all equal): Gaussian limit
+    a = 1e6; b = m / a; return
+end
+a0 = (3 - s + sqrt((s - 3)^2 + 24 * s)) / (12 * s);
+f  = @(u) u - psi(exp(u)) - s;      % u = log(a)
+lo = log(a0) - 2; hi = log(a0) + 2;
+while f(lo) < 0, lo = lo - 2; if lo < -20, break, end, end
+while f(hi) > 0, hi = hi + 2; if hi > 25, break, end, end
+try
+    u = fzero(f, [lo, hi]);
+catch
+    u = log(a0);
+end
+a = exp(u);
+b = m / a;
+end
+
+function [lambda, k] = weighted_weibull_mle(x, w)
+%WEIGHTED_WEIBULL_MLE  Weibull(scale lambda, shape k) MLE with weights.
+% Profile score for k:
+%   sum(w x^k log x)/sum(w x^k) - 1/k - mean_w(log x) = 0,
+% lambda = (mean_w(x^k))^(1/k). Data are rescaled by their weighted
+% geometric mean so that x^k cannot overflow.
+keep = isfinite(x) & x > 0 & isfinite(w) & w > 0;
+x = x(keep); w = w(keep);
+if numel(x) < 10, error('weighted_weibull_mle:tooFew', 'too few samples'); end
+sw = sum(w);
+lx = log(x);
+ml = sum(w .* lx) / sw;
+c  = exp(ml);                       % weighted geometric mean
+y  = x / c; ly = lx - ml;           % mean_w(ly) = 0
+sd = sqrt(max(sum(w .* ly.^2) / sw, 1e-12));
+k0 = 1.2825 / sd;                   % SD(log X) = pi/(k sqrt 6) for a Weibull
+g  = @(k) sum(w .* y.^k .* ly) / max(sum(w .* y.^k), realmin) - 1 / k;   % increasing in k
+lo = k0 / 4; hi = k0 * 4;
+while g(lo) > 0 && lo > 1e-3, lo = lo / 2; end
+while g(hi) < 0 && hi < 1e3,  hi = hi * 2; end
+try
+    k = fzero(g, [lo, hi]);
+catch
+    k = k0;
+end
+lambda = c * (sum(w .* y.^k) / sw)^(1 / k);
 end
 
 % =========================================================================
@@ -1568,7 +2479,8 @@ switch noise_dist
     case 'weibull'
         s.a = a_wbl; s.b = b_wbl;
     case 'chi2'
-        s.nu = nu_chi2;
+        s.nu = nu_chi2(1);
+        if numel(nu_chi2) > 1, s.scale = nu_chi2(2); else, s.scale = 1; end
 end
 s.mode = noise_mode;
 end
