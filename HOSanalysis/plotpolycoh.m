@@ -182,7 +182,7 @@ for hi = 1:length(hos)
                 K = [K{:}];
                 K = K(K(:,end-1)<=length(wb{end-1})/2,:);
         else
-            K=1
+            K = 1;
         end
         dims = [];
         for k = 3:length(wb)

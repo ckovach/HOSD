@@ -28,11 +28,11 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %                  excluded, moving median over local_scale_sec, x 1.4826)
 %                  before forming xrsm, which removes the scale-mixture
 %                  heaviness that non-stationary background produces.
-%                  'auto' chooses the span by 2-fold cross-validation on
-%                  the block medians: each block's noise level is
-%                  predicted from the moving median of the OTHER fold's
-%                  blocks and the span with the smallest squared log
-%                  prediction error wins (candidates 2..240 s, at least
+%                  'auto' chooses the span by leave-one-block-out
+%                  cross-validation on the block medians: each block's
+%                  noise level is predicted from the moving median of the
+%                  OTHER blocks in its window and the span with the
+%                  smallest squared log prediction error wins (candidates 2..240 s, at least
 %                  20 kernel durations and at most a quarter of the
 %                  record, plus 'global' = no local scaling). The
 %                  candidate set can be given as local_scale_candidates.
@@ -100,7 +100,7 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %   'sanity_checks'  'warn' (default) | 'off' | 'error'. Runs the checks
 %                  listed under outs(k).checks below and warns (or errors)
 %                  when any fails.
-%   'noise_dist'   {'gamma','lognormal','weibull','chi2'} (default 'lognormal')
+%   'noise_dist'   {'gamma','lognormal','weibull','chi2','gengamma'} (default 'lognormal')
 %       Marginal noise family on the smoothed xrsm:
 %         'lognormal' : X = xrsm  ~ LogN(mu, sigma). Heavier right tail.
 %                       Default based on superiority of fit in the MASS cohort  
@@ -113,6 +113,15 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %                       2026-09 this family was the unscaled chi2(nu) with
 %                       nu = E[Z], which has variance 2 where the normalised
 %                       statistic has ~2/n_eff and could not fit.
+%         'gengamma'  : X = xrsm ~ generalized gamma (Stacy) with scale a,
+%                       shape d and power p: f ~ x^(d-1) exp(-(x/a)^p).
+%                       Three parameters; nests gamma-on-x (p=1), Weibull
+%                       (d=p), the 'gamma' family above (p=2, d=2a) and the
+%                       lognormal as a limit. Weighted MLE via
+%                       weighted_gengamma_mle. Frozen fits only (like
+%                       weibull/chi2). OPT-IN: not in the default
+%                       model_select grid -- pass
+%                       model_select=struct('noise_dist',{{'gamma','lognormal','weibull','gengamma'}}).
 %   'signal_dist'  {'empirical','gamma','noncentral_gamma','lognormal'} (default 'lognormal')
 %       Family of the signal component:
 %         'lognormal' : LogN(mu_s, sigma_s). New default
@@ -341,8 +350,8 @@ switch noise_dist
 end
 
 % Validation
-assert(any(strcmp(noise_dist,  {'gamma','lognormal','weibull','chi2'})), ...
-    'noise_dist must be one of {gamma, lognormal, weibull, chi2}');
+assert(any(strcmp(noise_dist,  {'gamma','lognormal','weibull','chi2','gengamma'})), ...
+    'noise_dist must be one of {gamma, lognormal, weibull, chi2, gengamma}');
 assert(any(strcmp(signal_dist, {'empirical','gamma','noncentral_gamma','lognormal'})), ...
     'signal_dist must be one of {empirical, gamma, noncentral_gamma, lognormal}');
 if isempty(freeze_noise)
@@ -1310,6 +1319,7 @@ for k = 1:length(hos)
         switch noise_dist
             case {'gamma','lognormal','weibull'}, n_noise = 2;
             case 'chi2',                            n_noise = 1;
+            case 'gengamma',                        n_noise = 3;
         end
         switch signal_dist
             case 'gamma',     n_signal_par = 2;
@@ -1657,6 +1667,7 @@ for k = 1:length(hos)
     switch noise_dist
         case {'gamma','lognormal','weibull'}, n_noise = 2;
         case 'chi2',                            n_noise = 1;
+        case 'gengamma',                        n_noise = 3;
         otherwise,                              n_noise = 2;
     end
     n_signal = numel(px) - 1;     % empirical sigpdf, sums to 1
@@ -2209,14 +2220,17 @@ function [a_n, b_n, mu_n, sig_n, a_w, b_w, nu_c, mode_x, F_X_bulk, f_X_bulk] = .
 %   w_obs       [N x 1] non-negative noise-responsibility weights
 %                       (typically 1 - wgt, with wgt = kernel-weighted
 %                        fraction of variance from supra-threshold xfilt)
-%   noise_dist  'gamma' | 'lognormal' | 'weibull' | 'chi2'
+%   noise_dist  'gamma' | 'lognormal' | 'weibull' | 'chi2' | 'gengamma'
 %   opts        optimset struct for fminsearch (gamma + Weibull)
 %
 % OUTPUTS
 %   a_n, b_n            gamma shape, scale (NaN unless noise_dist='gamma')
 %   mu_n, sig_n         lognormal mu, sigma (NaN unless 'lognormal')
-%   a_w, b_w            Weibull scale, shape (NaN unless 'weibull')
-%   nu_c                chi2 DF (NaN unless 'chi2')
+%   a_w, b_w            Weibull scale, shape (NaN unless 'weibull');
+%                       for 'gengamma' these carry scale a and shape d
+%   nu_c                chi2 DF (NaN unless 'chi2'); for 'gengamma' the
+%                       power p (the slots are only read back by
+%                       make_noise_params_local)
 %   mode_x              mode of the marginal in xrsm units
 %   F_X_bulk, f_X_bulk  function handles for the marginal CDF and PDF
 a_n = NaN; b_n = NaN; mu_n = NaN; sig_n = NaN;
@@ -2281,6 +2295,24 @@ switch noise_dist
         end
         F_X_bulk = @(x) wblcdf(x, a_w, b_w);
         f_X_bulk = @(x) wblpdf(x, a_w, b_w);
+    case 'gengamma'
+        % Stacy generalized gamma on x: scale a_g, shape d_g, power p_g.
+        % Reported through the Weibull slots (a_w = a, b_w = d) and the
+        % chi2 slot (nu_c = p); see make_noise_params_local.
+        try
+            [a_g, d_g, p_g] = weighted_gengamma_mle(x_obs, w_obs);
+        catch
+            a_g = max(sum(w_obs .* x_obs) / sw, 1e-3); d_g = 2; p_g = 2;   % Rayleigh-like fallback
+        end
+        a_w = a_g; b_w = d_g; nu_c = p_g;
+        if d_g > 1
+            mode_x = a_g * ((d_g - 1) / p_g)^(1 / p_g);
+        else
+            mode_x = 0;
+        end
+        F_X_bulk = @(x) gammainc((max(x, 0) / a_g).^p_g, d_g / p_g);
+        f_X_bulk = @(x) exp(log(p_g) - d_g * log(a_g) - gammaln(d_g / p_g) ...
+                            + (d_g - 1) .* log(max(x, realmin)) - (max(x, 0) / a_g).^p_g);
 end
 end
 
@@ -2478,6 +2510,19 @@ switch noise_dist
         s.mu = mu_n; s.sigma = sigma_n;
     case 'weibull'
         s.a = a_wbl; s.b = b_wbl;
+    case 'gengamma'
+        s.a = a_wbl; s.d = b_wbl; s.p = nu_chi2(1);
+        % d -> Inf with p -> 0 is the lognormal limit of the family: the
+        % likelihood is flat along that ridge, so a fit that ran to the
+        % power bound is "a lognormal by another name" and its a/d/p are
+        % not individually meaningful. Say so.
+        if s.p <= 0.05 && s.d >= 100
+            s.limit = 'lognormal (p at lower bound, d large): equivalent to noise_dist=lognormal';
+        elseif abs(s.p - 1) < 0.05
+            s.limit = 'near gamma-on-x (p ~ 1)';
+        elseif abs(s.d - s.p) < 0.05 * max(s.p, 1)
+            s.limit = 'near Weibull (d ~ p)';
+        end
     case 'chi2'
         s.nu = nu_chi2(1);
         if numel(nu_chi2) > 1, s.scale = nu_chi2(2); else, s.scale = 1; end
