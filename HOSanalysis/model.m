@@ -88,27 +88,26 @@ classdef model
 
             while i < length(varargin)
 
-                switch(varargin{1})
+                switch(varargin{i})
 
                     case {'modelType','Tstart','autodep','event'}
-                        out.(varargin{i}) = varargin{i+1};
-                        i=i+1;
-                    case {'eventTimes','eventTypes'}
-                        fldn = lower(regexprep(varargin{i},'event',''));
-                        me.event.(fldn) = varargin{i+1};
+                        me.(varargin{i}) = varargin{i+1};
+                    case 'eventTimes'
+                        me.event(1).times = varargin{i+1};
+                    case 'eventTypes'
+                        me.event(1).evnt = varargin{i+1};
                     case 'Trange'
-                         out.event.(varargin{i}) = varargin{i+1};
+                        me.event(1).Trange = varargin{i+1};
                     otherwise
                         if ~ischar(varargin{i})
                             error('Expecting a keyword string, found a %s object instead.',class(varargin{i}));
                         elseif ismember(varargin{i},fieldnames(me))
                             me.(varargin{i}) = varargin{i+1};
-                            i = i+1;
                         else
                             error('%s is an unrecognized keyword.',varargin{i});
                         end
                 end
-                i=i+1;
+                i=i+2;
             end
                 
         end
@@ -134,16 +133,17 @@ classdef model
                 if ~isfield(me.event(k),'timeBasis')
                     me.event(k).timeBasis='polynomial';
                 end
-                switch me.event(k).timeBasis
-                    case {'forward_laguerre','backward_laguerre'}
+                switch lower(me.event(k).timeBasis)
+                    case {'forward_laguerre','backward_laguerre','laguerre'}
                         trts = round(me.event(k).times*me.sampling_rate)+1; %Zero corresponds to the 1st sample
+                        trts = min(max(trts,1),size(me.response,1)); % keep the impulse inside the record (as chopper's T is clamped for the polynomial bases)
                     otherwise
                         evw = me.get_event_window(me.event(k)); 
-                        trts = evw.T(round(end/2),:);
+                        trts = evw.T(floor(end/2)+1,:); % the row that circshift(TP,-floor(L/2)) below moves to lag 0
                 end
                 for kk = 1:size(F,2)
                     [unq,~,unqi] = unique(me.event(k).evnt(kk,:));
-                    F(trts,:) = unqi;
+                    F(trts,kk) = unqi;
                 end
 %                 F(evw.T(:)*ones(1,size(evs,3))+size(F,1)*ones(numel(evw.T),1)*(0:size(evs,3)-1)) = evs(:);
                 %Indicate times to be ignored outside the regression window
@@ -161,7 +161,7 @@ classdef model
                     label = sprintf('Factor %i',k);
                 end    
                 if isfield(me.event(k),'fact2reg_args')
-                    fact2reg_args = me.event(k).fact2regs_args;
+                    fact2reg_args = me.event(k).fact2reg_args;
                 else
                     if ~isempty(out)
                         fact2reg_args={'codeincr',[out(end).code]};
@@ -193,14 +193,18 @@ classdef model
                     me.event(k).timeBasis = me.timeBasis;
                 end
                 switch lower(me.event(k).timeBasis)
-                    case {'forward_laguerre','backward_laguerre'}
-                        TP = laguerreFilt((0:length(me.response)-1)'==0,me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate);
-                        TP = circshift(TP,[-1 0]);
-                        Treg = regressor(fft(TP),'label','After','codeincr',codeincr);
-                        if strcmpi(me.event(k).timeBasis,'backward_laguerre')
-                          TP = flipud(TP);
-                          Treg = regressor(fft(TP),'label','Before','codeincr',codeincr);
+                    case {'forward_laguerre','backward_laguerre','laguerre'}
+                        % Causal / anticausal / two-sided Laguerre functions over the
+                        % whole record (anticausal lags wrap to the end); 'laguerre'
+                        % reads event.laguerre_sides / laguerre_continuity, see laguerreBasis.
+                        [sides,continuity] = laguerre_options(me.event(k));
+                        TP = laguerreBasis((0:length(me.response)-1)'/me.sampling_rate,me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate,sides,continuity,true);
+                        switch sides
+                            case 'causal';     lbl = 'After';
+                            case 'anticausal'; lbl = 'Before';
+                            otherwise;         lbl = 'Around';
                         end
+                        Treg = regressor(fft(TP),'label',lbl,'codeincr',codeincr);
 
                     case {'polynomial','chebyt','bernstein'}
 %                         timeOrder = [];
@@ -229,7 +233,7 @@ classdef model
                 for kk = 1:length(Freg)
 %                            FTreg(kk).window = k; 
                    FTreg(kk).window = me.event(k); 
-                   FTreg(kk).value = ifft(FTreg(kk).value);
+                   FTreg(kk).value = real(ifft(FTreg(kk).value)); % product of FFTs of real signals: imaginary part is roundoff
                 end
 
                 out = [FTreg,out]; %#ok<*AGROW>
@@ -289,7 +293,7 @@ classdef model
                 evw(k).T(evw(k).T>length(me.response))=length(me.response);
                 timeOrder = []; %#ok<*PROPLC>
                 if isfield(evnt,'timeOrder')
-                    timeOrder = evnt.timeOrder;
+                    timeOrder = evnt(k).timeOrder;
                 end
                 if isempty(timeOrder) %#ok<*PROP>
                     timeOrder = me.timeOrder;
@@ -300,12 +304,16 @@ classdef model
                 switch lower(evnt(k).timeBasis)
                     case 'bernstein'
                         evw(k).P = bernsteinp(length(evw(k).tt),timeOrder);
+                        evw(k).N = eye(size(evw(k).P,2));
                     case {'chebyt','polynomial'}
                         evw(k).P = chebyT(length(evw(k).tt),timeOrder);
-                    case {'forward_laguerre'}
-                        evw(k).P = laguerreFilt(evw(k).tt(:)==0,evnt(k).laguerre_ord,evnt(k).laguerre_tau,me.sampling_rate);
-                    case {'backward_laguerre'}
-                        evw(k).P = flipud(laguerreFilt(flipud(evw(k).tt(:)==0),evnt(k).laguerre_ord,evnt(k).laguerre_tau,me.sampling_rate));
+                        evw(k).N = eye(size(evw(k).P,2));
+                    case {'forward_laguerre','backward_laguerre','laguerre'}
+                        % Same sequences and alignment as designMtx (laguerreBasis);
+                        % N maps the fitted coefficients back to the unconstrained
+                        % [causal; anticausal] ones when a continuity constraint is on.
+                        [sides,continuity] = laguerre_options(evnt(k));
+                        [evw(k).P,evw(k).N] = laguerreBasis(evw(k).tt(:),evnt(k).laguerre_ord,evnt(k).laguerre_tau,me.sampling_rate,sides,continuity,false);
                 end
 %                 evw(k).intercept=evw(k).P(:,1);
 %                 evw(k).P(:,1)=[];    
@@ -321,3 +329,28 @@ classdef model
     end
 end
 
+
+function [sides,continuity] = laguerre_options(evnt)
+% Direction and continuity of a Laguerre time basis. 'forward_laguerre' /
+% 'backward_laguerre' fix the side; 'laguerre' reads evnt.laguerre_sides
+% ('causal' | 'anticausal' | 'both', default 'both') and, for 'both',
+% evnt.laguerre_continuity ('none' | 'C0' | 'C1', default 'none').
+switch lower(evnt.timeBasis)
+    case 'forward_laguerre';  sides = 'causal';
+    case 'backward_laguerre'; sides = 'anticausal';
+    otherwise
+        sides = 'both';
+        if isfield(evnt,'laguerre_sides') && ~isempty(evnt.laguerre_sides)
+            sides = lower(char(evnt.laguerre_sides));
+        end
+end
+switch sides
+    case {'causal','forward','after'};        sides = 'causal';
+    case {'anticausal','backward','before'};  sides = 'anticausal';
+    otherwise;                                sides = 'both';
+end
+continuity = 'none';
+if strcmp(sides,'both') && isfield(evnt,'laguerre_continuity') && ~isempty(evnt.laguerre_continuity)
+    continuity = lower(char(evnt.laguerre_continuity));
+end
+end

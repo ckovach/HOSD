@@ -236,7 +236,7 @@ end
 
 l1regfuno = l1regfun;
 
-if any(y>Ntot)
+if strcmpi(type,'binomial') && any(y>Ntot) % Poisson counts are unbounded
     error('y must be a count which is less than Ntot')
 end
 
@@ -283,9 +283,9 @@ switch lower(type)
         Pfun = @(th) exp( rho(th) );
         
         LLvec = @(th)rho(th).*y - Pfun(th);
-        LLfun = @(th) sum( LLvec(th) ) - RegMat(th,2) - l1regfun(th);
-        DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2);
-        D2LLfun = @(th)   spX'*diag( sparse(Pfun(th)) )*spX - D2Regfun(th);
+        LLfun = @(th) sum( LLvec(th) ) - th'*(RegMat(th,1) + L1reg.*sign(th)); % scalar penalised log-likelihood, as for the binomial case
+        DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
+        D2LLfun = @(th)   -spX'*diag( sparse(Pfun(th)) )*spX - sparse(D2Regfun(th)); % Hessian of the log-likelihood is negative definite
 %         DLLfun = @(th) sum((y'*- Pfun(th));
         
         
@@ -379,9 +379,10 @@ while ~isequal(discard,discold) && nlasso < maxlasso
                 rho = @(th) spX*th;
                 Pfun = @(th) exp( rho(th) );
 
-                LLfun = @(th) sum(rho(th).*y - Pfun(th));
-                DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2);
-                D2LLfun = @(th)   spX'*diag( sparse(Pfun(th)) )*spX - D2Regfun(th);
+                LLvec = @(th) rho(th).*y - Pfun(th); % keep the per-sample likelihood on the reduced design too
+                LLfun = @(th) sum(rho(th).*y - Pfun(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
+                DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
+                D2LLfun = @(th)   -spX'*diag( sparse(Pfun(th)) )*spX - sparse(D2Regfun(th)); % negative definite
         %         DLLfun = @(th) sum((y'*- Pfun(th));
 
 

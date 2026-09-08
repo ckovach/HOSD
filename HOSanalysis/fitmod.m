@@ -7,6 +7,11 @@ function out = fitmod(mdl)
 use_glmfit = false;
 out.model = mdl;
 
+glmtype = mdl.modelType;
+if strcmpi(glmtype,'count')
+    glmtype = 'poisson';
+end
+
 regs = mdl.designMtx;
 
 
@@ -17,11 +22,12 @@ if use_glmfit
 	out.b = b([2:end,1]);
 else
     X(:,end+1)=1;
-    [b,H,LL] = vectorglm(X,mdl.response,[],mdl.modelType,'gaussreg',1e-6); 
+    [b,H,LL,msg] = vectorglm(X,mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); 
     devfull = -2*LL;
     stat.covb = -H^-1;
     stat.beta = b;
     out.b = b;
+    out.msg = msg; % convergence / conditioning flags from vectorglm
     
 end
 codes = [regs.code];
@@ -30,11 +36,11 @@ out.devfull = devfull;
 out.stat = stat;
 if use_glmfit
     out.yfit = [ones(size(X,1),1),X]*b;
-     out.ysd = sum(X.*(X*stat.covb(2:end,2:end)));
+     out.ysd = sqrt(sum(X.*(X*stat.covb(2:end,2:end)),2)); % std. err. of the linear predictor per sample
     out.intercept = b(1);
 else
     out.yfit = X*b;
-    out.ysd = sum(X.*(X*stat.covb));
+    out.ysd = sqrt(sum(X.*(X*stat.covb),2)); % std. err. of the linear predictor per sample
     out.intercept = b(end);
 end
 out.aic = devfull + 2*length(b);
@@ -78,7 +84,7 @@ for k = 1:length(codes)
     end
     waldstat = bsub'*covbsub^-1*bsub;
     regs(regi).waldstat = waldstat;
-    regs(regi).waldpval = 1-chi2cdf(full(waldstat),length(bsub));
+    regs(regi).waldpval = gammainc(full(waldstat)/2,length(bsub)/2,'upper'); % chi2 upper tail: no stats toolbox, exact for small p
     
     if ismember(k,[mdl.do_llr_tests{single_reg_tests}])
         
@@ -86,11 +92,11 @@ for k = 1:length(codes)
              [bexcl,devred] = glmfit(X(: ,find([regs.codevec]~=codes(k))),mdl.response,mdl.modelType); 
              bexcl=bexcl([2:end 1]);
         else
-            [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],mdl.modelType);
+            [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); % same penalty as the full fit so the models nest
             devred = full(-2*LL);
         end    
        
-        regs(regi).llrpval= 1-chi2cdf(devred-devfull,length(subi));
+        regs(regi).llrpval= gammainc(max(devred-devfull,0)/2,length(subi)/2,'upper');
         regs(regi).ddev= devred-devfull;
         regs(regi).bexcl=bexcl;
         geti = cellfun(@(x)isequal(k,x),mdl.do_llr_tests);
@@ -105,12 +111,12 @@ for kk = find(~single_reg_tests)
              [bexcl,devred] = glmfit(X(: ,[1,getreg]),mdl.response,mdl.modelType); 
              bexcl=bexcl([2:end 1]);
         else
-            [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],mdl.modelType);
+            [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); % same penalty as the full fit so the models nest
             devred = full(-2*LL);
         end    
         
         subi=find(ismember([regs.codevec],codes(mdl.do_llr_tests{kk})));
-        llrpval= 1-chi2cdf(devred-devfull,length(subi));
+        llrpval= gammainc(max(devred-devfull,0)/2,length(subi)/2,'upper');
         ddev= devred-devfull;
 %         bexcl=bexcl;
         out.llrtests(kk) = struct('llrpval', llrpval,'ddev', ddev,'bexcl', bexcl,'regs',mdl.do_llr_tests{kk});
@@ -118,12 +124,17 @@ for kk = find(~single_reg_tests)
   
 end
 
-switch mdl.modelType
+switch lower(glmtype)
     case 'binomial'
         pfun=@(x)1./(1+exp(-x));
+    case 'poisson'
+        pfun=@(x)exp(x);
+    otherwise
+        error('Unrecognized model type %s',mdl.modelType);
 end
+out.yhat = pfun(out.yfit); % expected count (poisson) / event probability (binomial) per sample
 
-csy = cumsum(pfun(out.yfit))/sum(mdl.response);
+csy = cumsum(out.yhat)/sum(mdl.response);
 try
     [~,out.kstest] = kstest(find(mdl.response),[find(mdl.response),csy(find(mdl.response))]);
 catch

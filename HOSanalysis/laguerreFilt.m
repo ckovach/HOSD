@@ -65,7 +65,7 @@ for k = 1:length(structin)
     A = [1 -alpha];
 %     clear filtcoef
     coli = coli+1;
-    Xfilt(:,coli) = filter([0 sqrt(1-alpha.^2)],[1 -alpha],full(X));
+    Xfilt(:,coli) = filter([0 sqrt(1-alpha.^2)],[1 -alpha],double(full(X))); % logical / sparse input accepted
     for i = 1:str.order
         
 
