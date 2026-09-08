@@ -6,6 +6,11 @@ function varargout =plotpolycoh(hos,ax,plotwhat,absfun)
 if nargin < 2 
     ax = [];
 end
+% Every graphics call below targets the axes it draws into. When the
+% caller supplies the axes (e.g. a uiaxes inside a uifigure) nothing may
+% fall through to gca / gcf: with no classic figure open those calls
+% would create a new empty figure titled 'Component 1'.
+ownAxes = isempty(ax);
 thresh = 0;
 inputfun = @(x)x;
 if nargin < 3 || isempty(plotwhat)
@@ -93,11 +98,11 @@ for hi = 1:length(hos)
         else
          title(ax(hi,1),sprintf('Residual Modulogram After Comp. %i',hi-1))
         end    
-        axis xy
+        axis(ax(hi,1),'xy')
 %         xlabel('Envelope modulation freq.(Hz)')
 %         ylabel('Band freq. (Hz)')
-        ylabel('Envelope modulation freq.(Hz)')
-        xlabel('Band freq. (Hz)')
+        ylabel(ax(hi,1),'Envelope modulation freq.(Hz)')
+        xlabel(ax(hi,1),'Band freq. (Hz)')
         
          if hi==1
             cax = caxis(ax(hi,1));
@@ -109,7 +114,7 @@ for hi = 1:length(hos)
             imh = pcolor(power,modfreq,absfun(Bpart),'parent',ax(hi,2));
             set(imh,'facecolor','flat','edgecolor','none');
             title(ax(hi,2),sprintf('Component %i Trispectrum Modulogram',hi))
-            axis xy
+            axis(ax(hi,2),'xy')
             caxis(ax(hi,2),cax)
          end
     elseif hos(hi).diagonal_slice && hos(hi).order == 3
@@ -125,12 +130,12 @@ for hi = 1:length(hos)
 %             axes(ax(hi))
          end
         imh = plot(wb0{1},B.*(wb0{1}>=0)+ (1-(wb0{1}>=0)).*Bpart,'parent',ax(hi));
-         title(sprintf('Component %i Bispectrum Diagonal Slice',hi))
-         xlabel('freq.(Hz)')
+         title(ax(hi),sprintf('Component %i Bispectrum Diagonal Slice',hi))
+         xlabel(ax(hi),'freq.(Hz)')
          if hi==1
-             cax = caxis;
+             cax = caxis(ax(hi));
          else
-             caxis(cax);
+             caxis(ax(hi),cax);
          end
     else
         wb0 = cellfun(@fftshift,hos(hi).freqindx.Bfreqs,'uniformoutput',false);
@@ -165,7 +170,7 @@ for hi = 1:length(hos)
 %         else
 %             axes(ax(hi))
          end
-        hold on
+        hold(ax(hi),'on')
 
         dwb = cellfun(@(x)diff(x([1 end])),wb(1:2));
 
@@ -236,12 +241,12 @@ for hi = 1:length(hos)
              txth(imk{:})=text(wcent(1)+dwb(1)/2+wb{1}(1),wcent(2)+.9*dwb(2)+wb{2}(1),[txt{:}],'Color','w','HorizontalAlignment','center','fontsize',8,'parent',ax(hi));
             end
         end
-        title(sprintf('Component %i',hi))
-        axis image
+        title(ax(hi),sprintf('Component %i',hi))
+        axis(ax(hi),'image')
         if hi==1
-            cax = caxis;
+            cax = caxis(ax(hi));
         else
-            caxis(cax)
+            caxis(ax(hi),cax)
         end
 %         tick = @(x)round(linspace(x(1),x(end),10));
 %          set(gca,'xtick',tick(wb{1}),'ytick',tick(wb{2}),'xticklabel',ticklbl(wb{1}),'yticklabel',ticklbl(wb{2}))
@@ -251,7 +256,9 @@ for hi = 1:length(hos)
     end
 end
 
-colorbar
+if ownAxes
+    colorbar(ax(end)) % a caller-supplied axes manages its own colour scale
+end
 
 if nargout>=1
     varargout{1}=imh;
