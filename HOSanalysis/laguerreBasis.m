@@ -13,9 +13,13 @@ function [P, N, C] = laguerreBasis(tt, ord, tau, fs, sides, continuity, circular
 %               'anticausal'  lags <= -1 sample (strictly before the event)
 %               'both'        causal and anticausal sets side by side
 %   continuity  for sides = 'both' only:
-%               'none'  the two halves are free
-%               'C0'    same value at the event: k[0] == k[-1]
-%               'C1'    same value and same slope: k[1]-k[0] == k[-1]-k[-2]
+%               'none'  the two halves are free (the kernel may jump at 0)
+%               'C0'    both halves extrapolate to the same value at the
+%                       event: sum(b) == sum(c) (every function has the same
+%                       value phi[0] there)
+%               'C1'    ... and the same slope there, so the first
+%                       differences are equal straight across the event:
+%                       k[1]-k[0] == k[0]-k[-1]
 %               Imposed by reparametrising the 2(ord+1) coefficients [b; c]
 %               (b causal, c anticausal) with the null space of the
 %               constraint rows, N = null(C): P = [Pc Pa] * N, the fitted
@@ -30,9 +34,13 @@ function [P, N, C] = laguerreBasis(tt, ord, tau, fs, sides, continuity, circular
 %
 %   The causal functions are the impulse responses of laguerreFilt with its
 %   one-sample delay removed, so every function starts at the event sample
-%   with the same value; the anticausal set is the same sequence mirrored
-%   onto lags -1, -2, ... . Used by model.designMtx / model.get_event_window
-%   for the 'laguerre' (and 'forward_laguerre' / 'backward_laguerre') time
+%   with the same value phi[0]; the anticausal set is the same sequence
+%   mirrored ABOUT THE EVENT, lag -m carrying phi[m] for m >= 1, so both
+%   halves are samples of one function of |lag| that meet at the event
+%   (the mirror is not shifted by a sample, which would make the halves
+%   meet half a sample before the event and turn a 'C0' constraint into a
+%   flat step there). Used by model.designMtx / model.get_event_window for
+%   the 'laguerre' (and 'forward_laguerre' / 'backward_laguerre') time
 %   bases.
 %
 %   See also LAGUERREFILT, MODEL.
@@ -67,11 +75,12 @@ m  = 0:(L - i0);
 Pc(i0 + m, :) = h(1 + m, :);
 
 if circular
-    Pa = flipud(Pc);                      % phi[m] at index L-m, i.e. lag -1-m wrapped to the end
+    Pa = circshift(flipud(Pc), [1 0]);    % phi[m] at index L+1-m, i.e. lag -m wrapped to the end
+    Pa(1, :) = 0;                         % lag 0 belongs to the causal set
 else
-    Pa = zeros(L, nb);                    % anticausal: phi[m] at lag -1-m
-    m  = 0:(i0 - 2);
-    Pa(i0 - 1 - m, :) = h(1 + m, :);
+    Pa = zeros(L, nb);                    % anticausal: phi[m] at lag -m, m >= 1
+    m  = 1:(i0 - 1);
+    Pa(i0 - m, :) = h(1 + m, :);
 end
 
 switch lower(char(sides))
@@ -84,10 +93,10 @@ switch lower(char(sides))
             case {'none', '', 'off'}
                 C = zeros(0, 2 * nb);
             case {'c0', 'value'}
-                C = [h(1, :), -h(1, :)];                    % k[0] == k[-1]
+                C = [h(1, :), -h(1, :)];                    % both halves reach phi[0]'*b == phi[0]'*c at the event
             case {'c1', 'slope'}
                 d = h(2, :) - h(1, :);
-                C = [h(1, :), -h(1, :); d, d];              % ... and k[1]-k[0] == k[-1]-k[-2]
+                C = [h(1, :), -h(1, :); d, d];              % ... with equal slopes: k[1]-k[0] == k[0]-k[-1]
             otherwise
                 error('laguerreBasis:badContinuity', ...
                     'continuity must be ''none'', ''C0'' or ''C1'' (got ''%s'').', continuity);
