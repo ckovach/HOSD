@@ -41,7 +41,7 @@ classdef model
        intercept=true;
        codeincr = 0;
        do_llr_tests=false;
-       observation_weight; %How much to weight each observation
+       observation_weight; %How much to weight each observation. Empty (default) = every observation counts equally. See observationWeights.
     end
 
     properties( Dependent = true)
@@ -321,10 +321,84 @@ classdef model
         end
         
         function me=addregressor(me,varargin)
-            
+
             dm = me.designMtx;
             me.regressors(end+1) = regressor(varargin{:},'codeincr',max([dm.code]));
-            
+
+        end
+
+        function w = observationWeights(me)
+            % w = observationWeights(me)
+            %
+            %   Validated form of the observation_weight property: either []
+            %   -- every observation counts equally, the default and the only
+            %   behavior before this was implemented -- or one non-negative
+            %   weight per row of the response.
+            %
+            %   The weight multiplies that observation's contribution to the
+            %   LOG-LIKELIHOOD, so the estimating equations become
+            %
+            %       score   =  sum_i w_i * x_i * (y_i - mu_i)
+            %       Hessian = -sum_i w_i * v_i * x_i * x_i'
+            %
+            %   (fitmod passes w straight to vectorglm's 'weights' option).
+            %   It is NOT a scaling of the design row: scaling x_i changes
+            %   the model, weighting scales the likelihood.
+            %
+            %       w_i = 1   the observation counts normally.
+            %       w_i = 0   the observation is WITHHELD. fitmod additionally
+            %                 zeros EVERY column of that design row, the
+            %                 constant column it appends included, so the row
+            %                 contributes x(y-mu) = 0 to the score and
+            %                 x x' v w = 0 to the Hessian. That is exact row
+            %                 deletion without deleting the row, so yfit /
+            %                 ysd / yhat keep one entry per observation.
+            %                 Crucially the intercept is zero there too, which
+            %                 is what keeps a withheld bin from being read as
+            %                 "a bin at the reference level" and pooled into
+            %                 the intercept (and hence into the reference
+            %                 level of every categorical block).
+            %       w_i > 0   any other non-negative weight scales that
+            %                 observation's likelihood contribution; an
+            %                 integer weight is equivalent to repeating the
+            %                 observation that many times.
+            %
+            %   Accepts a logical mask (true = keep), a scalar (a uniform
+            %   weight on every observation) or a vector the length of the
+            %   response. All-ones is normalized back to [] so that the
+            %   unweighted code path is taken and the fit is bit-identical to
+            %   one with observation_weight unset.
+
+            w = me.observation_weight;
+            if isempty(w)
+                w = [];
+                return
+            end
+            n = size(me.response,1);
+            if islogical(w)
+                w = double(w);
+            elseif ~isnumeric(w) || ~isreal(w)
+                error('model:observationWeight',...
+                      'observation_weight must be a real numeric or logical vector, found a %s.',class(w));
+            end
+            w = double(w(:));
+            if isscalar(w)
+                w = repmat(w,n,1);
+            elseif numel(w) ~= n
+                error('model:observationWeight',...
+                      'observation_weight must have one entry per observation (%i), found %i.',n,numel(w));
+            end
+            if any(~isfinite(w)) || any(w < 0)
+                error('model:observationWeight',...
+                      'observation_weight must be finite and non-negative (0 withholds an observation).');
+            end
+            if ~any(w > 0)
+                error('model:observationWeight',...
+                      'observation_weight withholds every observation; nothing is left to fit.');
+            end
+            if all(w == 1)
+                w = []; % nothing withheld or reweighted: take the unweighted path
+            end
         end
     end
 end

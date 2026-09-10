@@ -1,7 +1,32 @@
-function out = fitmod(mdl)
+function [out,X] = fitmod(mdl)
 
 
 % Fit the model
+%
+%   out = fitmod(mdl)
+%   [out,X] = fitmod(mdl)   also returns the assembled design matrix, with
+%                           the constant column appended as its last column.
+%
+%   mdl.observation_weight (see model.observationWeights) weights each
+%   observation's contribution to the log-likelihood. A weight of 0
+%   WITHHOLDS that observation: every column of its design row is zeroed,
+%   the appended constant column included, and the row is dropped from the
+%   likelihood, so it contributes nothing to the score, to the Hessian or
+%   to the deviance. That is exact row deletion, but the row stays in place
+%   so yfit / ysd / yhat keep one entry per observation. Because the
+%   intercept is zero there too, a withheld bin is not read as "a bin at
+%   the reference level" and is not pooled into the intercept or into the
+%   reference level of a categorical block.
+%
+%   The fit statistics (devfull, aic, bic, kstest) and the nested LLR
+%   refits are computed over the INCLUDED observations only, and bic counts
+%   those rather than all rows. out.included, out.nobs and out.nexcluded
+%   report what was used.
+%
+%   Caveat: on a withheld row yfit and ysd are 0 and yhat is pfun(0) --
+%   1 for a Poisson model, 0.5 for a binomial one. Those are the arithmetic
+%   of an all-zero design row, not predictions; select with out.included
+%   before summing or plotting them.
 
 % do_llr_tests = false;
 use_glmfit = false;
@@ -17,12 +42,29 @@ regs = mdl.designMtx;
 
 X =[regs.value];
 
+w = mdl.observationWeights(); % [] when every observation counts equally
+if isempty(w)
+    included = true(size(X,1),1);
+    glmargs = {};
+else
+    included = w > 0;
+    glmargs = {'weights',w};
+end
+nobs = sum(included); % observations that enter the estimating equations
+
 if use_glmfit
-    [b,devfull,stat] = glmfit(X,mdl.response,mdl.modelType); 
+    if ~isempty(w)
+        error('fitmod:observationWeight',...
+              'observation_weight needs the vectorglm path: glmfit appends its own intercept, which cannot be zeroed on a withheld row.');
+    end
+    [b,devfull,stat] = glmfit(X,mdl.response,mdl.modelType);
 	out.b = b([2:end,1]);
 else
     X(:,end+1)=1;
-    [b,H,LL,msg] = vectorglm(X,mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); 
+    if ~isempty(w)
+        X(~included,:) = 0; % a withheld observation is zero in EVERY column, the appended constant included
+    end
+    [b,H,LL,msg] = vectorglm(X,mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false,glmargs{:});
     devfull = -2*LL;
     stat.covb = -H^-1;
     stat.beta = b;
@@ -44,7 +86,11 @@ else
     out.intercept = b(end);
 end
 out.aic = devfull + 2*length(b);
-out.bic = devfull + length(b)*log(size(X,1));
+out.bic = devfull + length(b)*log(nobs); % nobs = the observations that were actually fit
+out.included = included;                 % logical, one entry per observation
+out.nobs = nobs;
+out.nexcluded = numel(included) - nobs;  % observations withheld by observation_weight
+out.observation_weight = w;              % [] when nothing was withheld or reweighted
 
 if islogical(mdl.do_llr_tests) 
     if mdl.do_llr_tests
@@ -92,7 +138,7 @@ for k = 1:length(codes)
              [bexcl,devred] = glmfit(X(: ,find([regs.codevec]~=codes(k))),mdl.response,mdl.modelType); 
              bexcl=bexcl([2:end 1]);
         else
-            [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); % same penalty as the full fit so the models nest
+            [bexcl,~,LL] = vectorglm(X(: ,[find([regs.codevec]~=codes(k)),end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false,glmargs{:}); % same penalty and the same observations as the full fit so the models nest
             devred = full(-2*LL);
         end    
        
@@ -111,7 +157,7 @@ for kk = find(~single_reg_tests)
              [bexcl,devred] = glmfit(X(: ,[1,getreg]),mdl.response,mdl.modelType); 
              bexcl=bexcl([2:end 1]);
         else
-            [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false); % same penalty as the full fit so the models nest
+            [bexcl,~,LL] = vectorglm(X(: ,[getreg,end]),mdl.response,[],glmtype,'gaussreg',1e-6,'showiter',false,glmargs{:}); % same penalty and the same observations as the full fit so the models nest
             devred = full(-2*LL);
         end    
         
@@ -134,9 +180,14 @@ switch lower(glmtype)
 end
 out.yhat = pfun(out.yfit); % expected count (poisson) / event probability (binomial) per sample
 
-csy = cumsum(out.yhat)/sum(mdl.response);
+% Time-rescaling KS test over the included observations only: a withheld row
+% has no fitted intensity, so it must not accumulate one.
+yhinc  = out.yhat(included);
+respinc = mdl.response(included);
+csy = cumsum(yhinc)/sum(respinc);
+evi = find(respinc);
 try
-    [~,out.kstest] = kstest(find(mdl.response),[find(mdl.response),csy(find(mdl.response))]);
+    [~,out.kstest] = kstest(evi,[evi,csy(evi)]);
 catch
     out.kstest = nan;
 end

@@ -37,6 +37,15 @@ function [theta,H,LL,msg] = vectorglm(X,y,ntrials,varargin)
 %       'gaussreg',H : Gaussian regularization. H is the 'precision' matrix
 %                   for the gaussian prior (inverse of
 %                   variance-covariance).
+%       'weights',W : Observation weights, one non-negative value per row of
+%                   Y. The log-likelihood, score and Hessian are summed as
+%                     LL  =  sum_i W_i * l_i(theta)
+%                     DLL =  sum_i W_i * x_i * (y_i - mu_i)
+%                     D2LL= -sum_i W_i * v_i * x_i * x_i'
+%                   so W_i = 0 withholds observation i (it has no influence
+%                   on model fit). An integer W_i is equivalent to repeating
+%                   that observation W_i times.Default: every
+%                   observation weighted 1.
 %
 %     For other options, see the menu in the m-file
 
@@ -57,6 +66,7 @@ L1reg = sparse(0);
 fix  = 0;
 diagHess = false;
 Ntot = ones(size(y));
+obsweight = []; % observation weights ([] = every observation weighted 1)
 maxiter = 200;
 maxlasso = 10; % Maximum number of times to repeat lasso procedure.
 showiter = true;
@@ -97,7 +107,10 @@ while i <= length(varargin)
             i = i+1;      
        case {'ntot'}
             Ntot = varargin{i+1};
-            i = i+1;      
+            i = i+1;
+       case {'weights','weight','obsweight','observation_weight'}   %Non-negative weight on each observation's log-likelihood; 0 withholds the observation
+            obsweight = varargin{i+1};
+            i = i+1;
        case {'diag'}
             diagHess = varargin{i+1};
             i = i+1;      
@@ -157,6 +170,29 @@ end
 spX = sparseblock(X+eps,ntrials,'transpose');
 
 y = sparse(y);
+
+%%% Observation weights. obsw is left as the scalar 1 when no weights were
+%%% given, so that every 'obsw.*' below is an exact no-op and the unweighted
+%%% path is arithmetically identical to the code before weights existed.
+if isempty(obsweight)
+    obsw = 1;
+else
+    if islogical(obsweight)
+        obsweight = double(obsweight);
+    end
+    obsw = full(double(obsweight(:)));
+    if isscalar(obsw)
+        obsw = obsw*ones(size(y,1),1);
+    elseif numel(obsw) ~= size(y,1)
+        error('Weights must have one entry per observation (%i), found %i.',size(y,1),numel(obsw))
+    end
+    if any(~isfinite(obsw)) || any(obsw < 0)
+        error('Weights must be finite and non-negative (0 withholds an observation).')
+    end
+    if all(obsw == 1)
+        obsw = 1; % nothing to weight: fall back on the exact no-op
+    end
+end
 
 
 
@@ -263,29 +299,29 @@ switch lower(type)
         %Probability
         Pfun = @(th) exp( rho(th) )./(1+exp(rho(th)));
         
-        %Likelihood function
-        LLvec = @(th) rho(th).*y - Ntot.*log(1+exp(rho(th)));
+        %Likelihood function (obsw weights each observation's contribution)
+        LLvec = @(th) obsw.*(rho(th).*y - Ntot.*log(1+exp(rho(th))));
         LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
-        
+
         %First derivative of the likelihood function
-        DLLfun = @(th)  ((repmat(y,1,size(th,2)) - repmat(Ntot,1,size(th,2)).*Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
+        DLLfun = @(th)  ((obsw.*(repmat(y,1,size(th,2)) - repmat(Ntot,1,size(th,2)).*Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
 
         if ~diagHess
-            D2LLfun = @(th)   -spX'*diag( sparse(Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
+            D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
         else
-            D2LLfun = @(th)    -diag(sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
+            D2LLfun = @(th)    -diag(sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
 %             D2LLinv = @(th)    -diag((sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)).^-1) - sparse(D2Regfun(th));
-        end            
-        
+        end
+
     case 'poisson'
         %INtensity
         rho = @(th) spX*th;
         Pfun = @(th) exp( rho(th) );
-        
-        LLvec = @(th)rho(th).*y - Pfun(th);
+
+        LLvec = @(th) obsw.*(rho(th).*y - Pfun(th));
         LLfun = @(th) sum( LLvec(th) ) - th'*(RegMat(th,1) + L1reg.*sign(th)); % scalar penalised log-likelihood, as for the binomial case
-        DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
-        D2LLfun = @(th)   -spX'*diag( sparse(Pfun(th)) )*spX - sparse(D2Regfun(th)); % Hessian of the log-likelihood is negative definite
+        DLLfun = @(th)  ((obsw.*(y - Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
+        D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Pfun(th)) )*spX - sparse(D2Regfun(th)); % Hessian of the log-likelihood is negative definite
 %         DLLfun = @(th) sum((y'*- Pfun(th));
         
         
@@ -358,31 +394,31 @@ while ~isequal(discard,discold) && nlasso < maxlasso
                 %Probability
                 Pfun = @(th) exp( rho(th) )./(1+exp(rho(th)));
 
-                %Likelihood function
-                LLvec = @(th) rho(th).*y - Ntot.*log(1+exp(rho(th)));
+                %Likelihood function (obsw weights each observation's contribution)
+                LLvec = @(th) obsw.*(rho(th).*y - Ntot.*log(1+exp(rho(th))));
 %                 LLfun = @(th) sum(rho(th).*y - Ntot.*log(1+exp(rho(th)))) - th'*(RegMat(th,1) + L1reg(~discard).*sign(th));
-                LLfun = @(th) sum(rho(th).*y - Ntot.*log(1+exp(rho(th)))) - th'*(RegMat(th,1) + L1reg.*sign(th));
-                
+                LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
+
                 %First derivative of the likelihood function
 %                 DLLfun = @(th)  ((y - Ntot.*Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
-                DLLfun = @(th)  ((y - Ntot.*Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
+                DLLfun = @(th)  ((obsw.*(y - Ntot.*Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
 
                 if ~diagHess
-                    D2LLfun = @(th)   -spX'*diag( sparse(Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
+                    D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
                 else
-                    D2LLfun = @(th)    -diag(sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
+                    D2LLfun = @(th)    -diag(sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
         %             D2LLinv = @(th)    -diag((sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)).^-1) - sparse(D2Regfun(th));
-                end            
+                end
 
             case 'poisson'
                 %INtensity
                 rho = @(th) spX*th;
                 Pfun = @(th) exp( rho(th) );
 
-                LLvec = @(th) rho(th).*y - Pfun(th); % keep the per-sample likelihood on the reduced design too
-                LLfun = @(th) sum(rho(th).*y - Pfun(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
-                DLLfun = @(th)  ((y - Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
-                D2LLfun = @(th)   -spX'*diag( sparse(Pfun(th)) )*spX - sparse(D2Regfun(th)); % negative definite
+                LLvec = @(th) obsw.*(rho(th).*y - Pfun(th)); % keep the per-sample likelihood on the reduced design too
+                LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
+                DLLfun = @(th)  ((obsw.*(y - Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
+                D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Pfun(th)) )*spX - sparse(D2Regfun(th)); % negative definite
         %         DLLfun = @(th) sum((y'*- Pfun(th));
 
 
