@@ -23,10 +23,19 @@ function Iout = integrator(mapto,dim,veclength,maskval)
 %     maskval: Values in mapto corresponding to entries in D to ignore, 
 %              assumed to be zero-valued (defualt = 0).
 %
+% Iout(i,j) is the number of elements of mapto with subscript i along dim
+% and value j. It is built directly from the nonzero, unmasked elements
+% with one call to sparse (which accumulates repeated (i,j) pairs): one
+% pass over the array to find the nonzeros, then O(nnz log nnz) work on
+% those, never a matrix the size of numel(mapto). The earlier form
+% composed a numel(mapto) x veclength map with a numel(mapto) x
+% size(mapto,dim) kron chain, (Imap'*Isum)', an order of magnitude slower
+% on a 307^3 square form.
+%
 % See also FREQ2INDEX
 
 %
-% C. Kovach 2019
+% C. Kovach 2019, 2026
 %
 
 sz = size(mapto);
@@ -41,37 +50,24 @@ if nargin < 4
     maskval = 0;
 end
 
-if ~isequal(maskval,0)
-    mapto(ismember(mapto,maskval))=0;
-end
-
-inds = arrayfun(@(x)1:x,sz,'uniformoutput',false);
-
-% Is = repmat({[]},1,length(sz));
-
-% [Is{:}] = ndgrid(inds{:});
-
-%%% This matrix maps elements in the vector to elements in the array; 
-%%% that is, reshape(x'*Imap,size(mapto)) casts x into the array according 
-%%% to mapto.
+%%% Elements that contribute: nonzero (one pass over the array) and not
+%%% masked (checked on the nonzero values only).
 fmapto = find(mapto);
-Imap = sparse(fmapto,double(mapto(fmapto)),ones(size(fmapto)),numel(mapto),veclength);
-
-
-%%% This matrix integrates over all dimensions in the array but dim
-Isum = sparse(1);
-for k = 1:length(inds)
-    if k == dim
-        Isum = kron(speye(sz(k)),Isum);
-    else
-        Isum = kron(ones(sz(k),1),Isum);
+vals = double(mapto(fmapto));
+maskval = maskval(maskval ~= 0);
+if ~isempty(maskval)
+    drop = false(size(vals));
+    for v = maskval(:)'
+        drop = drop | vals == v;
     end
+    fmapto = fmapto(~drop);
+    vals = vals(~drop);
 end
-%     %Very slow way of doing it
-%     Isum = arrayfun(@(x)sparse(Is{dim}(:)==x),inds{dim},'uniformoutput',false);
-%     Isum = [Isum{:}]; 
 
-%%% This matrix combines the two operations...
-Iout = (Imap'*Isum)';
+%%% Subscript along dim of each contributing element, without ind2sub
+%%% (only the one subscript is needed).
+stride = prod(sz(1:dim-1));
+subdim = mod(floor((fmapto-1)/stride),sz(dim))+1;
 
-
+%%% Iout(i,j) counts the elements with subscript i along dim that map to j.
+Iout = sparse(subdim,vals,1,sz(dim),veclength);
