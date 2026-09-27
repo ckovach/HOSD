@@ -240,6 +240,8 @@ classdef hosobject < handle
         %Bicoherece (or polycoherence) in reduced form, as vector of non-redundant coefficients
         bicohreduced
         partialbicoh
+        %Partial polycoherence of the feature in reduced form (see partialbicoh)
+        partialbicohreduced
         H
         EDF
         highpass  ;
@@ -290,7 +292,7 @@ classdef hosobject < handle
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-              fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced'});
+              fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced','partialbicohreduced'});
 
                metac = metaclass(me);
                props = metac.PropertyList;
@@ -425,22 +427,30 @@ classdef hosobject < handle
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
         end
         function BCrm = get.bicoh(me)
-           %%% Bicoherence in square form
-          BC = me.B./me.D;
-           bias = sqrt(me.BIASnum./(me.D.^2+eps));
-          BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+           %%% Bicoherence in square form: the reduced form gathered through
+           %%% freqindx.remap, one channel at a time (a channel's array is
+           %%% indexed directly rather than through an offset copy of remap),
+           %%% conjugated where PDconj is set. Channels stack along dimension
+           %%% order (the dimension after the square form's).
+          BC = me.bicohreduced;
           remap = me.freqindx.remap;
-          BC(end+1:max(remap(:)),:)=nan;
-
-          prm = circshift(1:me.order,-1);
-          remap = remap + permute( cast(0:size(BC,me.order)-1,class(remap))',prm)*size(BC,1);
-          BCrm = BC(remap);
-          for k = 2:size(BC,3)
-              BCrm = cat(me.order,BCrm,BC(remap+size(BC,1)*(k-1)));
+          pdc = me.freqindx.PDconj;
+          nch = size(BC,3);
+          q = repmat({':'},1,me.order);
+          for k = 1:nch
+              bc = BC(:,1,k);
+              bcrm = bc(remap);
+              bcrm(pdc) = conj(bcrm(pdc));
+              if nch == 1
+                  BCrm = bcrm;                 % no second full-size copy
+              else
+                  if k == 1
+                      BCrm = zeros([size(remap) nch],'like',bcrm);
+                  end
+                  q{end} = k;
+                  BCrm(q{:}) = bcrm;
+              end
           end
-
-          pdc = repmat(me.freqindx.PDconj,[ones(1,me.order-1) size(BCrm,me.order)]);
-          BCrm(pdc) = conj(BCrm(pdc));
 
         end
         function BC = get.bicohreduced(me)
@@ -451,13 +461,18 @@ classdef hosobject < handle
           BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
 
         end
-         function pBC = get.partialbicoh(me)
-           %Component of bicoherence attributed to the feature
+         function pBC = get.partialbicohreduced(me)
+           %Component of bicoherence attributed to the feature, in reduced
+           %form (non-redundant coefficients as a vector, trailing slot NaN)
           FF = me.wavefft(me.freqindx.Is);
           FF(:,me.order) = conj(FF(:,me.order));
           FF = prod(FF,2);
           FF(end+1) =0;
           pBC = FF./me.D;
+         end
+         function pBC = get.partialbicoh(me)
+           %Component of bicoherence attributed to the feature
+          pBC = me.partialbicohreduced;
           pBC = pBC(me.freqindx.remap);
           pBC(me.freqindx.PDconj) = conj(pBC(me.freqindx.PDconj));
 
@@ -762,7 +777,9 @@ classdef hosobject < handle
         end
         %%%%%%%
         function out = get.H(me)
-
+           %%% Filter weights in square form: conj of the normalized,
+           %%% bias-corrected polycoherence divided by the normalization,
+           %%% gathered through freqindx.remap one channel at a time.
 %             B = me.B(me.freqindx.remap); %#ok<*PROP>
 %             B(me.freqindx.PDconj) = conj(B(me.freqindx.PDconj));
 %             out = conj(B)./me.D(me.freqindx.remap).^2;
@@ -772,12 +789,23 @@ classdef hosobject < handle
            BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
            h = BC./(me.D+eps);
           q = repmat({':'},1,me.order);
+          remap = me.freqindx.remap;
+          pdc = me.freqindx.PDconj;
+          nch = size(h,3);
 
-           for k = 1:size(h,3)
-               hh = h(me.freqindx.remap + (k-1)*size(h,1));
-               hh(me.freqindx.PDconj) = conj(hh(me.freqindx.PDconj));
-               q{end} = k;
-               out(q{:}) = conj(hh);
+           for k = 1:nch
+               hk = h(:,1,k);
+               hh = hk(remap);
+               hh(pdc) = conj(hh(pdc));
+               if nch == 1
+                   out = conj(hh);              % no second full-size copy
+               else
+                   if k == 1
+                       out = zeros([size(remap) nch],'like',hh);
+                   end
+                   q{end} = k;
+                   out(q{:}) = conj(hh);
+               end
            end
         end
 

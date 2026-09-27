@@ -1,74 +1,109 @@
 function varargout = modgram(me,Bplot0)
 
 %Extract the modulogram from a 4th order spectrum
+%
+%  [Bout,power,modfreq,Bpart] = modgram(hos)       polycoherence; plotted as |.|
+%  [...] = modgram(hos,fun)                        fun applied to the plotted values
+%  [...] = modgram(hos,v)                          a reduced-form vector the length of
+%                                                  hos.B (one column per component
+%                                                  for an array), e.g. a mask
+%
+% The modulogram is the diagonal slice of the trispectrum read along the
+% modulation axis: its value at carrier p and modulation frequency m is the
+% coefficient at (w1,w2,w3) = (p,p,m-p), w4 = -(p+m). Those points lie on
+% the frequency grid, so they are looked up directly in the reduced
+% coefficient vector through freqindx.remap (see SQUARE_INDEX), conjugated
+% where freqindx.PDconj says so as hos.bicoh does, and NaN where the point
+% is off the grid or was not estimated -- the values the earlier
+% nearest-neighbor interp3 over the full square-form array returned,
+% without forming that array. A supplied vector is read through the map as
+% is (no conjugation), as before. Bout is modulation x carrier (x channel).
 
 if me(1).order~=4
     error('Spectrum is not 4th order');
 end
 
-if nargin > 1 && length(Bplot0) == length(me.B)
-    Bplot0 = Bplot0(me.fullmap);
+fun = @(x)x;
+usevector = false;
+if nargin < 2
+    fun = @abs;
+elseif isa(Bplot0,'function_handle')
+    fun = Bplot0;
+else
+    usevector = true;
 end
 
-fun = @(x)x;
-
 for cmpi = 1:length(me)
-    if nargin < 2
-        B0 = fftshift(me(cmpi).bicoh);
-        inds = [repmat({':'},1,me.order-1),{1}];
-        Bplot =  B0(inds{:});
-        for k = 2:size(B0,me(cmpi).order)
-            inds(me.order) = {k};
-             Bplot = cat(me(cmpi).order,Bplot,fftshift(B0(inds{:})));
-        end
-        fun = @abs;
-    elseif isa(Bplot0,'function_handle')
-        Bplot = fftshift(me(cmpi).bicoh);
-        fun = Bplot0;
-    elseif size(Bplot0,2) == length(me)
-        Bplot = Bplot0(:,cmpi);
-        Bplot = fftshift(Bplot(me(cmpi).fullmap));
-    else 
-        inds = [repmat({':'},1,me.order-1),{1}];
-        B0 = Bplot0;
-        Bplot =  fftshift(B0(inds{:}));
-    end
+    h = me(cmpi);
+    fx = h.freqindx;
+    len = size(fx.Is,1);
 
-    wb0 = cellfun(@fftshift,me(cmpi).freqindx.Bfreqs,'uniformoutput',false);
-    [W1,W2,W3] = meshgrid(wb0{:});
-     
+    wb0 = cellfun(@fftshift,fx.Bfreqs,'uniformoutput',false);
     power = wb0{1};
-   % power = power(power>0 & power >me(cmpi).highpass &power< me(cmpi).lowpass);
     power = power(power>0);
     modfreq = wb0{end}-min(wb0{end});
-    modfreq = modfreq(abs(modfreq)<me.slowpass);
-
-  %  modfreq = modfreq(abs(modfreq)>me(cmpi).shighpass & abs(modfreq)<=me(cmpi).slowpass);
+    modfreq = modfreq(abs(modfreq)<h.slowpass);
     modfreq = modfreq(abs(modfreq)>0);
-    
     [P,M] = meshgrid(power,modfreq);
-    Bout =[];
-    for k = 1:size(Bplot,me(cmpi).order)
-        B = nan*M;
-        Bpart = B;
-         inds{me.order} = k;
-   
-        B(:) = interp3(W1,W2,W3,Bplot(inds{:}),P(:),P(:),-P(:)+M(:),'nearest');
-        Bout = cat(me(cmpi).order-1,Bout,B);
-    end
-    if nargout > 3 %Not implemented for mvhos yet
-        Bpart(:) = interp3(W1,W2,W3,fftshift((me(cmpi).partialbicoh)),P(:),P(:),-P(:)+M(:),'nearest');
-        Bpart(isnan(B))=nan;
-    end    
-    if nargout ==0 %Not implemented for mvhos yet
-        ax(cmpi,1)=subplot(1,length(me),cmpi);
-        if length(size(Bout))>2
-            warning('Plot is averaged over channels')
-            while length(size(Bout))>2
-                Bout = squeeze(mean(fun(Bout),3));
-            end
+
+    [lin,inside] = h.square_index([P(:),P(:),-P(:)+M(:)]);
+    j = ones(size(lin));
+    j(inside) = double(fx.remap(lin(inside)));
+    cj = false(size(lin));
+    cj(inside) = fx.PDconj(lin(inside));
+
+    if usevector
+        if size(Bplot0,2) >= cmpi && size(Bplot0,2) == length(me)
+            v = Bplot0(:,cmpi);
+        else
+            v = Bplot0(:,1);
         end
-        imh = pcolor(power,modfreq,fun(Bout));
+        if numel(v) ~= len+1
+            error('The vector must have length(hos.B) = %d entries, one per reduced coefficient plus the trailing slot.',len+1);
+        end
+        vals = {v};                                  % read as is, as Bplot0(fullmap) did
+        conjugate = false;
+    else
+        BC = h.bicohreduced;                         % (len+1) x 1 x channels
+        vals = cell(1,size(BC,3));
+        for k = 1:size(BC,3)
+            vals{k} = BC(:,1,k);
+        end
+        conjugate = true;
+    end
+
+    Bout = [];
+    for k = 1:length(vals)
+        B = nan(size(P),'like',double(vals{k}(1)));
+        v = vals{k};
+        b = v(j(inside));
+        if conjugate
+            b(cj(inside)) = conj(b(cj(inside)));
+        end
+        B(inside) = b;
+        Bout = cat(3,Bout,B);
+    end
+
+    Bpart = nan(size(P));
+    if nargout > 3 %Not implemented for mvhos yet
+        pBC = h.partialbicohreduced;
+        b = pBC(j(inside));
+        b(cj(inside)) = conj(b(cj(inside)));
+        Bpart(inside) = b;
+        Bpart(isnan(B))=nan;
+    end
+    if nargout ==0 %Not implemented for mvhos yet
+        ax(cmpi,1)=subplot(1,length(me),cmpi); %#ok<AGROW>
+        Bplot = Bout;
+        if length(size(Bplot))>2
+            warning('Plot is averaged over channels')
+            while length(size(Bplot))>2
+                Bplot = squeeze(mean(fun(Bplot),3));
+            end
+        else
+            Bplot = fun(Bplot);
+        end
+        imh = pcolor(power,modfreq,Bplot);
              set(imh,'facecolor','flat','edgecolor','none');
         if cmpi==1
                 ylabel('Envelope modulation freq.(Hz)')
@@ -78,11 +113,7 @@ for cmpi = 1:length(me)
          title(ax(cmpi,1),sprintf('Residual Modulogram After Comp. %i',cmpi-1))
         end    
         axis xy
-%         xlabel('Envelope modulation freq.(Hz)')
-%         ylabel('Band freq. (Hz)')
         xlabel('Band freq. (Hz)')
-        
-   
     end
 end
 if nargout >3

@@ -39,7 +39,7 @@ classdef hosminimal < hosobject
             if isa(order,mfilename) || isa(order,'hosminimal') || isa(order,'struct')|| isa(order,'hosobject')
                obj = order;
 %                fns = [{'BIASnum'};setdiff(properties(obj),{'BIAS','Bfull','H','bicoh','current_threshold','sampling_rate','freqindx','buffersize','filterftlag','fullmap','partialbicoh','filterfft','filterfun','bicohreduced'})];
-              fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced','B','D','Imats','Iconjmats','BIASnum','freqindex','Bpart'});
+              fns = setdiff(fieldnames(obj),{'freqs','BIAS','Bfull','H','bicoh','current_threshold','freqindx','filterftlag','fullmap','partialbicoh','bicohreduced','partialbicohreduced','B','D','Imats','Iconjmats','BIASnum','freqindex','Bpart'});
              
                metac = metaclass(me);
                props = metac.PropertyList;
