@@ -16,12 +16,16 @@ function out = component_hos(me, X, getcomps, samewindows)
 %   X        - Data the object was fitted on
 %   getcomps - Components to return (indices or a logical mask; default all)
 %   samewindows - true (default): estimate BOTH terms afresh on the same
-%              uniform, unshifted batch windows of X, so the difference is
-%              a difference of like estimates.
+%              uniform batch windows of X, so the difference is a
+%              difference of like estimates and the component spectra plus
+%              the final residual's telescope exactly to the total.
 %              false: use the HOS accumulated during the fit for the first
-%              term (feature-aligned, exponentially weighted windows) and a
-%              fresh estimate on windows shifted to the residual's
-%              features for the second (the original behavior).
+%              term (feature-aligned, exponentially weighted, outlier-
+%              filtered windows; the original behavior). The second term is
+%              a fresh batch estimate either way -- a batch B / D estimate
+%              is invariant to shifting each window by an integer number of
+%              samples, so aligning the residual's windows to its features
+%              would change nothing.
 %
 % Output:
 %
@@ -60,16 +64,20 @@ for k = 1:length(getcomps)
     xbefore = X - squeeze(sum(xr(:, 1:cmpi-1, :), 2));   % what component cmpi was extracted from
     xafter  = X - squeeze(sum(xr(:, 1:cmpi, :), 2));     % ... minus its reconstruction
     if me.multivariate
-        % The HOS of a multivariate component lives on its filter output.
-        xbefore = tmp0.xfilt(xbefore);
-        xafter  = tmp0.xfilt(xafter);
+        % The HOS of a multivariate component lives on the output of its
+        % spatiotemporal filter (the signal hosf(cmpi) was fit on in run),
+        % which is the multivariate object's xfilt, not the univariate
+        % hosf(cmpi)'s (that one has a single channel's filter).
+        xbefore = me.hos(cmpi).xfilt(xbefore);
+        xafter  = me.hos(cmpi).xfilt(xafter);
     end
 
-    % HOS on the residual after the component (fresh estimate; initialize
-    % so nothing of the fit's accumulation leaks into it).
+    % HOS on the residual after the component: a fresh batch estimate on
+    % unshifted windows (initialize so nothing of the fit's accumulation
+    % leaks into it).
     hafter = hosobject(tmp0);
     hafter.reset;
-    hafter.get_input(xafter, [], ~samewindows, true);
+    hafter.get_input(xafter, [], false, true);
 
     if samewindows
         hbefore = hosobject(tmp0);
