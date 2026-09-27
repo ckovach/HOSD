@@ -99,25 +99,10 @@
     Gpart = 0;
 %             Bcheck = 0;
 %              HFcheck =  H(1:end-1).*FFX; %Sanity check to make sure the integration is correct.
-    len = length(me.B)-1;
+    [Imats,Iconjmats] = me.integration_matrices;     % cached; see INTEGRATION_MATRICES
     for k = 1:length(FFXpart)
-
-        if k<=length(me.Imats)
-            I = me.Imats{k};
-            Iconj = me.Iconjmats{k};
-        else
-            Iconj = integrator(me.freqindx.remap.*cast(me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
-            I = integrator(me.freqindx.remap.*cast(~me.freqindx.PDconj & me.freqindx.partialSymmetryRegions==k,class(me.freqindx.remap)),1,len,[0 len+1]);
-            if me.use_gpu
-                I = gpuArray(I);
-                Iconj = gpuArray(Iconj);
-            end
-            me.Imats{k}= I;
-            me.Iconjmats{k} = Iconj;
-        end
-        HF = repmat(H(1:end-1),1,size(FFXpart{k},2)).*FFXpart{k};
-        
-        Gpart = Gpart + (I*HF) + (Iconj*conj(HF));
+        HF = H(1:end-1).*FFXpart{k};
+        Gpart = Gpart + (Imats{k}*HF) + (Iconjmats{k}*conj(HF));
     end
     if   me.check_sign 
         GFX = zeros(size(FX));

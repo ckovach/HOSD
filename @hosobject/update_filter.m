@@ -1,30 +1,45 @@
  function update_filter(me)
 
     %%% Update the current value of the filter according to the current
-    %%% values in Bpart. This version reconstitutes the full HOS array; it should
-    %%% therefore be possible to improve efficiency using the integration
-    %%% matrices, Imat, etc.
-    
-        Bpart = zeros([size(me.freqindx.remap),size(me.B,me.order)]);
-        q = repmat({':'},1,me.order);
-        
-        for k = 1:length(me.Bpart)          
-            for kk = 1:size(me.Bpart{k},3)
-                bpart = Bpart(:,:,kk) + me.Bpart{k}(me.freqindx.remap+(kk-1)*size(me.Bpart{k},1)).*(me.freqindx.partialSymmetryRegions==k);
-                bpart(me.freqindx.PDconj) = conj(bpart(me.freqindx.PDconj));
-                q{end} = kk;
-                Bpart(q{:}) = bpart;
-            end
+    %%% values in Bpart, through the integration matrices (see
+    %%% INTEGRATION_MATRICES) rather than the full square-form arrays: for
+    %%% each symmetry region k the part-k product is weighted by the
+    %%% normalized, bias-corrected polycoherence and summed over all but the
+    %%% first axis,
+    %%%
+    %%%     G = sum_k I{k}*(H.*Bpart{k}) + Iconj{k}*conj(H.*Bpart{k}),
+    %%%
+    %%% the same operation PARTIAL_DELAY_FILT applies to the sample products.
+    %%% Channels are kept apart: G is nkept x 1 x nchannels, the layout
+    %%% filterfft and set.nchannels use.
+    %%%
+    %%% Until 2026-09 this reconstituted the full arrays and, in doing so,
+    %%% applied the conjugation to the running total (so every part but the
+    %%% last was conjugated more than once) and, at orders above 3,
+    %%% accumulated into a 2-D slice so that only the last part survived. In
+    %%% the default get_block path that G is replaced by partial_delay_filt's
+    %%% right away; get_input / do_updates used it as the filter.
+
+        [Imats,Iconjmats] = me.integration_matrices;
+        len = size(me.freqindx.Is,1);
+
+        BC = me.B./(me.D+eps);
+        bias = sqrt(me.BIASnum./(me.D.^2+eps));
+        bias(isnan(bias)) = 0;
+        BC = (abs(BC)-bias).*BC./(abs(BC)+eps);
+        H = conj(BC./(me.D+eps));
+        H = H(1:len,1,:);
+        nchan = size(H,3);
+
+        G = 0;
+        for k = 1:length(me.Bpart)
+            bp = me.Bpart{k};
+            HF = reshape(H.*bp(1:len,1,:),len,nchan);
+            HF(isnan(HF)) = 0;
+            G = G + Imats{k}*HF + Iconjmats{k}*conj(HF);
         end
+        G = reshape(G,[size(G,1) 1 nchan]);
 
-       GG = Bpart.*me.H;
-
-       GG(isnan(GG))=0;
-       G = GG;
-       for k = 2:me.order
-        G = sum(G,k);
-       end
-       
         me.G = G(me.keepfreqs{1}(abs(me.freqs{1})<=me.lowpass(1)),:,:);
 
         if me.adjust_lag
