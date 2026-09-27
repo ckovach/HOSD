@@ -180,21 +180,30 @@ subremap(keep) = find(keep);
 tol = min(abs(diff([freqs{:}])));
 tol = 2.^floor(log2(tol)-5); %Use power of 2 to avoid precision error
 if condense %for auto-spectra we only need the principal domain. This is not so for cross-spectra
+    %%% Canonical form of every kept tuple: magnitudes sorted ascending (a
+    %%% negative value sorts after a positive one of equal magnitude),
+    %%% rounded to tol, with the original signs.
     [Wsrt,wsrti] = sort(abs(W)+tol/32*(W<0)); %For frequencies of equal magnitude and different sign, force consistent sorting of negative and positive values
     Wsrt = round(abs(Wsrt)./tol)*tol;
     %[Wsrt,wsrti] = sort(round(abs(W)./tol)*tol);
     wsrti = wsrti + order*repmat(0:size(W,2)-1,order,1);
     Wsrt = Wsrt.*sign(W(wsrti));
-   
-     [ism,ismi] = ismember(Wsrt',Wsrt(:,PD)','rows');
-   [ismconj,ismiconj] = ismember(-Wsrt',Wsrt(:,PD)','rows');
+
+    %%% Each kept point maps to the principal-domain tuple with the same
+    %%% canonical form (ism) or the negated one (ismconj). The row-wise
+    %%% lookups are done on one integer key per tuple when the keys fit in
+    %%% a uint64, which is the same comparison as ismember(...,'rows') on
+    %%% the rounded values (ismember returns the lowest matching index in
+    %%% both forms), without sorting multi-column matrices.
+    [ism,ismi] = rowsMember(Wsrt,Wsrt(:,PD),tol);
+    [ismconj,ismiconj] = rowsMember(-Wsrt,Wsrt(:,PD),tol);
    ismiconj(1) = 0;
    ismconj(1)=false;
    ismiconj(ism & ismconj)=0; %Ignore if both are in the principal domain.
    ismconj(ism & ismconj) = 0;
 %   IsreducedPD = Isreduced(PD(keep),:);
    IsPD = Is(PD,:);
-   PDremap = zeros(size(subremap));
+   PDremap = zeros(size(subremap),useInt);
    PDremap(keep) = ismi+ismiconj;
    %% Region that is the complex conjugate of the principal domain
    PDconjugate = false(size(subremap));
@@ -208,19 +217,40 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
    %%% Identify the symmetry type for each region. At least one region
    %%% from each group must be estimated for the partial delay estimator.
    %%% Symmtery types correspond to permutations of position of the first
-   %%% term in the average cross-polyspectral product.
+   %%% term in the average cross-polyspectral product: a point is in region
+   %%% k when its frequencies 2..order are, as a set, the frequencies of its
+   %%% principal-domain representative without the k-th one (or their
+   %%% negation), i.e. when the point's first frequency sits in the k-th
+   %%% slot of the representative; the smallest such k is taken. Matching
+   %%% against the point's own representative is the same as matching
+   %%% against every principal-domain tuple, since a match fixes the tuple
+   %%% up to sign.
    W23 = W(2:order,:);
    [W23srt,w23srti] = sort(round(abs(W23)./tol)*tol);
    w23srti = w23srti + (order-1)*repmat(0:size(W23,2)-1,order-1,1);
    W23srt = W23srt.*sign(W23(w23srti));
     SR = uint8(zeros(sum(keep(:)),1));
+    rep = ismi+ismiconj;                        % representative of each kept point (0 = none)
+    has = rep > 0;
+    WPD = W(:,PD);
+    canon = @(X) canonicalForm(X,tol);
+    W23has = W23srt(:,has);
     for k = order:-1:1
-        W23pd=W(setdiff(1:order,k),PD);
-        [W23pdsrt,w23pdsrti] = sort(round(abs(W23pd)./tol)*tol);
-        w23pdsrti = w23pdsrti + (order-1)*repmat(0:size(W23pdsrt,2)-1,order-1,1);
-        W23pdsrt = W23pdsrt.*sign(W23pd(w23pdsrti));
-        sri = ismember(W23srt',[W23pdsrt';-W23pdsrt'],'rows');
-        SR(sri) = k;
+        W23pdall = canon(WPD(setdiff(1:order,k),:));      % canonical minus-k form of every PD tuple
+        W23pdsrt = W23pdall(:,rep(has));                  % ... of each point's representative
+        sri = all(W23has == W23pdsrt,1) | all(W23has == -W23pdsrt,1);
+        srk = SR(has);
+        srk(sri) = k;
+        SR(has) = srk;
+        if any(~has)
+            %%% A point without a representative (the first kept point is
+            %%% never a conjugate, see above) is matched against every
+            %%% principal-domain tuple, as all points were before.
+            sri0 = ismember(W23srt(:,~has)',[W23pdall';-W23pdall'],'rows');
+            srk = SR(~has);
+            srk(sri0) = k;
+            SR(~has) = srk;
+        end
     end
  
     
@@ -263,3 +293,38 @@ out.Bfreqs = cellfun(@(fr,kpfr)fr(kpfr),freqsin(1:end-1),keeplp,'uniformoutput',
 SymReg = uint8(zeros(size(keepall)));
 SymReg(keepall)=SR;
 out.partialSymmetryRegions=SymReg;
+
+function [tf,loc] = rowsMember(A,B,tol)
+
+% [tf,loc] = rowsMember(A,B,tol): ismember(A',B','rows') for canonical
+% tuples whose entries are signed multiples of tol, through one integer
+% key per column when the keys fit in a uint64 (exact), otherwise through
+% ismember itself.
+
+order = size(A,1);
+Q = round(abs([A B])./tol);
+sgn = [A B] < 0;
+base = 2*max(Q(:))+2;                          % codes 2*Q + sign lie in [0, base-1]
+if isempty(Q) || base^order < 2^63
+    code = uint64(2*Q + sgn);
+    key = zeros(1,size(code,2),'uint64');
+    b = uint64(1);
+    for k = 1:order
+        key = key + code(k,:).*b;
+        b = b.*uint64(base);
+    end
+    [tf,loc] = ismember(key(1:size(A,2)),key(size(A,2)+1:end));
+    tf = tf(:); loc = loc(:);
+else
+    [tf,loc] = ismember(A',B','rows');
+end
+
+function C = canonicalForm(X,tol)
+
+% Columns of X rounded to tol, sorted by magnitude, with their signs (the
+% form the symmetry-region comparison uses; no tie-break between equal
+% magnitudes of opposite sign, as before).
+
+[C,srti] = sort(round(abs(X)./tol)*tol);
+srti = srti + size(X,1)*repmat(0:size(X,2)-1,size(X,1),1);
+C = C.*sign(X(srti));
