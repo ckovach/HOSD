@@ -16,6 +16,12 @@ function varargout =plotpolycoh(hos,ax,plotwhat,absfun)
 if nargin < 2 
     ax = [];
 end
+% Axes may be passed as graphics objects or as numeric handles (older
+% callers); numeric handles are converted so that property access and
+% indexed assignment below work the same way for both.
+if ~isempty(ax) && isnumeric(ax)
+    ax = handle(ax);
+end
 % Every graphics call below targets the axes it draws into. When the
 % caller supplies the axes (e.g. a uiaxes inside a uifigure) nothing may
 % fall through to gca / gcf: with no classic figure open those calls
@@ -237,7 +243,11 @@ for hi = 1:length(hos)
             end
             Bplot = Bslice.*(W2>=W1) + (1-(W2>=W1)).*Bpslice;
             imh(imk{:}) = imagesc(wb{1}+wcent(1),wb{2}+wcent(2),Bplot,'parent',ax(hi));
-            delete(datatip(imh(imk{:})));
+            hIm = imh(imk{:});
+            if isnumeric(hIm)                     % a numeric handle array: convert for property access
+                hIm = handle(hIm);
+            end
+            delete(datatip(hIm));
 %             delete(dt)
             Ws = {W1,W2};
             for kk = 3:length(wb)-1
@@ -245,10 +255,10 @@ for hi = 1:length(hos)
             end
             Ws{length(wb)} = -sum(cat(3,Ws{:}),3);
             for kk = 1:length(Ws)
-                q=imh(imk{:}).DataTipTemplate;
+                q=hIm.DataTipTemplate;
                 q.DataTipRows(kk) = dataTipTextRow(sprintf('f_%i:',kk),Ws{kk});
             end
-             q=imh(imk{:}).DataTipTemplate;
+             q=hIm.DataTipTemplate;
              q.DataTipRows(length(Ws)+1) = dataTipTextRow('Value:',double(Bslice));
             txt = {};
             for kk = 3:length(wb)-1
