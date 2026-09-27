@@ -191,10 +191,9 @@ if condense %for auto-spectra we only need the principal domain. This is not so 
 
     %%% Each kept point maps to the principal-domain tuple with the same
     %%% canonical form (ism) or the negated one (ismconj). The row-wise
-    %%% lookups are done on one integer key per tuple when the keys fit in
-    %%% a uint64, which is the same comparison as ismember(...,'rows') on
-    %%% the rounded values (ismember returns the lowest matching index in
-    %%% both forms), without sorting multi-column matrices.
+    %%% lookups are done on integer keys (see rowsMember), the same
+    %%% comparison as ismember(...,'rows') on the rounded values, without
+    %%% sorting multi-column double matrices.
     [ism,ismi] = rowsMember(Wsrt,Wsrt(:,PD),tol);
     [ismconj,ismiconj] = rowsMember(-Wsrt,Wsrt(:,PD),tol);
    ismiconj(1) = 0;
@@ -297,27 +296,43 @@ out.partialSymmetryRegions=SymReg;
 function [tf,loc] = rowsMember(A,B,tol)
 
 % [tf,loc] = rowsMember(A,B,tol): ismember(A',B','rows') for canonical
-% tuples whose entries are signed multiples of tol, through one integer
-% key per column when the keys fit in a uint64 (exact), otherwise through
-% ismember itself.
+% tuples whose entries are signed multiples of tol, through integer keys.
+% Each entry becomes the digit 2*round(|w|/tol) + (w < 0) in the base
+% 2*max(round(|w|/tol)) + 2, and the order digits of a tuple are packed
+% into as many 64-bit words as keep every word below 2^63 (no saturation),
+% so there is no limit on the frequency range or the order: one word is
+% compared with ismember on a vector, several with ismember on integer
+% rows. The equality tested is exactly that of the rounded values, and
+% the lowest matching index is returned, as ismember(...,'rows') did.
 
+nA = size(A,2);
+if isempty(A) || isempty(B)
+    tf = false(nA,1);
+    loc = zeros(nA,1);
+    return
+end
 order = size(A,1);
 Q = round(abs([A B])./tol);
 sgn = [A B] < 0;
-base = 2*max(Q(:))+2;                          % codes 2*Q + sign lie in [0, base-1]
-if isempty(Q) || base^order < 2^63
-    code = uint64(2*Q + sgn);
-    key = zeros(1,size(code,2),'uint64');
+code = uint64(2*Q + sgn);
+base = double(2*max(Q(:))+2);
+d = max(1,floor(63/log2(base)));                  % digits per word: base^d < 2^63
+nw = ceil(order/d);
+key = zeros(nw,size(code,2),'uint64');
+for w = 1:nw
     b = uint64(1);
-    for k = 1:order
-        key = key + code(k,:).*b;
+    for k = (w-1)*d+1:min(w*d,order)
+        key(w,:) = key(w,:) + code(k,:).*b;
         b = b.*uint64(base);
     end
-    [tf,loc] = ismember(key(1:size(A,2)),key(size(A,2)+1:end));
-    tf = tf(:); loc = loc(:);
-else
-    [tf,loc] = ismember(A',B','rows');
 end
+if nw == 1
+    [tf,loc] = ismember(key(1:nA),key(nA+1:end));
+else
+    [tf,loc] = ismember(key(:,1:nA)',key(:,nA+1:end)','rows');
+end
+tf = tf(:);
+loc = loc(:);
 
 function C = canonicalForm(X,tol)
 
