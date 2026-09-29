@@ -178,15 +178,20 @@ classdef model
                 
                 Freg = fact2reg(F,'center',center,'ignore',mask,'labels',label,'fullintxn',fact2reg_args{:},'codeincr',codeincr);
                 
+                Ftime = cell(1,length(Freg)); % time-domain copies: the linear (zero-padded) convolution below needs them
                 for kk = 1:length(Freg)
+                    Ftime{kk} = Freg(kk).value;
                     Freg(kk).value = fft(Freg(kk).value);
                 end
                 if center
                     trintcpt = zeros(size(Fs,1),1);
                     trintcpt(trts) = 1;
                     Freg(end+1) = regressor(fft(trintcpt),'label','trial intcpt','codeincr',Freg(end).code);
+                    Ftime{end+1} = trintcpt;
                 end 
-                Freg = Freg(arrayfun(@(x)~isempty(x.value),Freg));
+                keepF = arrayfun(@(x)~isempty(x.value),Freg);
+                Freg = Freg(keepF);
+                Ftime = Ftime(keepF);
                 codeincr = Freg(end).code;
                 %%%
                 if ~isfield(me.event,'timeBasis')
@@ -198,7 +203,24 @@ classdef model
                         % whole record (anticausal lags wrap to the end); 'laguerre'
                         % reads event.laguerre_sides / laguerre_continuity, see laguerreBasis.
                         [sides,continuity] = laguerre_options(me.event(k));
-                        TP = laguerreBasis((0:length(me.response)-1)'/me.sampling_rate,me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate,sides,continuity,true);
+                        % The convolution with the impulse train is LINEAR by
+                        % default: the record is zero-padded by the support of
+                        % the Laguerre functions (laguerreSupport), so an event
+                        % near one end of the record does not wrap its kernel
+                        % onto the other end, and every event can stay in the
+                        % fit whatever window its kernel is displayed over.
+                        % event.laguerre_circular = true restores the circular
+                        % convolution over the record's own length.
+                        nrec = length(me.response);
+                        npad = 0;
+                        if ~laguerre_circular(me.event(k))
+                            npad = laguerreSupport(me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate,nrec);
+                            npad = fastlen(nrec+npad)-nrec;
+                        end
+                        TPpad = laguerreBasis((0:nrec+npad-1)'/me.sampling_rate,me.event(k).laguerre_ord,me.event(k).laguerre_tau,me.sampling_rate,sides,continuity,true);
+                        % The regressor bookkeeping is on the record's own
+                        % length; with padding its values are replaced below.
+                        TP = TPpad(1:nrec,:);
                         switch sides
                             case 'causal';     lbl = 'After';
                             case 'anticausal'; lbl = 'Before';
@@ -230,10 +252,20 @@ classdef model
                         error('%s is an unrecognized option for the time basis.')
                 end
                 FTreg=interaction(Freg,Treg);
+                isLag = any(strcmpi(me.event(k).timeBasis,{'forward_laguerre','backward_laguerre','laguerre'}));
                 for kk = 1:length(Freg)
 %                            FTreg(kk).window = k; 
                    FTreg(kk).window = me.event(k); 
-                   FTreg(kk).value = real(ifft(FTreg(kk).value)); % product of FFTs of real signals: imaginary part is roundoff
+                   if isLag && npad > 0
+                       % Same column order as interaction2 (factor-major),
+                       % on the zero-padded record, cut back to the record.
+                       Vi = fft([full(Ftime{kk});zeros(npad,size(Ftime{kk},2))]);
+                       Vj = fft(TPpad);
+                       V  = real(ifft(kron(Vi,ones(1,size(Vj,2))).*repmat(Vj,1,size(Vi,2))));
+                       FTreg(kk).value = V(1:nrec,:);
+                   else
+                       FTreg(kk).value = real(ifft(FTreg(kk).value)); % product of FFTs of real signals: imaginary part is roundoff
+                   end
                 end
 
                 out = [FTreg,out]; %#ok<*AGROW>
@@ -426,5 +458,29 @@ end
 continuity = 'none';
 if strcmp(sides,'both') && isfield(evnt,'laguerre_continuity') && ~isempty(evnt.laguerre_continuity)
     continuity = lower(char(evnt.laguerre_continuity));
+end
+end
+
+function tf = laguerre_circular(evnt)
+% True when the event asks for the circular convolution over the record's
+% own length (evnt.laguerre_circular); the default is the linear one.
+tf = isfield(evnt,'laguerre_circular') && ~isempty(evnt.laguerre_circular) && logical(evnt.laguerre_circular);
+end
+
+function m = fastlen(m)
+% Smallest integer >= m whose prime factors are 2, 3 and 5, so the FFT of
+% the padded record stays fast whatever the record length.
+m = ceil(m);
+while true
+    r = m;
+    for p = [2 3 5]
+        while mod(r,p) == 0
+            r = r/p;
+        end
+    end
+    if r == 1
+        return
+    end
+    m = m+1;
 end
 end
