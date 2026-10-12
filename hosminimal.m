@@ -125,11 +125,14 @@ classdef hosminimal < hosobject
 %             warning('This object does not store HOS data')
 %         end
         
-        function get_input(me)
-            warning('This object does not implement HOSD')
+        % Data arguments are accepted, so a call reaches the warning
+        % instead of failing with 'Too many input arguments'. To refit,
+        % convert first: hos = hosobject(hm); hos.get_block(x).
+        function get_input(me,varargin) %#ok<INUSD>
+            warning('This object does not implement HOSD; convert it with hosobject(obj) to fit.')
         end
-        function get_block(me)
-            warning('This object does not implement HOSD')
+        function get_block(me,varargin) %#ok<INUSD>
+            warning('This object does not implement HOSD; convert it with hosobject(obj) to fit.')
         end
     end
     
