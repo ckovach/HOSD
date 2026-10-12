@@ -1009,7 +1009,7 @@ classdef hosobject < handle
         %%
         out = xprob(me,xin,return_sparse,apply_window)
         %%
-        [out,snr,xrsm,noisesd,xfilt,xthr,g] = xdetect(me,xin,pow)
+        [out,snr,xrsm,noisesd,xfilt,xthr,g] = xdetect(me,xin,pow,smwin)
         %%
         out = ximp(me,xin,return_sparse,apply_window)
         %%

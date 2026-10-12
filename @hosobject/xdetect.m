@@ -1,6 +1,7 @@
-function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow)
+function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow,smwin)
 
 % [xdet,xsnr,xfsm,xfsd,xfilt,xthr,g] = xdetect(obj,x,pow); 
+% [xdet,xsnr,xfsm,xfsd,xfilt,xthr,g] = xdetect(obj,x,pow,smwin); 
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
 % ximp and xthresh in that it applies a smoothing window whose width is determined from
@@ -16,6 +17,22 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow)
 %   pow - Compute SNR using an Lp norm of the given power. A higher value
 %         returns an SNR that is closer the maximum amplitude of the
 %         feature. Default is 10 (to approximate a max filter. 
+%   smwin - smoothing window applied to the thresholded output before the
+%         peaks are picked (optional):
+%           'auto' or [] (default): a Hann window whose standard deviation
+%                 matches the temporal spread of the thresholded feature
+%                 waveform, the timing ambiguity of a single instance.
+%           0   : no smoothing. Detections are the peaks of the thresholded
+%                 filter output itself (g = [0;1;0], a one-sample window
+%                 centered in three, so that a returned g can be passed back).
+%           s>0 : a Hann window with a standard deviation of s SECONDS
+%                 (about 5.5*s long), built as for 'auto'.
+%           vector: the window itself (non-negative), used for every
+%                 component and normalized to unit sum. Use an odd length so that
+%                 convn(..., 'same') keeps it centered.
+%           matrix: one window per column, column k for component k of a
+%                 hosobject array, e.g. the g returned by an earlier call
+%                 (its zero padding is harmless).
 % Output: 
 %   xdet - logical array indicating whether a detection is present at each sample
 %         of x.
@@ -26,7 +43,8 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow)
 %   xfsd - Estimated noise standard deviation in the detection filter output.
 %   xfilt - Detection filter output.
 %   xthr - Thresholded filter output.
-%   g    - smoothing window applied to the xthr.
+%   g    - smoothing window applied to the xthr (one column per component,
+%          zero-padded around its center to the longest window).
 
 % See also XIMP, XTHRESH and XFILT
 
@@ -40,9 +58,33 @@ if nargin < 3 || isempty(pow)
           %artifacts.
 end
 
+% The smoothing window: 'auto' (the default), or this component's window
+% and what the remaining components of the array receive.
+if nargin < 4 || isempty(smwin) || ((ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'auto'))
+    smwin = 'auto';
+    isauto = true;
+elseif ~isnumeric(smwin) || ~isreal(smwin) || any(~isfinite(smwin(:)))
+    error('hosobject:xdetect:badSmoothing', ...
+        'smwin must be ''auto'', a non-negative standard deviation in seconds, a window vector or one window per column.')
+else
+    isauto = false;
+end
+smnext = smwin;
+if isnumeric(smwin) && ~isvector(smwin)
+    if size(smwin,2) ~= length(me)
+        error('hosobject:xdetect:badSmoothing', ...
+            'A window matrix needs one column per component (%d columns for %d components).', size(smwin,2), length(me))
+    end
+    smnext = smwin(:,2:end);
+    smwin = smwin(:,1);
+end
+
 %Get component, filter output and thresholded filter output
 [xrec,xfilt,xthr] = me(1).xrec(x);
 
+if ~isauto
+    g = smoothing_window(smwin,me(1).sampling_rate);
+else
 % Get a characteristic duration for the feature using fthresh
 % This is a proxy for how the feature appears after filtering and
 % thresholding in the original signal
@@ -67,6 +109,7 @@ nsamp= max(3,round(smsd.*pi./sqrt(pi^2/12-1/2)));
 nsamp = nsamp + 1-mod(nsamp,2); %Keep the window size odd
 g = hann(nsamp);
 g=g./sum(g);
+end
 
 
 %xfsd = nanstd(xfilt(~xthr));
@@ -103,9 +146,9 @@ xmax = nthroot(xrsm.^pow./norm,pow);
 
 if length(me)>1
     if nargout == 1
-         outnext = me(2:end).xdetect(x-squeeze(xrec),pow);
+         outnext = me(2:end).xdetect(x-squeeze(xrec),pow,smnext);
     else
-        [outnext,snrnext,xrsmnext,xfsdnext,xfiltnext,xthrnext,gnext] = me(2:end).xdetect(x-squeeze(xrec),pow);
+        [outnext,snrnext,xrsmnext,xfsdnext,xfiltnext,xthrnext,gnext] = me(2:end).xdetect(x-squeeze(xrec),pow,smnext);
     end
 else
     outnext = logical([]);
@@ -149,3 +192,27 @@ if nargout > 1
 end
 
 
+function g = smoothing_window(smwin,fs)
+% An explicit smoothing window: 0 = none, a scalar = the standard deviation
+% in seconds of a Hann window built as for 'auto', a vector = the window.
+if isscalar(smwin)
+    if smwin < 0
+        error('hosobject:xdetect:badSmoothing','The smoothing standard deviation must be non-negative.')
+    elseif smwin == 0
+        % one sample, centered in three: a scalar 1 passed back would mean
+        % a 1 s standard deviation, and a row of K ones a K-sample window
+        g = [0;1;0];
+        return
+    end
+    smsd = smwin*fs; %Standard deviation in samples.
+    nsamp= max(3,round(smsd.*pi./sqrt(pi^2/12-1/2)));
+    nsamp = nsamp + 1-mod(nsamp,2); %Keep the window size odd
+    g = hann(nsamp);
+else
+    g = double(smwin(:));
+    if any(g < 0) || sum(g) <= 0
+        error('hosobject:xdetect:badSmoothing', ...
+            'A smoothing window must be non-negative with a positive sum (it weights the squared thresholded output).')
+    end
+end
+g=g./sum(g);

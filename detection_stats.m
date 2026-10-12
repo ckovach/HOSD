@@ -100,6 +100,14 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %   'sanity_checks'  'warn' (default) | 'off' | 'error'. Runs the checks
 %                  listed under outs(k).checks below and warns (or errors)
 %                  when any fails.
+%   'smoothing_window'  the window xdetect smooths the thresholded output
+%                  with before picking peaks (its 4th input): 'auto'
+%                  (default) = the window derived from each component's
+%                  feature; 0 = no smoothing; a scalar = the standard
+%                  deviation of a Hann window in seconds; a vector = the
+%                  window (non-negative); a matrix = one window per
+%                  component (e.g. the gs of an earlier call). The mixture
+%                  is fit on the statistic smoothed with the same window.
 %   'noise_dist'   {'gamma','lognormal','weibull','chi2','gengamma'} (default 'lognormal')
 %       Marginal noise family on the smoothed xrsm:
 %         'lognormal' : X = xrsm  ~ LogN(mu, sigma). Heavier right tail.
@@ -286,6 +294,8 @@ p.addParameter('model_select',          false,       @(v) islogical(v) || isstru
 p.addParameter('select_criterion',      'bic',       @(s) ischar(s) || isstring(s));
 % Output sanity checks: 'warn' | 'off' | 'error'.
 p.addParameter('sanity_checks',         'warn',      @(v) ischar(v) || isstring(v) || islogical(v));
+% xdetect's smoothing window: 'auto' | 0 | SD in seconds | window | one window per column.
+p.addParameter('smoothing_window',      'auto',      @(v) isempty(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && strcmpi(v, 'auto')));
 % Internal: xdetect outputs from a previous call (used by model_select to
 % avoid re-running xdetect for every candidate).
 p.addParameter('xdetect_cache',         [],          @(v) isempty(v) || isstruct(v));
@@ -316,6 +326,10 @@ model_select          = p.Results.model_select;
 select_criterion      = lower(char(p.Results.select_criterion));
 sanity_checks         = p.Results.sanity_checks;
 xdetect_cache         = p.Results.xdetect_cache;
+smoothing_window      = p.Results.smoothing_window;
+if isempty(smoothing_window) || ischar(smoothing_window) || isstring(smoothing_window)
+    smoothing_window = 'auto';
+end
 if islogical(sanity_checks)
     if sanity_checks, sanity_checks = 'warn'; else, sanity_checks = 'off'; end
 end
@@ -408,10 +422,11 @@ options = struct( ...
     'local_scale_source',     local_scale_source, ...
     'model_select',           model_select, ...
     'select_criterion',       select_criterion, ...
-    'sanity_checks',          sanity_checks);
+    'sanity_checks',          sanity_checks, ...
+    'smoothing_window',       smoothing_window);
 
 if isempty(xdetect_cache)
-    [xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs] = xdetect(hos,x,pow);
+    [xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs] = xdetect(hos,x,pow,smoothing_window);
     scale_src = [];
 else
     xdets = xdetect_cache.xdets; xsnrs = xdetect_cache.xsnrs; xrsms = xdetect_cache.xrsms;
