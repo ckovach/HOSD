@@ -8,51 +8,20 @@ function update_frequency_indexing(me,freqindx,mask)
     if ~me(1).do_indexing_update
         return
     end
-    order = me.order;
-    freqs=me.freqs;
-    if  isempty(freqs) || length(me(1).freqs{1})~=me(1).fftN
-        freqs = me(1).fftfreq(me(1).fftN)*me(1).sampling_rate;
-        me(1).freqs = repmat({freqs},1,me(1).order);
-    end
-
-    lowpass = me.lowpassval*me.sampling_rate;
-    if length(lowpass)< order-1
-        lowpass(end+1:order-1) = lowpass(end);
-    end
-    if length(lowpass)< order
-        lowpass(order) = me.glowpassval*me.sampling_rate;
-    end
-    xlowpass = me.xlowpassval*me.sampling_rate;
-    if length(xlowpass)< order
-        xlowpass(end+1:order) = xlowpass(end);
-    end
-    slowpass = me.slowpassval*me.sampling_rate;
-    shighpass = me.shighpassval*me.sampling_rate;
-
-    xhighpass = me.xhighpassval*me.sampling_rate;
-    if length(xhighpass)< order
-        xhighpass(end+1:order) = xhighpass(end);
-    end
     if nargin < 3 || isempty(mask)
         mask = true;
     end
-    highpass = me.highpassval*me.sampling_rate;
-    if length(highpass)< order
-        highpass(end+1:order) = highpass(1);
-    end
-
-    keepfreqs={};
-    for k = 1:length(me.freqs)                
-        keepfreqs{k} =(abs(me.freqs{k})<=lowpass(k)&abs(me.freqs{k})>highpass(k));                 %#ok<*AGROW>
-    %                 freqs{k} = freqs{k}(keepfreqs{k});
-       % freqindex{k} = find(keepfreqs{k});
-    end    
-    me.keepfreqs = keepfreqs;
-    %%% Initialize the indexing   
+    % the band vectors, keepfreqs and (when no indexing is given) the
+    % indexing itself come from compute_freqindx, which also sets me.freqs
+    % when it is empty or does not match fftN
     if nargin < 2 || isempty(freqindx)
-        freqindx = freq2index(me,freqs,order,lowpass,highpass,keepfreqs,me.pdonly,[],mask,xlowpass,xhighpass,slowpass,shighpass,me.diagonal_slice,me.include_signatures); %#ok<*PROPLC,*PROP>
+        [freqindx, keepfreqs, inputs] = me.compute_freqindx(mask);
+        me.freqindx_inputs = inputs;           % recorded so a reload can rebuild exactly this indexing
+    else
+        [~, keepfreqs] = me.compute_freqindx(mask, false);
+        me.freqindx_inputs = [];               % given a ready indexing: its inputs are unknown here (a copy inherits the source's record)
     end
-
+    me.keepfreqs = keepfreqs;
     me.freqindx  = freqindx;
 
     Z =zeros(size(me.freqindx.Is,1)+1,1);

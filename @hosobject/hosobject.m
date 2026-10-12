@@ -155,8 +155,11 @@ classdef hosobject < handle
         residualbuffer = [];
         shiftbuffer = [];
 
-        % Structure containing information on frequency indexing
-        freqindx = [];
+        % The inputs of the last frequency indexing (compute_freqindx), a
+        % small struct that IS saved, so a rebuild of the Transient freqindx
+        % after a load reproduces the indexing the HOS was estimated with even
+        % if a setting or the mask changed afterwards
+        freqindx_inputs = [];
         bufferPos = 0;
         sumlr=0;
         sumlr2=0;
@@ -173,6 +176,19 @@ classdef hosobject < handle
         waveftlag = [];
         win = sasaki(1024);
       G = [];
+
+    end
+
+    properties (GetAccess = public, SetAccess = protected, Transient = true)
+
+        % Structure containing information on frequency indexing (see
+        % freq2index). It is a deterministic function of the order, buffer
+        % size, sampling rate and band settings, and at 4th order its index
+        % arrays run to hundreds of MB per object, so it is not saved with
+        % the object (Transient) and is rebuilt on first access from the
+        % settings (get.freqindx -> compute_freqindx), where objects with
+        % identical settings share one copy through hosobject.freqindx_cache.
+        freqindx = [];
 
     end
 
@@ -307,10 +323,20 @@ classdef hosobject < handle
                end
 
                if isa(order,'struct')
-                   fnsunset = setdiff({'fftN','bufferN','sampling_rate','lowpass','freqs','freqindx'},fns);
+                   % Fill in only the fields the struct LACKS, from a blank
+                   % object. (Testing against fns, which by now holds only the
+                   % public-set properties, overwrote a struct's own bufferN,
+                   % freqs and freqindx with the blank object's defaults --
+                   % bufferN = 1024 -- whatever the struct held.) A struct of
+                   % the public properties carries buffersize, not bufferN.
+                   fnsunset = setdiff({'fftN','bufferN','sampling_rate','lowpass','freqs','freqindx'},fieldnames(obj));
                    for k = 1:length(fnsunset)
                        for kk = 1:length(obj)
-                           obj(kk).(fnsunset{k})=gather(me(1).(fnsunset{k}));
+                           if strcmp(fnsunset{k},'bufferN') && isfield(obj,'buffersize') && ~isempty(obj(kk).buffersize)
+                               obj(kk).bufferN = obj(kk).buffersize;
+                           else
+                               obj(kk).(fnsunset{k})=gather(me(1).(fnsunset{k}));
+                           end
                        end
                    end
                end
@@ -325,7 +351,71 @@ classdef hosobject < handle
                if obj(1).check_sign
                     me(1).check_sign = mod(obj(1).order,2)~=0;
                end
-               me.initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,obj(1).freqindx,varargin{:})
+
+               % Frequency indexing of the copy (backward compatibility).
+               % A source whose indexing fits its HOS -- any initialized or
+               % fitted hosobject, whatever version saved it -- passes that
+               % indexing on unchanged and nothing below differs for it: its
+               % B / D / Bpart / BIASnum are vectors over exactly that
+               % ordering. A saved indexing is never recomputed. Its fields
+               % have not changed since 2018, but freq2index revisions (2022,
+               % 2023, 2024) changed which square-form cells remap reaches at
+               % some sampling rates, so only the saved indexing is certain to
+               % be the one the stored HOS and filter were made with.
+               % A source WITHOUT a usable indexing -- a hosminimal (it stores
+               % no HOS), a struct without freqindx, an object whose freqindx
+               % was not saved, or a copy of a hosminimal made by earlier
+               % versions (scalar B on an indexing built with the defaults) --
+               % is indexed here from its OWN band and indexing settings.
+               % (initialize alone indexes with its defaults -- highpass 2/N,
+               % glowpass = lowpass, no diagonal slice, no mask -- and the
+               % settings copied below do not re-index, do_indexing_update
+               % being false.) Its HOS arrays are copied only if they fit that
+               % indexing: a hosminimal's placeholders (B = 0, D = 1,
+               % BIASnum = 0, Bpart = {}) are left out, so the copy keeps the
+               % correctly sized arrays initialize makes and can be refit; the
+               % source's integration matrices, a cache of its indexing, are
+               % left out too and rebuilt by integration_matrices when needed.
+               srchas = @(f) (isstruct(obj) && isfield(obj,f)) || (~isstruct(obj) && isprop(obj(1),f));
+               srcfx = obj(1).freqindx;
+               nBsrc = NaN;   % reduced coefficients in the source's B (NaN: it has no B)
+               if srchas('B')
+                   nBsrc = size(obj(1).B,1);
+               end
+               reindex = ~isstruct(srcfx) || ~isfield(srcfx,'Is') || ...
+                   (~isnan(nBsrc) && nBsrc ~= size(srcfx.Is,1)+1);
+               idxargs = {};
+               if reindex
+                   if isstruct(srcfx) && isfield(srcfx,'Is')
+                       warning('hosobject:copy:reindex', ['The source''s frequency indexing does not fit its HOS (%d vs %d coefficients); ', ...
+                           'the copy is indexed from the source''s band settings.'], size(srcfx.Is,1)+1, nBsrc)
+                   elseif ~isempty(srcfx)
+                       warning('hosobject:copy:reindex', ['The source''s frequency indexing is not a freq2index struct; ', ...
+                           'the copy is indexed from the source''s band settings.'])
+                   end
+                   srcfx = [];
+                   % the settings of an initialized source (keepfreqs set);
+                   % a never-initialized one keeps initialize's defaults
+                   if srchas('keepfreqs') && ~isempty(obj(1).keepfreqs)
+                       ip = {'pad','glowpass','highpass','xlowpass','xhighpass','slowpass','shighpass','pdonly','diagonal_slice','include_signatures','mask'};
+                       for k = 1:length(ip)
+                           if srchas(ip{k})
+                               idxargs(end+1:end+2) = {ip{k},gather(obj(1).(ip{k}))};
+                           end
+                       end
+                   end
+                   fns(ismember(fns,{'Imats','Iconjmats'})) = [];
+               end
+               % me(2:end), if any, are replaced by copies of obj(2:end) below,
+               % so only me(1) is initialized here.
+               me(1).initialize(obj(1).bufferN,obj(1).sampling_rate,obj(1).lowpass,obj(1).freqs,srcfx,idxargs{:},varargin{:})
+               if reindex && nBsrc ~= size(me(1).freqindx.Is,1)+1
+                   if nBsrc > 1
+                       warning('hosobject:copy:hosDropped', ['The source''s HOS (%d coefficients) does not fit the indexing of its settings (%d); ', ...
+                           'the copy is left without HOS (refit it with get_block).'], nBsrc, size(me(1).freqindx.Is,1)+1)
+                   end
+                   fns(ismember(fns,{'B','D','BIASnum','Bpart'})) = [];
+               end
 
                me(1).do_indexing_update = false;
                priority = intersect({'order','buffersize','pad','lag','sampling_rate','keepfreqs'},fns);% These fields should be set first
@@ -345,6 +435,9 @@ classdef hosobject < handle
                    end
                end
                me(1).do_indexing_update = true;
+               if ~reindex && isobject(obj) && isprop(obj(1), 'freqindx_inputs') && ~isempty(obj(1).freqindx_inputs)
+                   me(1).freqindx_inputs = obj(1).freqindx_inputs;   % the indexing passed to initialize came with these inputs
+               end
                if length(me)>1
                    me(2:end) = hosobject(obj(2:end));
                end
@@ -422,6 +515,20 @@ classdef hosobject < handle
         end
 
 
+        function out = get.freqindx(me)
+            % Not saved (Transient): an object loaded from disk, or copied
+            % from a struct without it, gets its indexing back here, from the
+            % shared cache or by recomputation, without touching B, D or any
+            % other fitted state. Only an initialized object (freqs set) with
+            % indexing updates enabled rebuilds; otherwise [] is returned as
+            % before, so initialize() still computes it with the settings it
+            % is given.
+            out = me.freqindx;
+            if isempty(out) && me.do_indexing_update && ~isempty(me.freqs)
+                out = me.rebuild_freqindx();
+                me.freqindx = out;
+            end
+        end
         function out = get.Bfull(me)
           out = me.B(me.freqindx.remap);
           out(me.freqindx.PDconj) = conj(out(me.freqindx.PDconj));
@@ -919,6 +1026,39 @@ classdef hosobject < handle
         end
     end
 
+
+    methods (Static)
+        function out = freqindx_cache(action, inputs, value)
+            % Process-wide cache of freq2index results, keyed by their inputs
+            % (compute_freqindx). 'get' returns the stored struct for INPUTS
+            % or []; 'put' stores VALUE for INPUTS (the oldest entry is
+            % dropped beyond maxEntries); 'clear' empties the cache (frees the
+            % memory once no object references the arrays); 'count' returns
+            % the number of entries.
+            persistent entries
+            if isempty(entries), entries = struct('inputs', {}, 'value', {}); end
+            maxEntries = 4;
+            out = [];
+            switch lower(action)
+                case 'get'
+                    for k = numel(entries):-1:1
+                        if isequal(entries(k).inputs, inputs)
+                            out = entries(k).value;
+                            return
+                        end
+                    end
+                case 'put'
+                    if numel(entries) >= maxEntries, entries(1) = []; end
+                    entries(end+1) = struct('inputs', inputs, 'value', value);
+                case 'clear'
+                    entries = struct('inputs', {}, 'value', {});
+                case 'count'
+                    out = numel(entries);
+                otherwise
+                    error('hosobject:freqindx_cache', 'unknown action %s', action);
+            end
+        end
+    end
 
 end
 
