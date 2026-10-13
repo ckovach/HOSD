@@ -137,9 +137,14 @@ xfsd = std(xfilt(~xthr));
 %RMS normalized to estimated noise SD
 xrsm = nthroot(convn((xthr./xfsd).^pow,g,'same'),2);
 [~,pk] = getpeak2(xrsm);
-%%% Peak weighted xrsms.
+%%% Peak weighted xrsms: the RMS over the SUPRA-THRESHOLD samples in the
+%%% window, of EITHER polarity (xthr~=0). An even order thresholds both
+%%% signs, and the numerator always summed both; until 2026-10-13 the count
+%%% was xthr>0, which halved it on even-order fits and raised their SNR by
+%%% about sqrt(2) (median 2.8 dB on order-4 MASS fits). Odd orders pass only
+%%% positive excursions, so for them nothing changes.
 %%% Stabilize the denominator with 1 * max(g) so regularization scales with the kernel. 
-norm = convn((xthr>0),g,'same')+1*max(g(:));
+norm = convn((xthr~=0),g,'same')+1*max(g(:));
 xmax = nthroot(xrsm.^pow./norm,pow);
 %xmax = xrsm;
 
