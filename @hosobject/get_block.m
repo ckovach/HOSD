@@ -195,6 +195,29 @@
                 Xwin = Xwin.*sgn;
             end
             Gpart(isnan(Gpart))=0;
+            %%% EDF outlier rejection (see EDF_OUTLIER_MASK): the call above
+            %%% ran UPDATE_BISPECTRUM, which masked the dominating entries and
+            %%% gave zero weight to the windows flagged whole. Those windows
+            %%% are dropped here as well, before the alignment, so that they
+            %%% enter neither the filter average nor the feature waveform,
+            %%% nor the window count.
+            if me(1).edf_outlier_threshold > 0 && me(1).do_bsp_update
+                ebad = any(me(1).edf_outlier_info.badwin,3);
+                segment.edf_discarded = ebad;
+                if any(ebad)
+                    if double(makeplot(1)) >= 0
+                        fprintf('\n%i (%0.2f %%) Segments dominating the polyspectral average (EDF outlier rule) have been excluded',sum(ebad),100*mean(ebad))
+                    end
+                    Xsh = Xsh(:,~ebad,:);
+                    Xwin = Xwin(:,~ebad,:);
+                    Gpart = Gpart(:,~ebad,:);
+                    me(1).window_number = me(1).window_number - sum(ebad);
+                    if ~isempty(wint)
+                        T = T(:,~ebad);
+                        segment.wint = segment.wint(~ebad);
+                    end
+                end
+            end
             if me(1).do_filter_update
                 me(1).G = mean(Gpart,2);
             end

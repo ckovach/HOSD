@@ -80,9 +80,43 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     end
     FFX(isnan(FFX)) = 0;
 
+    %%% EDF outlier rejection (see EDF_OUTLIER_MASK): entries that dominate
+    %%% the average at their coefficient are left out of the HOS estimate
+    %%% and of the window's partial delay filter (FFXpart); a window flagged
+    %%% whole gets zero weight.
+    edfdrop = false(1,size(FFX,2));
+    if me.edf_outlier_threshold > 0
+        [emsk,ebad,einfo] = me.edf_outlier_mask(abs(FFX),wgt);
+        me.edf_outlier_info = einfo;
+        if any(emsk(:))
+            FFX(emsk) = 0;
+            for kk = 1:me.order
+                FFXpart{kk}(emsk) = 0;
+            end
+        end
+        edfdrop = any(ebad,3);
+        if any(edfdrop)
+            if isvector(wgt)
+                wgt(edfdrop) = 0;
+                if ~me.integrated_magnitude_normalization
+                    wgt = wgt./sum(wgt);
+                end
+            else
+                wgt(edfdrop,:) = 0;
+                if ~me.integrated_magnitude_normalization
+                    wgt = wgt./sum(wgt,1);
+                end
+            end
+        end
+    end
+
 %             BX = mean(FFX,2);
     BX = sum(FFX.*wgt',2);
-    XPSD = mean(abs(FX).^2,2);
+    if any(edfdrop)
+        XPSD = mean(abs(FX(:,~edfdrop,:)).^2,2);
+    else
+        XPSD = mean(abs(FX).^2,2);
+    end
 %             BXpart = mean(FFXpart,2);
 
     BX(end+1,1) = nan;
@@ -102,6 +136,9 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
         lr=1;
         me.sumlr = 1;
         me.sumlr2 = 1/size(FX,2);
+        if any(edfdrop)
+            me.sumlr2 = 1/sum(~edfdrop);
+        end
 
     else
         [lradj,lr] = me.learningfunction(me.hos_learning_rate,m,me.hos_burnin);

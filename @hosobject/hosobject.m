@@ -137,6 +137,19 @@ classdef hosobject < handle
         % suppress outliers.
         integrated_magnitude_normalization = false;
 
+        % Leave-one-out EDF outlier rejection of the per-window polyspectral
+        % products (see EDF_OUTLIER_MASK): an entry whose removal would raise
+        % the effective sample size of its coefficient's average (Kovach
+        % 2017, eq. 20) by more than this many effective samples is left out
+        % of the HOS estimate and of the window's partial delay filter. 0
+        % (default) disables.
+        edf_outlier_threshold = 0;
+
+        % A window in which more than this fraction of the coefficients is
+        % flagged by the EDF rule is left out whole: UPDATE_BISPECTRUM gives
+        % it zero weight, and GET_BLOCK drops it before the alignment.
+        edf_outlier_window_fraction = 0.25;
+
         use_gpu = false; %Use GPU when available
 
         chanweight =1; %Channel weighting in filter.
@@ -172,6 +185,12 @@ classdef hosobject < handle
 
         % Vector of feature delays in the most recent input windows
         delay = 0;
+
+        % Report of the last EDF outlier flagging (see EDF_OUTLIER_MASK):
+        % iterations, entries flagged, EDF per coefficient before and after,
+        % the fraction of coefficients flagged per window. Empty when the
+        % rule is off.
+        edf_outlier_info = [];
         sign =1;
         waveftlag = [];
         win = sasaki(1024);
@@ -982,6 +1001,8 @@ classdef hosobject < handle
         [Gout,sgn] = partial_delay_filt(me,Xs,returnfull,use_sample_bispectrum,normalization)
         %%%
         power_iteration(me,X)
+        %%%
+        [msk,badwin,info] = edf_outlier_mask(me,A,wgt)
         %%%
         varargout = get_block(me,xin,maxiter,makeplot,segment,compno,initialize)
         %%%
