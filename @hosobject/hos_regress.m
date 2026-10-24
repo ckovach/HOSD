@@ -1,4 +1,4 @@
- function varargout = hos_regress(me,yin,xin,do_permtest,do_clustertest,varargin)
+ function varargout = hos_regress(me,yin,xin,do_permtest)
 
 % out = hos_regress(me,Y,[X],[do_permtest])
 % Linear regression on each element of the HOS array
@@ -14,7 +14,14 @@
 %        windowing specified in me.window provides the weighting.
 %    do_permtest - carry out a permutation test by shuffling the values of X
 %        and generating an empirical distribution for deviance under
-%        shuffling. Default is false.
+%        shuffling: false (default) for none, true (or 1) for at most 5e5
+%        permutations, a number greater than 1 for at most that many.
+%        Permuting stops early once no coefficient's parametric p-value is
+%        small enough to need more, and drops coefficients that are
+%        clearly not significant. It needs X: shuffling the windows
+%        against the constant design of the test on the mean changes
+%        nothing (HOS_CLUSTER_TEST tests the mean with a phase-randomizing
+%        null).
 %
 % Outputs:
 %   out - A structure with fields:
@@ -27,7 +34,10 @@
 %        .wald - (P+1) x M array of Wald statistics for each parameter 
 %                estimate (wald(:,k) = beta(:,k)./sqrt(diag(iXX)*sigma(k)) )
 %        .permp - 1 x M array of permutation p-values if do_permtest is
-%        true.
+%        true: the fraction of the permutations run in which the
+%        shuffled deviance exceeds the observed one. There is no +1
+%        correction, so a coefficient that no shuffle exceeds gets
+%        exactly 0.
 %
 % see COMPLEXGLM HOSOBJECT/SETREG
 %
@@ -36,18 +46,21 @@
     if nargin < 4 || isempty(do_permtest)
         do_permtest = false; %Do a permutation test to verify significant results
     end
-    if  nargin > 3 && do_permtest > 1
-        maxpermn = dopermtest;
+    if do_permtest > 1
+        maxpermn = do_permtest; % the maximum number of permutations
     else
         maxpermn = 5e5;
     end
-    if nargin < 5 || isempty(do_clustertest)
-        do_clustertest = false;
+    meantest = nargin < 3 || isempty(xin); % no X: the test on the mean
+    if meantest && do_permtest
+        error('hosobject:hos_regress:permtestNeedsX', ...
+            ['A permutation test needs a regressor X: shuffling the windows against ', ...
+             'the constant design of the test on the mean changes nothing. ', ...
+             'HOS_CLUSTER_TEST tests the mean with a phase-randomizing null.'])
     end
     
-    
     reg_args = {};
-    if nargin < 3 || isempty(xin)
+    if meantest
         if size(yin,2) == 1
            xin = ones(size(yin,1),1);
         else
@@ -101,7 +114,7 @@
        %%% to nominal p-value. 
        reseed;
        geti=1;
-       while any(out.pval<=1/(permi*2)) && permi<maxpermn && sum(geti)>0
+       while any(out.pval<=1/(permi*2)) && permi<=maxpermn && sum(geti)>0
            rp = randperm(size(FFY,2));
            if mod(permi,10.^floor(log10(permi)-2))==0
            geti = num < num_threshold(min(end,ceil(log10(permi+1))));
@@ -120,7 +133,10 @@
 
     if length(me)>1
         yres = yin-me(1).xrec(yin);
-        out = [out,me(2:end).hos_regress(yres,xin,do_permtest,varargin{:})];
+        if meantest
+            xin = []; % each component builds its own design for the test on the mean
+        end
+        out = [out,me(2:end).hos_regress(yres,xin,do_permtest)];
     end
 
     varargout{1} = out;

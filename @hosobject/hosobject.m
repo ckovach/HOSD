@@ -1012,7 +1012,7 @@ classdef hosobject < handle
         %%%
         [Xchop,T,segment] = chop_input(me,xin,apply_window,delay,segment)
         %%%
-        varargout = hos_regress(me,yin,xin,do_permtest,varargin)
+        varargout = hos_regress(me,yin,xin,do_permtest)
         %%%
         [Xthresh,trialthresh] = filter_threshold(me,Xfilt,thresh,use_adaptive_threshold)
         %%%
