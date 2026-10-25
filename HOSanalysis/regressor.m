@@ -129,7 +129,7 @@ classdef regressor
 
 %         noptions = [];
 %         Npar = 0;
-        postmult = ones(size(X,1),1);
+        postmult = [];
         while i <= length(varargin)
 
             switch lower(varargin{i})
@@ -179,6 +179,8 @@ classdef regressor
 %         R = struct('value',[],'info',[],'normconst',normconst,'label',label,'noptions',...
 %                     noptions,'Npar',Npar,'code',codeincr+1,'codevec',[],'factmat',[],'levmat',[],...
 %                      'fixed',[],'function',[],'deriv',[]);
+        % 'version' and 'hashcode' are not filled; the fields stay so that the
+        % info of a regressor read from an older file concatenates with new ones.
         R.info = struct('form',[],'intxnord',[],'version',[],'hashcode',[],'parent',[],'label',...
                         [],'pooled_labels',{{}},'contrasts',{{}},'parentindex',[],'functionInputCodes',[],'factorlabels',[],'COMMAND',[]);
         R.Npar = 0;
@@ -210,10 +212,8 @@ classdef regressor
         
         MKX = R.makefun(X);
 
-        if length(postmult) > 1
-            MKX = MKX.*repmat(postmult,1,size(MKX,2));
-        else
-            MKX = MKX.*postmult;
+        if ~isempty(postmult)
+            MKX = MKX.*postmult(:);
         end
 
         R.Npar = size(MKX,2);
@@ -239,30 +239,8 @@ classdef regressor
 %         R.Npar = npar;
         R.info.intxnord = interaction_order;
 
-
-        % try
-        %     fid = fopen([mfilename,'.m'],'r');
-        %     R.info.COMMAND =  fread(fid);
-            R.info.version =  sprintf(['----------- SVN REVISION INFO ------------------',...
-                            '\n$URL: https://saccade.neurosurgery.uiowa.edu/svn/GazeReader/0.1/regressor.m $',...
-                            '\n$Revision: 98 $',...
-                            '\n$Date: 2011-09-13 16:52:46 -0500 (Tue, 13 Sep 2011) $',...
-                            '\n$Author: ckovach $',...
-                            '\n------------------------------------------------',...
-                            '\ngenerated on %s'],datestr(now));
-
-        %     fclose(fid);
-        % catch
-        %     warning('Failed to record the script used to generate regressor %s poly',R.label);
-        % end
-
 %         R.makefun = mkfun;
         % R.deriv = derivfun;
-
-
-        reseed;
-
-        R.info.hashcode = uint32(rand*intmax('uint32')); %For now a random number will be the hashcode
 
         R.code = codeincr + 1;
 
@@ -281,11 +259,6 @@ classdef regressor
         end
 
         R.fixed = fixed;
-
-        % nzv = typecast(nonzeros(R.value)-mean(nonzeros(R.value)),'int32');
-        % rand('seed',234952);
-        % sumvec = sign(rand(nnz(R.value),1)-.5);
-        % R.info.hashcode = sum(  nzv(sumvec>0,:), 'native' )./2 + sum( nzv(sumvec<0,:), 'native' )./2;
 
      
 
