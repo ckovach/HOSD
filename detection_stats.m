@@ -434,11 +434,17 @@ else
     gs = xdetect_cache.gs;
     scale_src = xdetect_cache.scale_src;
 end
-% Signal the running scale is measured on (see 'local_scale_source'). Only
-% needed when a local scale is in play; the residual costs one xrec plus
-% one filter pass per component.
-needs_local = ischar(local_scale_sec) || any(local_scale_sec(:) > 0) || ...
-              (~isempty(model_select) && ~(islogical(model_select) && ~model_select));
+% Signal the running scale is measured on (see 'local_scale_source'),
+% formed only when a span reads it: 'auto', a span > 0, or several spans
+% (run_model_selection ranks them on it). A model_select struct's
+% local_scale_sec replaces local_scale_sec as the spans tried, and model
+% selection at a zero span never reads it. The residual costs one xrec
+% plus one filter pass per component.
+spans = local_scale_sec;
+if isstruct(model_select) && ~isempty(model_select) && isfield(model_select, 'local_scale_sec')
+    spans = model_select.local_scale_sec;
+end
+needs_local = ~isnumeric(spans) || any(spans(:) > 0) || numel(spans) > 1;
 if needs_local && isempty(scale_src)
     if strcmp(local_scale_source, 'residual')
         [scale_src, ok_res] = residual_filter_output(hos, x, xfilts);
