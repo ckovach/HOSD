@@ -2,6 +2,17 @@ function varargout =plotpolycoh(hos,ax,plotwhat,absfun)
 
 %Plot polycoherence. For orders greater than 3, plot 2d slices.
 %
+% plotpolycoh(hos,ax,plotwhat,absfun)
+%   hos      - a hosobject, or an array of them (one plot each)
+%   ax       - the axes to draw into (default: subplots of the current figure)
+%   plotwhat - what is drawn: 'abs' (the default; also 'mag', 'magnitude'),
+%              'phase' (also 'angle'), a numeric scalar t (the phase where
+%              the magnitude exceeds t, NaN elsewhere; 'phase' is t = 0) or
+%              a function handle.
+%   absfun   - a function handle applied instead of the one plotwhat names
+%              (older callers pass the same handle as plotwhat and absfun);
+%              empty means none, and any other value is refused.
+%
 % The values drawn are looked up directly in the reduced coefficient vector
 % through the square-form map (hosobject/square_index, freqindx.remap and
 % PDconj) instead of being read out of the full square-form array through
@@ -9,9 +20,9 @@ function varargout =plotpolycoh(hos,ax,plotwhat,absfun)
 % bispectral diagonal (f,f) and the 2-D slices of a 4th-order spectrum all
 % lie on the frequency grid, so the nearest-neighbor interpolation was an
 % exact lookup at the cost of forming, shifting and interpolating arrays of
-% size prod(dims). A plotting function given as plotwhat is applied to the
-% looked-up values, so it is expected to act elementwise (abs, real, angle,
-% a threshold ...), which is what the earlier code assumed in effect.
+% size prod(dims). The plotting function is applied once to the looked-up
+% values in every branch, the NaN of points off the grid included, so it is
+% expected to act elementwise (abs, real, angle, a threshold ...).
 
 if nargin < 2 
     ax = [];
@@ -28,15 +39,33 @@ end
 % would create a new empty figure titled 'Component 1'.
 ownAxes = isempty(ax);
 thresh = 0;
-inputfun = @(x)x;
 if nargin < 3 || isempty(plotwhat)
     plotwhat = 'abs';
 elseif isnumeric(plotwhat) && isscalar(plotwhat)
     thresh = plotwhat;
     plotwhat = 'phase';
+end
+if isa(plotwhat,'function_handle')
+    fun = plotwhat;
 else
-    inputfun = @(x)plotwhat(x);
-    plotwhat = 'input';
+    name = '';      % anything that is not text reaches the error below
+    if (ischar(plotwhat) && isrow(plotwhat)) || (isstring(plotwhat) && isscalar(plotwhat) && ~ismissing(plotwhat))
+        name = lower(char(plotwhat));
+    end
+    switch name
+        case {'mag','abs','magnitude'}
+            fun = @abs;
+        case {'phase','angle'}
+            fun = @(x)angle(x) + 0./(abs(x)>thresh);
+        otherwise
+            error('plotpolycoh:plotwhat', ...
+                'Unrecognized plotting option: plotwhat must be ''abs'', ''phase'', a numeric threshold or a function handle.')
+    end
+end
+if nargin < 4 || isempty(absfun)
+    absfun = fun;
+elseif ~isa(absfun,'function_handle')
+    error('plotpolycoh:absfun','absfun (the 4th argument) must be a function handle, or empty.')
 end
 %scale = 'log';
 %   scale = 'lin';
@@ -58,26 +87,6 @@ plot_partialbc = false;
 
 % fig = figure('WindowButtonMotionFcn',@(a,b,c)figcallback(a,wtr,iwtr));
 % fig = figure;
-switch plotwhat
-    case {'mag','abs','magnitude'}
-        absfun = @abs;
-    case {'phase','angle'}
-      absfun = @(x)angle(x) + 0./(abs(x)>thresh);
-    case 'input'
-        if nargin < 4
-          absfun = @(x)x;
-        end
-    otherwise
-        if isa(plotwhat,'function_handle')
-            if nargin < 4
-                absfun = plotwhat;
-            end
-                
-        else
-            error('Unrecognized plotting option')
-        end
-end
-%absfun = @real;
 subxy = almostSquare(length(hos));
 txth = [];
 imh = gobjects(0);      % an object array, so imh(k) = imagesc(...) keeps graphics handles
@@ -95,8 +104,8 @@ for hi = 1:length(hos)
         modfreq = modfreq(abs(modfreq)>h.shighpass & abs(modfreq)<=h.slowpass);
         
         [P,M] = meshgrid(power,modfreq);
-        B = lookup(h,[P(:),P(:),-P(:)+M(:)],h.bicohreduced,true,inputfun);
-        Bpart = lookup(h,[P(:),P(:),-P(:)+M(:)],h.partialbicohreduced,true,inputfun);
+        B = lookup(h,[P(:),P(:),-P(:)+M(:)],h.bicohreduced,true);
+        Bpart = lookup(h,[P(:),P(:),-P(:)+M(:)],h.partialbicohreduced,true);
         B = reshape(B,size(P));
         Bpart = reshape(Bpart,size(P));
         Bpart(isnan(B))=nan;
@@ -108,7 +117,8 @@ for hi = 1:length(hos)
 %         else
 %             axes(ax(hi))
          end
-        imh = pcolor(power,modfreq,absfun(B),'parent',ax(hi,1));
+        % double: pcolor refuses logical CData (a handle such as @(x)abs(x)>t)
+        imh = pcolor(power,modfreq,double(absfun(B)),'parent',ax(hi,1));
         set(imh,'facecolor','flat','edgecolor','none');
         if hi==1
          title(ax(hi,1),sprintf('Modulogram (Trispectrum Diagonal Slice)'))
@@ -128,7 +138,7 @@ for hi = 1:length(hos)
      
          end
          if size(ax,2)>1
-            imh = pcolor(power,modfreq,absfun(Bpart),'parent',ax(hi,2));
+            imh = pcolor(power,modfreq,double(absfun(Bpart)),'parent',ax(hi,2));
             set(imh,'facecolor','flat','edgecolor','none');
             title(ax(hi,2),sprintf('Component %i Trispectrum Modulogram',hi))
             axis(ax(hi,2),'xy')
@@ -139,8 +149,8 @@ for hi = 1:length(hos)
         f = wb0{1};
         B = nan*f;
         Bpart = B;
-        B(:) = absfun(lookup(h,[f(:),f(:)],h.bicohreduced,true,inputfun));
-        Bpart(:) = absfun(lookup(h,[f(:),f(:)],h.partialbicohreduced,true,inputfun));
+        B(:) = absfun(lookup(h,[f(:),f(:)],h.bicohreduced,true));
+        Bpart(:) = absfun(lookup(h,[f(:),f(:)],h.partialbicohreduced,true));
          if hi>length(ax)
              ax(hi) = subplot(subxy(1),subxy(2),hi);
 %         else
@@ -233,11 +243,11 @@ for hi = 1:length(hos)
                     wrest(kk) = wb{kk+2}(K(k,kk));
                 end
                 Wq = [W1(:),W2(:),repmat(wrest,numel(W1),1)];
-                Bslice = reshape(absfun(lookup(h,Wq,h.bicohreduced,true,@(x)x)),size(W1));   % absfun only, as this branch always did
+                Bslice = reshape(absfun(lookup(h,Wq,h.bicohreduced,true)),size(W1));
             end
             if plot_partialbc && ~do_interp
                 Wq = [W1(:),W2(:),repmat(wrest,numel(W1),1)];
-                Bpslice = reshape(absfun(lookup(h,Wq,h.partialbicohreduced,true,@(x)x)),size(W1));
+                Bpslice = reshape(absfun(lookup(h,Wq,h.partialbicohreduced,true)),size(W1));
             else
                 Bpslice = Bslice;
             end
@@ -320,12 +330,12 @@ end
 % set(gca,'xticklabel',lblx(get(ax,'xtick')),'yticklabel',lblx(get(ax,'ytick')));
 %     
     
-function vals = lookup(h,W,v,conjugate,inputfun)
+function vals = lookup(h,W,v,conjugate)
 
 % Coefficients of the reduced-form vector v at the square-form points whose
 % first order-1 frequencies are the rows of W: v(remap), conjugated where
 % PDconj is set (as hos.bicoh does) when conjugate is true, NaN off the
-% grid, inputfun applied to the values.
+% grid.
 
 fx = h.freqindx;
 [lin,inside] = h.square_index(W);
@@ -336,7 +346,7 @@ if conjugate
     cj = fx.PDconj(lin(inside));
     b(cj) = conj(b(cj));
 end
-vals(inside) = inputfun(b);
+vals(inside) = b;
 
 function out =  almostSquare(N)
 
