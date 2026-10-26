@@ -68,7 +68,11 @@
         end
         reg_args = [reg_args,{'intercept',false}];
     end
-    me(1).regressor = xin;
+    % The design is not stored on the object any more: nothing reads the
+    % regressor property back, and setreg chopped X a second time on every
+    % call to build it. Left commented out for a later, systematic handling
+    % of regressors following the HOSanalysis model class.
+    % me(1).regressor = xin;
 
     if size(yin,2)==1
         Ychop = me(1).chop_input(yin,true);
