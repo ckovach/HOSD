@@ -89,6 +89,15 @@
     if nxin >= me(1).bufferN
         me(1).bufferPos = 0; % Discard the buffer
         if  size(xin,1) ~=me(1).fftN %me(1).bufferN 
+            %%% Not a matrix of fftN-row windows, so a record, which must be
+            %%% a column vector: the windows below index it as one, and
+            %%% APPLY_FILTER (so XFILT, RECONSTRUCT, XDETECT) reads further
+            %%% columns as channels, which the fit does not have.
+            if size(xin,2) > 1
+                error('hosobject:get_block:badInput', ...
+                    'get_block takes a record as a column vector, or windows as the columns of a matrix with fftN = %d rows; the input is %s.', ...
+                    me(1).fftN, mat2str(size(xin)))
+            end
             if ~isfield(segment,'wint') || isempty(segment.wint)
                 stepn = round(me(1).poverlap*me(1).bufferN);
                 nget = nxin - me(1).bufferN+1;
@@ -372,28 +381,27 @@
 %                   Xfilt = (Xfilt-me(1).running_mean)./sqrt(me(1).running_var);
 %                  Xfilt = (Xfilt-nanmean(Xfilt))./nanstd(Xfilt);
 
-        if ~isempty(segment.wint)
-            segment.wintadj = segment.wint+me(1).delay/segment.fs;
-        end
-        %%% Update CDF buffer
+        %%% Update CDF buffer: the reference distribution of the adaptive
+        %%% threshold (see HOSOBJECT/CURRENT_THRESHOLD), stored only when
+        %%% that threshold is on. Forming it filters the whole input and
+        %%% sorts it, so none of it runs otherwise.
+        if me(1).use_adaptive_threshold
             xfilt = (me(1).xfilt(xin)-me(1).running_mean)./sqrt(me(1).running_var);
-        if size(xin,1)>me(1).buffersize
-            Tcdf = chopper(segment.Trange*me(1).CDFupsample,segment.wint(1:me(1).CDFupsample:end),segment.fs);
-%                     Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
-            Tcdf = mod(Tcdf-1,length(xfilt))+1;
-            Xfilt = sort(xfilt(Tcdf));
-        else
-            nw = floor(numel(xfilt)./(size(xfilt,1)*me(1).CDFupsample));
+            if size(xin,1)>me(1).buffersize
+                Tcdf = chopper(segment.Trange*me(1).CDFupsample,segment.wint(1:me(1).CDFupsample:end),segment.fs);
+%                         Tcdf(Tcdf<1)=1;Tcdf(Tcdf>length(xin))=length(xin);
+                Tcdf = mod(Tcdf-1,length(xfilt))+1;
+                Xfilt = sort(xfilt(Tcdf));
+            else
+                nw = floor(numel(xfilt)./(size(xfilt,1)*me(1).CDFupsample));
 
-            Xfilt = reshape(xfilt(1:nw*(size(xfilt,1)*me(1).CDFupsample)),(size(xfilt,1)*me(1).CDFupsample),nw);
-            Xfilt = sort(Xfilt);
+                Xfilt = reshape(xfilt(1:nw*(size(xfilt,1)*me(1).CDFupsample)),(size(xfilt,1)*me(1).CDFupsample),nw);
+                Xfilt = sort(Xfilt);
+            end
+            for k = 1:me(1).threshold_order
+                me(1).CDFbuffer(:,k) = nanmean(Xfilt.^k,2);
+            end
         end
-
-       if me(1).use_adaptive_threshold
-           for k = 1:me(1).threshold_order
-               me(1).CDFbuffer(:,k) = nanmean(Xfilt.^k,2);
-           end
-       end    
 
         if isempty(segment.wint)
 %                     T = mod(repmat((0:size(Xsh,1)-1)',1,size(Xsh,2))+repmat(me(1).delay,size(Xsh,1),1),size(Xsh,1))+1;
