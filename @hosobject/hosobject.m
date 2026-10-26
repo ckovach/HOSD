@@ -141,9 +141,11 @@ classdef hosobject < handle
         % products (see EDF_OUTLIER_MASK): an entry whose removal would raise
         % the effective sample size of its coefficient's average (Kovach
         % 2017, eq. 20) by more than this many effective samples is left out
-        % of the HOS estimate and of the window's partial delay filter. 0
-        % (default) disables.
-        edf_outlier_threshold = 0;
+        % of the HOS estimate and of the window's partial delay filter. The
+        % change dEDF lies in [-1, Inf), so the threshold ranges over [-1,
+        % Inf]: 0 leaves out every entry whose removal raises the EDF at all,
+        % -1 nearly every entry. Inf (default) or false disables the rule.
+        edf_outlier_threshold = Inf;
 
         % A window in which more than this fraction of the coefficients is
         % flagged by the EDF rule is left out whole: UPDATE_BISPECTRUM gives
@@ -209,6 +211,14 @@ classdef hosobject < handle
         % identical settings share one copy through hosobject.freqindx_cache.
         freqindx = [];
 
+    end
+
+    properties (Hidden, SetAccess = protected)
+        % 2 for an object made by this version of the class, where Inf
+        % disables the EDF outlier rule; 1 (the default an object saved
+        % before it receives on load) for svn r2163-r2175, where 0 did
+        % (LOADOBJ maps that 0 to Inf).
+        edf_outlier_rule = 1;
     end
 
     properties (Access = protected)
@@ -321,6 +331,7 @@ classdef hosobject < handle
             % Hosobject contructor
             %
             %
+            me.edf_outlier_rule = 2;
             if nargin ==0
                 return
             end
@@ -452,6 +463,13 @@ classdef hosobject < handle
                         catch
                         end
                    end
+               end
+               % A struct saved by svn r2163-r2175, where an EDF outlier
+               % threshold of 0 meant "off", carries no edf_outlier_rule: its
+               % 0 becomes Inf, today's off. (An object source was mapped on
+               % load, LOADOBJ.)
+               if isstruct(obj) && ~isfield(obj,'edf_outlier_rule') && isequal(me(1).edf_outlier_threshold,0)
+                   me(1).edf_outlier_threshold = Inf;
                end
                me(1).do_indexing_update = true;
                if ~reindex && isobject(obj) && isprop(obj(1), 'freqindx_inputs') && ~isempty(obj(1).freqindx_inputs)
@@ -936,6 +954,18 @@ classdef hosobject < handle
         end
 
         %%%%%%%
+        function set.edf_outlier_threshold(me,v)
+            % A number in [-1, Inf]; Inf or false disables the rule.
+            if islogical(v) && isscalar(v) && ~v
+                v = Inf;
+            end
+            if ~(isnumeric(v) && isscalar(v) && isreal(v) && ~isnan(v) && v >= -1)
+                error('hosobject:edf_outlier_threshold:badValue', ...
+                    'edf_outlier_threshold must be a number in [-1, Inf] (Inf or false: off).')
+            end
+            me.edf_outlier_threshold = double(v);
+        end
+
         function set.regressor(me,xin)
             setreg(me,xin);
         end
@@ -1044,6 +1074,24 @@ classdef hosobject < handle
     methods (Static)
         function out = fftfreq(N)
             out = ifftshift((0:N-1)-floor(N/2))/N;
+        end
+
+        function me = loadobj(me)
+            % An object saved by svn r2163-r2175 took an EDF outlier
+            % threshold of 0 to mean "off"; today Inf does, and 0 is a
+            % threshold. Such an object carries no edf_outlier_rule (it
+            % loads as 1): its 0 becomes Inf.
+            if ~isa(me,'hosobject')
+                return
+            end
+            for k = 1:numel(me)
+                if me(k).edf_outlier_rule < 2
+                    if me(k).edf_outlier_threshold == 0
+                        me(k).edf_outlier_threshold = Inf;
+                    end
+                    me(k).edf_outlier_rule = 2;
+                end
+            end
         end
     end
 

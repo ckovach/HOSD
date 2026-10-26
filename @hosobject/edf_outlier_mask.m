@@ -24,7 +24,10 @@ function [msk,badwin,info] = edf_outlier_mask(me,A,wgt)
 % the EDF by about ten effective samples whatever N is. An entry is flagged
 % when dEDF exceeds me.edf_outlier_threshold; the sums are updated without
 % it and the test repeats on what is left (one dominating window hides the
-% next) until nothing new is flagged. A window in which more than
+% next) until nothing new is flagged. The threshold lies in [-1, Inf]
+% (dEDF cannot fall below -1): 0 flags every entry whose removal raises
+% the EDF at all; Inf disables the rule (this function then flags
+% nothing). A window in which more than
 % me.edf_outlier_window_fraction of the coefficients is flagged is flagged
 % whole (badwin, and every entry of its column in msk): an event of
 % interest, sparse and strong, dominates the coefficients of its own band
@@ -58,6 +61,15 @@ function [msk,badwin,info] = edf_outlier_mask(me,A,wgt)
     maxiter = 50;
     thr = me.edf_outlier_threshold;
     wfrac = me.edf_outlier_window_fraction;
+    if ~(thr < Inf)
+        % The rule is off: nothing is flagged, and no sum, EDF or dEDF is
+        % formed.
+        msk = false(size(A));
+        badwin = false([1 size(A,2) size(A,3)]);
+        info = struct('threshold',thr,'window_fraction',wfrac,'iterations',0,'nflag',zeros(1,0), ...
+            'capped',false,'edf0',[],'edf1',[],'maxshrink',[],'frac',zeros(size(badwin)),'badwin',badwin);
+        return
+    end
     if nargin > 2 && ~isempty(wgt) && ~isscalar(wgt)
         if isvector(wgt)
             A = A.*reshape(abs(wgt),1,[]);          % one weight per window, along dim 2
@@ -71,24 +83,16 @@ function [msk,badwin,info] = edf_outlier_mask(me,A,wgt)
     info = struct('threshold',thr,'window_fraction',wfrac,'iterations',0,'nflag',zeros(1,0),'capped',false);
     info.edf0 = S1.^2./S2;
     msk = false(size(A));
-    if ~(thr > 0)
-        info.maxshrink = max((S1-A).^2./(S2-A2) - info.edf0,[],1);
-        badwin = false([1 size(A,2) size(A,3)]);
-        info.edf1 = info.edf0;
-        info.frac = zeros([1 size(A,2) size(A,3)]);
-        info.badwin = badwin;
-        return
-    end
     for it = 1:maxiter
         edf = S1.^2./S2;
         % NaN where a coefficient has one window left: not flagged. A removed
-        % entry (A = 0) has a shrinkage of exactly 0, so it is never flagged
-        % again.
+        % entry, or one that was 0 to begin with, has a shrinkage of exactly 0
+        % and is never flagged (with a threshold below 0, 0 would exceed it).
         shrink = (S1-A).^2./(S2-A2) - edf;
         if it == 1
             info.maxshrink = max(shrink,[],1);
         end
-        new = shrink > thr;
+        new = shrink > thr & A > 0;
         info.nflag(it) = gather(sum(new(:)));
         info.iterations = it;
         if ~any(new(:))

@@ -210,7 +210,7 @@
             %%% are dropped here as well, before the alignment, so that they
             %%% enter neither the filter average nor the feature waveform,
             %%% nor the window count.
-            if me(1).edf_outlier_threshold > 0 && me(1).do_bsp_update
+            if me(1).edf_outlier_threshold < Inf && me(1).do_bsp_update
                 ebad = any(me(1).edf_outlier_info.badwin,3);
                 segment.edf_discarded = ebad;
                 if any(ebad)

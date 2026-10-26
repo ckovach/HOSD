@@ -85,7 +85,7 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     %%% and of the window's partial delay filter (FFXpart); a window flagged
     %%% whole gets zero weight.
     edfdrop = false(1,size(FFX,2));
-    if me.edf_outlier_threshold > 0
+    if me.edf_outlier_threshold < Inf
         [emsk,ebad,einfo] = me.edf_outlier_mask(abs(FFX),wgt);
         me.edf_outlier_info = einfo;
         if any(emsk(:))
