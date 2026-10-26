@@ -231,7 +231,6 @@ else
     lgm = []; %lagrange multipliers    
 %     constraint = 0;
 end
-nlgm = size(LC,1);
 
 
 %%% weighted length of a vector
@@ -270,7 +269,6 @@ else
     l1regfun =@(theta)  diag(L1reg)*sign(theta); %%% Gaussian and laplace prior 
 end
 
-l1regfuno = l1regfun;
 
 if strcmpi(type,'binomial') && any(y>Ntot) % Poisson counts are unbounded
     error('y must be a count which is less than Ntot')
@@ -288,56 +286,26 @@ levstep = 2;
 levmar =  .1;
 
 
-
-
-switch lower(type)
-    
-    case 'binomial'
-        
-        rho = @(th) spX*th;
-        
-        %Probability
-        Pfun = @(th) exp( rho(th) )./(1+exp(rho(th)));
-        
-        %Likelihood function (obsw weights each observation's contribution)
-        LLvec = @(th) obsw.*(rho(th).*y - Ntot.*log(1+exp(rho(th))));
-        LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
-
-        %First derivative of the likelihood function
-        DLLfun = @(th)  ((obsw.*(repmat(y,1,size(th,2)) - repmat(Ntot,1,size(th,2)).*Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
-
-        if ~diagHess
-            D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
-        else
-            D2LLfun = @(th)    -diag(sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
-%             D2LLinv = @(th)    -diag((sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)).^-1) - sparse(D2Regfun(th));
-        end
-
-    case 'poisson'
-        %INtensity
-        rho = @(th) spX*th;
-        Pfun = @(th) exp( rho(th) );
-
-        LLvec = @(th) obsw.*(rho(th).*y - Pfun(th));
-        LLfun = @(th) sum( LLvec(th) ) - th'*(RegMat(th,1) + L1reg.*sign(th)); % scalar penalised log-likelihood, as for the binomial case
-        DLLfun = @(th)  ((obsw.*(y - Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
-        D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Pfun(th)) )*spX - sparse(D2Regfun(th)); % Hessian of the log-likelihood is negative definite
-%         DLLfun = @(th) sum((y'*- Pfun(th));
-        
-        
-        
-end
-
-DLLfuno = DLLfun;
-% LLfuno = LLfun;
-D2LLfuno = D2LLfun;
-% RegMato = RegMat;
+%%% The model the Newton iteration works on: design, data and penalty.
+%%% glmeval (below) returns the gradient of the penalized log-likelihood and,
+%%% on request, the log-likelihood and the Hessian, from ONE product X*theta.
+%%% The lasso passes work on a copy reduced to the parameters they keep
+%%% (lassoModel).
+binomial = strcmpi(type,'binomial');
+mfull = struct('X',spX,'y',y,'Ntot',Ntot,'obsw',obsw,'binomial',binomial,...
+               'diagHess',diagHess && binomial,... % the Poisson Hessian has no diagonal form
+               'RegMat',RegMat,'D2Regfun',D2Regfun,'l1regfun',l1regfun,'L1reg',L1reg,...
+               'LC',[],'lgm',[]);
 
 if any(L1reg(:) ~=0)
-    discard = DLLfun(theta + 1e-6).*DLLfun(theta - 1e-6) < -1e-6;
+    gp = glmeval(theta + 1e-6,mfull);
+    gm = glmeval(theta - 1e-6,mfull);
+    g0 = glmeval(theta.*0,mfull);
+    g = glmeval(theta,mfull);
+    discard = gp.*gm < -1e-6;
 
-    discard = discard & abs(DLLfun(theta.*0)+ l1regfun(theta*0)) < L1reg &...
-                sign(DLLfun(theta.*0).*DLLfun(theta))>0;
+    discard = discard & abs(g0+ l1regfun(theta*0)) < L1reg &...
+                sign(g0.*g)>0;
 %   discard = false(size(theta));
 %     thetanew(discard) = 0;
     
@@ -350,94 +318,29 @@ end
 thetafull = theta;
 
 
-spXfull = spX;
-
 discold = nan;
 
 % Lregfull = Lreg;
 L1regfull = L1reg;
-% ths = [];
-ll = [];
 nlasso = 0;
 while ~isequal(discard,discold) && nlasso < maxlasso
 
     iter = 0;
     del = Inf;
 
-    
-    if ~isempty(LC)
-%        DLLfun = @(theta) cat(1,DLLfuno(theta) + LC(1:end-1,:)*lgm,[theta; -1]'*LC); %Derivative of parameters under linear constraint
-        DLLfun = @(theta) cat(1,DLLfuno(theta) + LC(:,1:end-1)'*lgm,LC*[theta; -1]); %Derivative of parameters under linear constraint
-        D2LLfun =  @(theta) cat(1,...
-                    cat(2,D2LLfuno(theta),LC(:,1:end-1)' ) ,...
-                    [LC(:,1:end-1),-1e-9*eye(nlgm)]) ;             % Derivative of Lagrange Multipliers;    
-    end
-
-
     if any(L1regfull(:)~=0)
-        
-        spX = spXfull(:,~discard);
+        m = lassoModel(mfull,Hreg,discard); % neither the Laplace penalty nor a linear constraint applies here
         theta = thetafull(~discard);
-        L1reg = L1regfull(~discard);
-       RegMat = @(theta,a)  a*Hreg(~discard,~discard)*theta ;%+ Lreg./wleng(theta,Lreg) )*theta ; 
-%         l1regfun =@(theta)  L1reg(~discard).*sign(theta); %%% Gaussian and laplace prior 
-        l1regfun =@(th)  diag(L1reg)*sign(th);
-
-        D2Regfun =@(theta) Hreg(~discard,~discard) ; %%% Gaussian prior only
-
-        switch lower(type)
-
-            case 'binomial'
-
-                rho = @(th) spX*th;
-
-                %Probability
-                Pfun = @(th) exp( rho(th) )./(1+exp(rho(th)));
-
-                %Likelihood function (obsw weights each observation's contribution)
-                LLvec = @(th) obsw.*(rho(th).*y - Ntot.*log(1+exp(rho(th))));
-%                 LLfun = @(th) sum(rho(th).*y - Ntot.*log(1+exp(rho(th)))) - th'*(RegMat(th,1) + L1reg(~discard).*sign(th));
-                LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
-
-                %First derivative of the likelihood function
-%                 DLLfun = @(th)  ((y - Ntot.*Pfun(th))'*spX)'- RegMat(th,2) - l1regfun(th);
-                DLLfun = @(th)  ((obsw.*(y - Ntot.*Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
-
-                if ~diagHess
-                    D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th))) )*spX - sparse(D2Regfun(th));
-                else
-                    D2LLfun = @(th)    -diag(sparse(obsw.*Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)) - sparse(D2Regfun(th));
-        %             D2LLinv = @(th)    -diag((sparse(Ntot.*Pfun(th).*(1-Pfun(th)))'*(spX.*spX)).^-1) - sparse(D2Regfun(th));
-                end
-
-            case 'poisson'
-                %INtensity
-                rho = @(th) spX*th;
-                Pfun = @(th) exp( rho(th) );
-
-                LLvec = @(th) obsw.*(rho(th).*y - Pfun(th)); % keep the per-sample likelihood on the reduced design too
-                LLfun = @(th) sum(LLvec(th)) - th'*(RegMat(th,1) + L1reg.*sign(th));
-                DLLfun = @(th)  ((obsw.*(y - Pfun(th)))'*spX)'- RegMat(th,2) - l1regfun(th);
-                D2LLfun = @(th)   -spX'*diag( sparse(obsw.*Pfun(th)) )*spX - sparse(D2Regfun(th)); % negative definite
-        %         DLLfun = @(th) sum((y'*- Pfun(th));
-
-
-
-        end     
+    else
+        m = mfull;
+        m.LC = LC;   % Derivatives of the Lagrangian under linear constraints
+        m.lgm = lgm;
     end
-    
 
-    
-%     fixed = find(fix | discard);
-%     LC = zeros(Npar,1);
-%     for i = 1:length(fixed)
-%         LC(i,fixed(i)) = 1;
-%     end
-%         LC(end+1,:) = InitTheta(fixed);
+    spey = speye(numel(theta)+size(m.LC,1));
 
-
-spey = speye(length(DLLfun(theta)));
-
+    [g,LL] = glmeval(theta,m); % carried for the current theta
+    D2LL = [];                   % the Hessian at theta, formed when a factorization needs it
 
     % Newton-raphson gradient ascent
     lastlap = false;
@@ -448,63 +351,48 @@ spey = speye(length(DLLfun(theta)));
         if ~diagHess
             if mod(iter,recomputeHessian) == 0 || lastlap
                 try  
-                       chR = chol(-D2LLfun(theta) + spey*levmar );  %%Using the cholesky factorization is faster than computing the inverse, but might be worse for poorly conditioned matrices
+                       if isempty(D2LL), [~,~,~,D2LL] = glmeval(theta,m); end
+                       chR = chol(-D2LL + spey*levmar );  %%Using the cholesky factorization is faster than computing the inverse, but might be worse for poorly conditioned matrices
                 catch
                     levmar = .01;
                     try
-                   chR = chol(-D2LLfun(theta) + spey*levmar );  %%Using the cholesky factorization is faster than computing the inverse, but might be worse for poorly conditioned matrices
+                       if isempty(D2LL), [~,~,~,D2LL] = glmeval(theta,m); end % a Hessian that could not be formed fails here again
+                   chR = chol(-D2LL + spey*levmar );  %%Using the cholesky factorization is faster than computing the inverse, but might be worse for poorly conditioned matrices
                     catch
                         warning('Convergence error')
                         break
                     end
                 end
-               %                H = (-D2LLfun(theta) + spey*levmar );
-%                while condest(H) > 1e5
-%                      levmar = max( 1e-3, levmar*2);
-%                      H = (-D2LLfun(theta) + spey*levmar );
-%                end
             end
            if showiter && mod(iter,printiter) == 0
                fprintf('\n%i  del: %f',iter,del)
            end
-%                 dtheta = H\DLLfun(theta); 
-            dtheta = chR\(chR'\sparse(DLLfun(theta))); 
-    %         chR = D2LLfun(theta);
-    %         dtheta = chR^-1*DLLfun(theta);
-            
-            
+            dtheta = chR\(chR'\sparse(g)); 
     
         else
-            dtheta = -( D2LLinv(theta))*sparse(DLLfun(theta));
+            dtheta = -( D2LLinv(theta))*sparse(g);
 
         end
 
-%     dtheta = dtheta.*(~discard);
     thetanew = theta + dtheta;
-%     if L1reg ~=0
-%         discard = discard | thetanew.*theta < -1e-6;
-%     
-%         discard = discard & abs(DLLfun(theta.*0)+ l1regfun(theta*0)) < L1reg &...
-%                     sign(DLLfun(theta.*0).*DLLfun(theta))>0;
-%     
-%         thetanew(discard) = 0;
-%         theta(discard) = 0;
-%     end
    
-          dll = LLfun(thetanew) - LLfun(theta);
+          [gnew,LLnew] = glmeval(thetanew,m);
+          dll = LLnew - LL;
           del = full(sum(dtheta.^2))./sum(theta.^2+eps);
-%         del = dll;
-%         
         if dll >= 0
             theta = thetanew;
+            LL = LLnew;
+            g = gnew;
+            D2LL = [];
             levmar = levmar./levstep;
         else
                levmar = levmar.*levstep + .001;
+            if isempty(D2LL), [~,~,~,D2LL] = glmeval(theta,m); end
             try
-               chR = chol(-D2LLfun(theta) + spey*levmar);
+               chR = chol(-D2LL + spey*levmar);
             catch  %#ok<CTCH>
                levmar = levmar.*levstep + .1;
-               chR = chol(-D2LLfun(theta) + spey*levmar);
+               chR = chol(-D2LL + spey*levmar);
             end
             
            if showiter
@@ -533,8 +421,6 @@ spey = speye(length(DLLfun(theta)));
              lastlap = false;
         end
          
-%         ll(end+1) = LLfun(theta);
-%         ths(~discard,end+1) = theta;
     end
     if any( L1regfull(:)~=0)
 
@@ -543,13 +429,13 @@ spey = speye(length(DLLfun(theta)));
         thetafull(discard) = 0;
     %     fprintf('\n%6i',0);
         thth = repmat(thetafull,1,length(thetafull)) - diag(thetafull);
-        dlth = diag(DLLfuno(thth));
+        dlth = diag(glmeval(thth,mfull));
         
         %%% IF the sign of the slope changes on either side of 0, then the
         %%% peak is at zero.
         spe =speye(length(thetafull));
-        pkval = (dlth+diag(-l1regfuno(thth + 1e-6*spe ))).*...
-                  (dlth+diag(-l1regfuno(thth - 1e-6*spe )));
+        pkval = (dlth+diag(-l1regfun(thth + 1e-6*spe ))).*...
+                  (dlth+diag(-l1regfun(thth - 1e-6*spe )));
         
         %%% resurrect a feature if pkval exceed some threshold
         discard = pkval < -1e-6 | discold & pkval > .25;
@@ -559,30 +445,13 @@ spey = speye(length(DLLfun(theta)));
         discard = 0;
         discold = 0;
     end
-    
-%     if any(L1reg~=0)
-%         for i = 1:length(thetafull)
-%             zth = thetafull;
-%             dzth = 0*thetafull;
-%             zth(i) = 0;
-%             dzth(i) = 1e-6;
-%             dl = DLLfuno(zth + dzth) .* DLLfuno(zth-dzth);
-%             discard(i) = dl(i) < 1e-6;
-% %             i
-%             if mod(i,10) ==0;
-%                 fprintf('\b\b\b\b\b\b%6i',i);
-%             end
-%         end    
-%     end
   
 
 end
 
 theta = thetafull;
 
-H = D2LLfuno(theta);
-
-% LL = LLfuno(theta);
+[~,~,llvec,H] = glmeval(theta,mfull);
 
 cdtol = 1e6;
 msg.badcond = condest(H) > cdtol;
@@ -590,16 +459,74 @@ msg.converged = iter < maxiter;
 msg.Niter = iter;
 
 if ~isequal(discard,0)
-    spX = spXfull(:,~discard);
+    m = lassoModel(mfull,Hreg,discard);
     theta = thetafull(~discard);
-    L1reg = L1regfull(~discard);
-    RegMat = @(theta,a)  a*Hreg(~discard,~discard)*theta ;%+ Lreg./wleng(theta,Lreg) )*theta ; 
+    [~,~,llvec] = glmeval(theta,m);
 else
     discard = false(size(theta));
 end
-% LL = sum(sparseblock(LLvec(theta),ntrials,'transpose')) - sum(sparseblock(theta.*(RegMat(theta,1) + L1reg.*sign(theta)),size(spX(:,~discard),2),'transpose'));
-RM = 0*thetafull; RM(~discard) = RegMat(theta,1);
-LL = sum(sparseblock(LLvec(theta),ntrials,'transpose')) - sum(sparseblock(theta.*(RM(~discard,:) + L1reg.*sign(theta)),size(X(:,~discard),2),'transpose'));
+pen = 0*thetafull; % the penalty of each parameter, zero for the discarded
+pen(~discard) = theta.*(m.RegMat(theta,1) + m.L1reg.*sign(theta));
+% sparseblock hands its input to a mex that reads numel(X) doubles from the nonzero
+% buffer, so a sparse input with zeros in it (Poisson llvec with withheld rows,
+% pen with discarded parameters) must go in full
+LL = sum(sparseblock(full(llvec),ntrials,'transpose')) - sum(sparseblock(full(pen),size(X,2),'transpose'));
+
+
+
+function [g,LL,llvec,H] = glmeval(th,m)
+
+% The gradient g of the penalized log-likelihood of the model m at the
+% parameters th and, when asked for, the penalized log-likelihood LL, the
+% log-likelihood of each observation (llvec, unpenalized) and the Hessian H,
+% all from ONE product m.X*th. A matrix th (one parameter vector per column)
+% gives one column of g each; with g alone nothing else is formed. With
+% linear constraints (m.LC), g and H are those of the Lagrangian.
+
+eta = m.X*th;
+if m.binomial
+    e = exp(eta);
+    p = e./(1+e);
+    r = m.y - m.Ntot.*p; % y - mu
+    if nargout > 1, llvec = m.obsw.*(eta.*m.y - m.Ntot.*log(1+e)); end
+    if nargout > 3, w = m.obsw.*m.Ntot.*p.*(1-p); end
+else
+    mu = exp(eta);
+    r = m.y - mu;
+    if nargout > 1, llvec = m.obsw.*(eta.*m.y - mu); end
+    if nargout > 3, w = m.obsw.*mu; end
+end
+g = ((m.obsw.*r)'*m.X)' - m.RegMat(th,2) - m.l1regfun(th);
+if nargout > 1
+    LL = sum(llvec) - th'*(m.RegMat(th,1) + m.L1reg.*sign(th));
+end
+if nargout > 3
+    if m.diagHess
+        H = -diag(sparse(w)'*(m.X.*m.X)) - sparse(m.D2Regfun(th));
+    else
+        H = -m.X'*diag( sparse(w) )*m.X - sparse(m.D2Regfun(th)); % negative definite
+    end
+end
+if ~isempty(m.LC)
+    C = m.LC(:,1:end-1);
+    g = cat(1,g + C'*m.lgm,m.LC*[th; -1]);
+    if nargout > 3
+        H = cat(1,cat(2,H,C'),[C,-1e-9*eye(size(C,1))]);
+    end
+end
+
+
+function m = lassoModel(m,Hreg,discard)
+
+% The model of a lasso pass: only the parameters not discarded, with the
+% Gaussian and lasso penalties.
+
+m.X = m.X(:,~discard);
+L1reg = m.L1reg(~discard);
+m.L1reg = L1reg;
+m.RegMat = @(theta,a)  a*Hreg(~discard,~discard)*theta ;
+m.l1regfun = @(th)  diag(L1reg)*sign(th);
+m.D2Regfun = @(theta) Hreg(~discard,~discard) ; %%% Gaussian prior only
 
 
 
