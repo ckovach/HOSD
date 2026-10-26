@@ -37,21 +37,27 @@
    %dimensions
    return_sparse = return_sparse & (size(xin,2) < 2 || length(me) < 2);
 
-   xf = me(1).apply_filter(xin,apply_window,false);
-%            if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
-%                xf = ifftshift(xf,1);
-%            end
-
+   if length(me)>1 && ismatrix(xin) && size(xin,1) > me(1).fftN
+       %%% A record deflated for the components after this one: the
+       %%% reconstruction filters and thresholds it on the way (see XFILT).
+       [xr,~,xthr] = me(1).xrec(xin,[],apply_window);
+       xr(isnan(xr)) = 0; % as XREC with one output (all NaN for a component with no supra-threshold sample)
+   else
+       xthr = me(1).filter_threshold(me(1).apply_filter(xin,apply_window,false));
+       if length(me)>1
+           xr = me(1).xrec(xin,[],apply_window);
+       end
+   end
 
    if return_sparse
-       out = sparse(double(me(1).filter_threshold(xf)));  
+       out = sparse(double(xthr));  
    else         
-       out = double(me(1).filter_threshold(xf));       
+       out = double(xthr);       
    end
 
 
    if length(me)>1
-       out= cat(sum(size(xin)>1)+1,out,me(2:end).xthresh(xin-me(1).xrec(xin,[],apply_window),return_sparse,apply_window));
+       out= cat(sum(size(xin)>1)+1,out,me(2:end).xthresh(xin-xr,return_sparse,apply_window));
    end
 
 

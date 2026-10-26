@@ -216,20 +216,32 @@ classdef mvhosd < hosobject
 % %                warning('MVHOS expected dimension %i for channels and %i for features, but size suggests they are reversed.\nThese will be exchanged now. In the future make sure the dimensions are correctly ordered,\nas this would have been missed if the number of features and channels happened to coincide.',chdim,chdim-1)
 %                in = permute(in, [1:chdim-2 chdim chdim-1]);
 %            end
-           if nargout > 1
-               [out,~,~,mvout] = me(1).apply_mvfilter(in,apply_window,false);  
+           if size(me,2)>1 && nargout < 2 && size(in,1) > me(1).fftN
+               %%% A record deflated for the components after this one: the
+               %%% reconstruction filters it on the way, and that filter
+               %%% output (NaN kept) is this component's. Windows (bufferN
+               %%% rows, which RECONSTRUCT ifftshifts) and the per-channel
+               %%% outputs take the plain path.
+               [xr,out] = me(1).xrec(in,[],apply_window);
            else
-               [out,~] = me(1).apply_mvfilter(in,apply_window,false);
+               if nargout > 1
+                   [out,~,~,mvout] = me(1).apply_mvfilter(in,apply_window,false);
+               else
+                   [out,~] = me(1).apply_mvfilter(in,apply_window,false);
+               end
+               if size(me,2)>1
+                   xr = me(1).xrec(in,[],apply_window);
+               end
            end
 %             if size(in,1)==me(1).buffersize %% Make sure the output is consistent if the input happens to be of buffersize length
 %                 out = ifftshift(out,1);
 %             end
             
            if size(me,2)>1
-               if nargout == 1
-                   xf = me(:,2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window);
+               if nargout < 2
+                   xf = me(:,2:end).xfilt(in-xr,apply_window);
                else                   
-                   [xf,mvxf] = me(:,2:end).xfilt(in-me(1).xrec(in,[],apply_window),apply_window);
+                   [xf,mvxf] = me(:,2:end).xfilt(in-xr,apply_window);
                    mvout = cat(find([size(in),1]==1,1),mvout,mvxf);
                end
                out = cat(sum(size(in)>1),out,xf);
@@ -332,10 +344,18 @@ classdef mvhosd < hosobject
             if size(in,2)==size(me(1).feature,3) 
                 in = permute(in,[1 3 2]);
             end
-            Xfilt = me(1).xfilt(in);
-            out=me(1).filter_threshold(Xfilt,threshold);
+            if size(me,2)>1 && size(in,1) > me(1).fftN
+                %%% A record deflated for the components after this one: the
+                %%% reconstruction filters and thresholds it on the way (see XFILT).
+                [xr,~,out] = me(1).xrec(in,threshold,apply_window);
+            else
+                out = me(1).filter_threshold(me(1).xfilt(in,apply_window),threshold);
+                if size(me,2)>1
+                    xr = me(1).xrec(in,threshold,apply_window);
+                end
+            end
             if size(me,2)>1
-               out = cat(sum(size(in)>1),out,me(2:end).xthresh(in-me(1).xrec(in,threshold,apply_window),threshold,apply_window));
+               out = cat(sum(size(in)>1),out,me(2:end).xthresh(in-xr,threshold,apply_window));
            end
          end
            %%%
@@ -387,10 +407,18 @@ classdef mvhosd < hosobject
             if size(in,2)==size(me(1).feature,3) 
                 in = permute(in,[1 3 2]);
             end
-            Xthr=me(1).xthresh(in);
+            if size(me,2)>1 && size(in,1) > me(1).fftN
+                %%% As in XTHRESH: the deflating reconstruction thresholds a record.
+                [xr,~,Xthr] = me(:,1).xrec(in,[],apply_window);
+            else
+                Xthr = me(1).xthresh(in,[],apply_window);
+                if size(me,2)>1
+                    xr = me(:,1).xrec(in,[],apply_window);
+                end
+            end
             out = abs(Xthr)>0;
             if size(me,2)>1
-               out = cat(sum(size(in)>1),out,me(:,2:end).ximp(in-me(:,1).xrec(in,[],apply_window),apply_window));
+               out = cat(sum(size(in)>1),out,me(:,2:end).ximp(in-xr,apply_window));
             end
           end
         
