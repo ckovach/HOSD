@@ -297,7 +297,8 @@ p.addParameter('sanity_checks',         'warn',      @(v) ischar(v) || isstring(
 % xdetect's smoothing window: 'auto' | 0 | SD in seconds | window | one window per column.
 p.addParameter('smoothing_window',      'auto',      @(v) isempty(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && strcmpi(v, 'auto')));
 % Internal: xdetect outputs from a previous call (used by model_select to
-% avoid re-running xdetect for every candidate).
+% avoid re-running xdetect for every candidate), plus .memo, the work the
+% candidates share (see the component loop).
 p.addParameter('xdetect_cache',         [],          @(v) isempty(v) || isstruct(v));
 p.KeepUnmatched = false;
 parse_args = merge_option_args(p, options_struct, varargin);
@@ -459,29 +460,45 @@ end
 % =====================================================================
 % Model selection: run every candidate combination (sharing this xdetect
 % result), score them, and keep the best per component. Each candidate is
-% an ordinary detection_stats call with model_select off.
+% an ordinary detection_stats call with model_select off. The cache's memo
+% (a containers.Map, so what one candidate stores reaches the next) holds
+% the work that does not depend on the noise/signal families; see its use
+% in the component loop.
 % =====================================================================
 if ~isempty(model_select) && ~(islogical(model_select) && ~model_select)
     cache = struct('xdets', xdets, 'xsnrs', xsnrs, 'xrsms', xrsms, 'xfsds', xfsds, ...
-                   'xfilts', xfilts, 'xthrs', xthrs, 'gs', gs, 'scale_src', scale_src);
+                   'xfilts', xfilts, 'xthrs', xthrs, 'gs', gs, 'scale_src', scale_src, ...
+                   'memo', containers.Map());
     [outs, pprobs, pprobs_outlier, local_scales] = ...
         run_model_selection(hos, x, options, model_select, select_criterion, cache);
+    % The winner's checks were run in its own call, on the same inputs.
     for k = 1:numel(outs)
-        [outs(k).checks, msgs] = run_sanity_checks(outs(k), pprobs(:,k), xdets(:,k));
-        report_sanity(msgs, k, sanity_checks);
+        report_sanity(outs(k).checks.messages, k, sanity_checks);
     end
     return
 end
 
 pprobs_outlier = zeros(size(xrsms));
 local_scales   = zeros(size(xfilts));
-xrsm_used      = zeros(size(xrsms));
-sample_w_used  = zeros(size(xrsms));
+xrsm_used      = cell(1, length(hos));   % per component, the arrays themselves (no N x K copies)
+sample_w_used  = cell(1, length(hos));
 local_scale_info = repmat(struct('sec', 0, 'block_sec', local_scale_block_sec, ...
     'p05', NaN, 'p50', NaN, 'p95', NaN, 'ratio95to5', NaN, 'candidates', [], 'cv_score', [], ...
     'cv_se', [], 'block_acf', [], 'block_log_level', [], 'kernel_sec', NaN, ...
     'source', local_scale_source), 1, length(hos));
 kernel_sec_used = nan(1, length(hos));
+% Memo of a model-selection run (see run_model_selection). What does not
+% depend on the noise/signal families is computed by the first candidate
+% that needs it and reused by the others: the smoothed statistic with its
+% scale and weights and the EM bins (per component and span), the frozen
+% noise fit (also per noise family), and the cumulant proportion, which
+% depends on the component alone but rides in the span's entry (a grid of
+% several spans computes it once per span). Keys: component|span (the span
+% in full precision, or 'auto'). (use_memo, not isempty: an empty
+% containers.Map is empty.)
+use_memo = isstruct(xdetect_cache) && isfield(xdetect_cache, 'memo');
+if use_memo, memo = xdetect_cache.memo; else, memo = []; end
+if ischar(local_scale_sec), span_key = local_scale_sec; else, span_key = sprintf('%.17g', local_scale_sec); end
 
 % %%% Peak weighted xrsms
 % xrsms = nthroot(convn((xthrs./xfsds).^pow,gs,'same')./(convn((xthrs>0),gs,'same')+.1),pow);
@@ -535,62 +552,109 @@ for k = 1:length(hos)
     % mixture that no single family fits in the tail; dividing xfilt by
     % a local scale removes that before the statistic is formed.
     fs_k = hos(k).sampling_rate;
-    cv_cands = []; cv_score = []; cv_se = [];
     kern_sec = sum(g > 0) / fs_k;
     kernel_sec_used(k) = kern_sec;
-    if isempty(scale_src), src_k = xfilt; else, src_k = scale_src(:,k); end
-    if ischar(local_scale_sec)          % 'auto': cross-validated span
-        [span_sec, cv_cands, cv_score, cv_se] = choose_local_scale_span(src_k, xthr, fs_k, ...
-            local_scale_block_sec, kern_sec, local_scale_candidates);
+    pre_key = sprintf('%d|%s', k, span_key);
+    if use_memo && isKey(memo, pre_key)
+        pre = memo(pre_key);
     else
-        span_sec = local_scale_sec;
-    end
-    if span_sec > 0
-        scale_t = running_robust_scale(src_k, xthr, fs_k, span_sec, local_scale_block_sec, xfsd);
-    else
-        scale_t = xfsd * ones(size(xfilt));
-    end
-    local_scales(:,k) = scale_t;
-    local_scale_info(k).sec = span_sec;
-    if ~ischar(local_scale_sec) && span_sec <= 0, local_scale_info(k).source = 'none'; end
-    local_scale_info(k).candidates = cv_cands;
-    local_scale_info(k).cv_score = cv_score;
-    local_scale_info(k).cv_se = cv_se;
-    local_scale_info(k).kernel_sec = kern_sec;
-    % Autocorrelation of the block noise levels (lags 1..10 blocks): tells
-    % whether the level fluctuates on a few-second scale (short spans win
-    % the CV) or drifts slowly.
-    if span_sec > 0 || ischar(local_scale_sec)
-        blk_k = block_medians(src_k, xthr, fs_k, local_scale_block_sec);
-        local_scale_info(k).block_acf = block_acf(log(blk_k), 10);
-        local_scale_info(k).block_log_level = log(blk_k(:))';
-    end
-    local_scale_info(k).p05 = prctile(scale_t, 5);
-    local_scale_info(k).p50 = prctile(scale_t, 50);
-    local_scale_info(k).p95 = prctile(scale_t, 95);
-    local_scale_info(k).ratio95to5 = local_scale_info(k).p95 / max(local_scale_info(k).p05, eps);
+        cv_cands = []; cv_score = []; cv_se = [];
+        if isempty(scale_src), src_k = xfilt; else, src_k = scale_src(:,k); end
+        if ischar(local_scale_sec)          % 'auto': cross-validated span
+            [span_sec, cv_cands, cv_score, cv_se] = choose_local_scale_span(src_k, xthr, fs_k, ...
+                local_scale_block_sec, kern_sec, local_scale_candidates);
+        else
+            span_sec = local_scale_sec;
+        end
+        if span_sec > 0
+            scale_t = running_robust_scale(src_k, xthr, fs_k, span_sec, local_scale_block_sec, xfsd);
+        else
+            scale_t = xfsd * ones(size(xfilt));
+        end
+        local_scale_info(k).sec = span_sec;
+        if ~ischar(local_scale_sec) && span_sec <= 0, local_scale_info(k).source = 'none'; end
+        local_scale_info(k).candidates = cv_cands;
+        local_scale_info(k).cv_score = cv_score;
+        local_scale_info(k).cv_se = cv_se;
+        local_scale_info(k).kernel_sec = kern_sec;
+        % Autocorrelation of the block noise levels (lags 1..10 blocks): tells
+        % whether the level fluctuates on a few-second scale (short spans win
+        % the CV) or drifts slowly.
+        if span_sec > 0 || ischar(local_scale_sec)
+            blk_k = block_medians(src_k, xthr, fs_k, local_scale_block_sec);
+            local_scale_info(k).block_acf = block_acf(log(blk_k), 10);
+            local_scale_info(k).block_log_level = log(blk_k(:))';
+        end
+        local_scale_info(k).p05 = prctile(scale_t, 5);
+        local_scale_info(k).p50 = prctile(scale_t, 50);
+        local_scale_info(k).p95 = prctile(scale_t, 95);
+        local_scale_info(k).ratio95to5 = local_scale_info(k).p95 / max(local_scale_info(k).p05, eps);
 
-    if mod(hos(k).order, 2) ~= 0
-        z    = xfilt ./ scale_t;   % signed; positive excursions are detections
-        pos  = z > 0;
-        xrsm = nthroot(convn(pos .* z.^pow, g, 'same') ...
-                       ./ (convn(double(pos), g, 'same') + eps), pow);
-    else
-        xrsm = nthroot(convn(abs(xfilt ./ scale_t).^pow, g, 'same'), pow);
+        if mod(hos(k).order, 2) ~= 0
+            z    = xfilt ./ scale_t;   % signed; positive excursions are detections
+            pos  = z > 0;
+            xrsm = nthroot(convn(pos .* z.^pow, g, 'same') ...
+                           ./ (convn(double(pos), g, 'same') + eps), pow);
+        else
+            xrsm = nthroot(convn(abs(xfilt ./ scale_t).^pow, g, 'same'), pow);
+        end
+        event_mask = double(xthr ~= 0);
+        g_norm = g(:) / max(sum(g(:)), eps);
+        wgt = convn(event_mask, g_norm, 'same');
+        % sample_w_pow > 1 sharpens the weighting: samples sitting half in
+        % event support, half in noise (sample_w ~ 0.5) get pushed toward 0,
+        % while pure-noise samples (sample_w ~ 1) stay near 1. This
+        % counteracts the under-counting of event support that comes from
+        % xthr zero-crossings inside spindles -- those samples have falsely
+        % high (1 - wgt) and bias the noise-gamma scale upward.
+        sample_w = max(1 - wgt, 0) .^ sample_w_pow;
+
+        %%% Cumulant proportion: 1 - the expected truncated Gaussian cumulant
+        %%% over the unthresholded cumulant, a measure of how much truncation
+        %%% of a Gaussian noise background contributes to zeroing out the
+        %%% cumulant (out.cumulant_proportion in every branch).
+        xfc = cumulant(xfilt/xfsd, hos(k).order, [], false);
+        thr = nthroot(hos(k).current_threshold(xfilt/xfsd), hos(k).order);
+        if mod(hos(k).order, 2) == 0
+            cum_prop = 1 + trnormcum(-thr, thr, hos(k).order)./xfc;
+        else
+            cum_prop = 1 + trnormcum(-Inf, thr, hos(k).order)./xfc;
+        end
+        pre = struct('scale_t', scale_t, 'info', local_scale_info(k), 'xrsm', xrsm, ...
+                     'sample_w', sample_w, 'cum_prop', cum_prop);
+        if use_memo, memo(pre_key) = pre; end
     end
+    local_scales(:,k)   = pre.scale_t;
+    local_scale_info(k) = pre.info;
+    xrsm     = pre.xrsm;
+    sample_w = pre.sample_w;
+    cum_prop = pre.cum_prop;
     xsnr = xrsm .* (xdet ~= 0);
-    event_mask = double(xthr ~= 0);
-    g_norm = g(:) / max(sum(g(:)), eps);
-    wgt = convn(event_mask, g_norm, 'same');
-    % sample_w_pow > 1 sharpens the weighting: samples sitting half in
-    % event support, half in noise (sample_w ~ 0.5) get pushed toward 0,
-    % while pure-noise samples (sample_w ~ 1) stay near 1. This
-    % counteracts the under-counting of event support that comes from
-    % xthr zero-crossings inside spindles -- those samples have falsely
-    % high (1 - wgt) and bias the noise-gamma scale upward.
-    sample_w = max(1 - wgt, 0) .^ sample_w_pow;
-    xrsm_used(:,k)     = xrsm;       % kept for the post-loop diagnostics
-    sample_w_used(:,k) = sample_w;
+    xrsm_used{k}     = xrsm;       % kept for the post-loop diagnostics
+    sample_w_used{k} = sample_w;
+
+    % --- Frozen noise (both frozen branches below) ---
+    % Sample-level weighted MLE of the noise family on every positive xrsm
+    % sample, weighted by sample_w; run once before the EM, after which the
+    % noise parameters are FROZEN. noise_peaks / noise_peaks_fit /
+    % sample_w_init are also the empirical branch's POT and GoF samples.
+    if freeze_noise
+        noise_peaks = xrsm;
+        fmins_opts = optimset('Display','off','TolX',1e-5,'TolFun',1e-6);
+        keep = noise_peaks > 1e-3 & isfinite(noise_peaks);
+        noise_peaks_fit = noise_peaks(keep);
+        sample_w_init   = sample_w(keep);
+        noise_key = [pre_key '|noise|' noise_dist];
+        if use_memo && isKey(memo, noise_key)
+            noise_fit = memo(noise_key);
+        else
+            noise_fit = cell(1, 10);
+            [noise_fit{:}] = fit_noise_family(noise_peaks_fit, sample_w_init, noise_dist, fmins_opts);
+            if use_memo, memo(noise_key) = noise_fit; end
+        end
+        [a_noise, b_noise, mu_noise, sigma_noise, a_wbl, b_wbl, nu_chi2, ...
+            noise_mode, F_X_bulk, f_X_bulk] = noise_fit{:};
+    end
 
     % =====================================================================
     % Joint-EM parametric mixture (freeze_noise=false, parametric signal).
@@ -999,14 +1063,7 @@ for k = 1:length(hos)
         out.est_AUPRC  = -nansum((out.est_precision(1:end-1)+out.est_precision(2:end))/2.*diff(out.est_recall));
         [out.max_F1, mxi] = max(out.est_F1);
         out.F1_thresh   = px0(mxi);
-        % Cumulant proportion same as the other path
-        xfc = cumulant(xfilt/xfsd, hos(k).order, [], false);
-        thr = nthroot(hos(k).current_threshold(xfilt/xfsd), hos(k).order);
-        if mod(hos(k).order, 2) == 0
-            out.cumulant_proportion = 1 + trnormcum(-thr, thr, hos(k).order)./xfc;
-        else
-            out.cumulant_proportion = 1 + trnormcum(-Inf, thr, hos(k).order)./xfc;
-        end
+        out.cumulant_proportion = cum_prop;   % computed with the statistic, above
         % GoF: set the frozen-noise-fit-specific diagnostics to NaN; report
         % effective N from the (filtered) data the mixture saw.
         out.gof_ks_noise         = NaN;
@@ -1088,15 +1145,7 @@ for k = 1:length(hos)
     % computed on the same xrsm samples.
     % =====================================================================
     if parametric_signal && freeze_noise
-        fmins_opts = optimset('Display','off','TolX',1e-5,'TolFun',1e-6);
-        noise_peaks = xrsm;
-        keep = noise_peaks > 1e-3 & isfinite(noise_peaks);
-        noise_peaks_fit = noise_peaks(keep);
-        sample_w_init   = sample_w(keep);
-        [a_noise, b_noise, mu_noise, sigma_noise, a_wbl, b_wbl, nu_chi2, ...
-            noise_mode, F_X_bulk, f_X_bulk] = ...
-            fit_noise_family(noise_peaks_fit, sample_w_init, noise_dist, fmins_opts);
-
+        % The frozen noise fit (a_noise ... f_X_bulk) comes from the block above the branches.
         % Build z (xrsm or xrsm^2 depending on noise family parameterisation)
         % and frozen noise log-pdf at every kept sample.
         XRSM_MIN = 0.1;
@@ -1116,7 +1165,12 @@ for k = 1:length(hos)
         % resolve the noise mode and bias the EM (verified against raw EM
         % on 01-02-0001: log-K=200 agrees to 0.02% on all params, raw is
         % the reference). Set bin_em_K=0 to disable and use raw x_fit.
-        if bin_em_K > 0 && numel(x_fit) > 10*bin_em_K
+        bins_key = [pre_key '|bins'];    % x_fit is the same for every candidate at this span
+        if bin_em_K > 0 && numel(x_fit) > 10*bin_em_K && use_memo && isKey(memo, bins_key)
+            em_bins  = memo(bins_key);
+            em_x_fit = em_bins{1};
+            em_w     = em_bins{2};
+        elseif bin_em_K > 0 && numel(x_fit) > 10*bin_em_K
             x_lo = max(min(x_fit), 1e-3);
             x_hi = quantile(x_fit, 0.99999);
             edges_x  = exp(linspace(log(x_lo), log(x_hi), bin_em_K+1));
@@ -1132,6 +1186,7 @@ for k = 1:length(hos)
             keep_b = counts_x > 0 & centers_x > 0;
             em_x_fit = centers_x(keep_b)';
             em_w     = double(counts_x(keep_b))';
+            if use_memo, memo(bins_key) = {em_x_fit, em_w}; end
         else
             em_x_fit = x_fit;
             em_w     = ones(size(x_fit));
@@ -1313,14 +1368,7 @@ for k = 1:length(hos)
         out.est_AUPRC  = -nansum((out.est_precision(1:end-1)+out.est_precision(2:end))/2.*diff(out.est_recall));
         [out.max_F1, mxi] = max(out.est_F1); out.F1_thresh = px0(mxi);
 
-        % Cumulant proportion (same as other paths)
-        xfc = cumulant(xfilt/xfsd, hos(k).order, [], false);
-        thr = nthroot(hos(k).current_threshold(xfilt/xfsd), hos(k).order);
-        if mod(hos(k).order, 2) == 0
-            out.cumulant_proportion = 1 + trnormcum(-thr, thr, hos(k).order)./xfc;
-        else
-            out.cumulant_proportion = 1 + trnormcum(-Inf, thr, hos(k).order)./xfc;
-        end
+        out.cumulant_proportion = cum_prop;   % computed with the statistic, above
 
         out.gof_ks_noise         = NaN;
         out.gof_tail_95_residual = NaN;
@@ -1371,21 +1419,9 @@ for k = 1:length(hos)
     %   signal_dist = 'empirical'
     %   freeze_noise = true
     % =====================================================================
-    % noise_peaks kept as an ALL-sample alias for POT splice + diagnostics;
-    % the bulk fits below use weighted MLE on the full xrsm with sample_w.
-    noise_peaks = xrsm;
-    fmins_opts = optimset('Display','off','TolX',1e-5,'TolFun',1e-6);
-
-    keep = noise_peaks > 1e-3 & isfinite(noise_peaks);
-    noise_peaks_fit = noise_peaks(keep);
-    sample_w_init = sample_w(keep);
-    % Sample-level weighted MLE for the initial (and final) noise fit.
-    % Run once before the EM; the noise parameters are then FROZEN —
-    % only the empirical sigpdf is updated inside the EM.
-    [a_noise, b_noise, mu_noise, sigma_noise, a_wbl, b_wbl, nu_chi2, ...
-        noise_mode, F_X_bulk, f_X_bulk] = ...
-        fit_noise_family(noise_peaks_fit, sample_w_init, noise_dist, fmins_opts);
-
+    % The frozen noise fit (a_noise ... f_X_bulk) and its samples
+    % noise_peaks (ALL samples, for the POT splice and diagnostics),
+    % noise_peaks_fit / sample_w_init come from the block above the branches.
     % Optional Peaks-Over-Threshold (POT) tail splice. When enabled, we
     % fit a Generalized Pareto Distribution to the exceedances above
     % u = quantile(noise_peaks, tail_quantile), and splice it onto the
@@ -1658,17 +1694,7 @@ for k = 1:length(hos)
     % probable_N = sum((out.snrs>out.thresholds).*out.est_precision);
     % [out.max_probable_N,mxi] = max(probable_N); 
     
-    %%% 1 - of the expected truncated gaussian cumulant to the unthresholded cumulunt
-    %%% This is a measure of how much truncation of a Gaussian noise background contributes to
-    %%% zeroing out the cumulant. 
-    
-    xfc = cumulant(xfilt/xfsd,hos(k).order,[],false);
-    thr = nthroot(hos(k).current_threshold(xfilt/xfsd),hos(k).order);
-    if mod(hos(k).order,2)==0
-        out.cumulant_proportion = 1 + trnormcum(-thr,thr,hos(k).order)./xfc;
-    else
-        out.cumulant_proportion = 1 + trnormcum(-Inf,thr,hos(k).order)./xfc;
-    end
+    out.cumulant_proportion = cum_prop;   % computed with the statistic, above
 
     % --- AIC / BIC for model comparison (frozen-noise + empirical-signal) ---
     % logL evaluated as sum of log(mixture density) at each valid xrsm.
@@ -1729,10 +1755,10 @@ for k = 1:numel(outs)
     outs(k).local_scale = local_scale_info(k);
     outs(k).kernel_sec  = kernel_sec_used(k);
     outs(k).sampling_rate_used = hos(k).sampling_rate;
-    outs(k).gof_noise_tail_ratio = noise_tail_ratio(xrsm_used(:,k), sample_w_used(:,k), ...
+    outs(k).gof_noise_tail_ratio = noise_tail_ratio(xrsm_used{k}, sample_w_used{k}, ...
         outs(k).thresholds, outs(k).noisepdf, [0.99 0.999 0.9999]);
     mixpdf = outs(k).est_prior * outs(k).sigpdf(:) + (1 - outs(k).est_prior) * outs(k).noisepdf(:);
-    outs(k).gof_mixture_tail_ratio = noise_tail_ratio(xrsm_used(:,k), ones(size(xrsm_used(:,k))), ...
+    outs(k).gof_mixture_tail_ratio = noise_tail_ratio(xrsm_used{k}, ones(size(xrsm_used{k})), ...
         outs(k).thresholds, mixpdf, [0.99 0.999 0.9999]);
     outs(k).gof_tail_quantiles = [0.99 0.999 0.9999];
     outs(k).model_selection = [];
@@ -2098,7 +2124,7 @@ if isstruct(model_select)
     end
 end
 % Candidate grid (valid combinations only)
-C = struct('noise_dist', {}, 'signal_dist', {}, 'freeze_noise', {}, 'local_scale_sec', {});
+C = struct('noise_dist', {}, 'signal_dist', {}, 'freeze_noise', {}, 'local_scale_sec', {}, 'span', {});
 for ls = 1:numel(G.local_scale_sec)
   for fz = G.freeze_noise
     for nd = G.noise_dist
@@ -2108,7 +2134,7 @@ for ls = 1:numel(G.local_scale_sec)
         if ~fz && ~(strcmp(nd{1}, 'gamma') || (strcmp(nd{1}, 'lognormal') && strcmp(sd{1}, 'lognormal'))), okc = false; end
         if okc
             C(end+1) = struct('noise_dist', nd{1}, 'signal_dist', sd{1}, 'freeze_noise', fz, ...
-                              'local_scale_sec', G.local_scale_sec{ls}); %#ok<AGROW>
+                              'local_scale_sec', G.local_scale_sec{ls}, 'span', ls); %#ok<AGROW>
         end
       end
     end
@@ -2116,7 +2142,11 @@ for ls = 1:numel(G.local_scale_sec)
 end
 nC = numel(C); K = numel(hos); N = numel(x);
 fprintf('detection_stats model selection: %d candidate(s) x %d component(s)\n', nC, K);
+% Kept per candidate: outs and pprobs; pprobs_outlier only when non-zero
+% (a joint-EM GPD outlier component); local_scales once per span, since
+% they depend on the span alone.
 res = cell(1, nC);
+ls_by_span = cell(1, numel(G.local_scale_sec));
 for c = 1:nC
     oc = options;
     oc.noise_dist = C(c).noise_dist; oc.signal_dist = C(c).signal_dist;
@@ -2125,9 +2155,11 @@ for c = 1:nC
     if ~strcmp(oc.signal_dist, 'noncentral_gamma'), oc.shared_scale = false; end
     try
         [o_c, pp_c, ~, ~, ~, ~, ~, ~, ~, ppo_c, ls_c] = detection_stats(hos, x, oc, 'xdetect_cache', cache);
-        res{c} = struct('outs', o_c, 'pprobs', pp_c, 'pprobs_outlier', ppo_c, 'local_scales', ls_c, 'err', '');
+        if nnz(ppo_c) == 0, ppo_c = []; end
+        if isempty(ls_by_span{C(c).span}), ls_by_span{C(c).span} = ls_c; end
+        res{c} = struct('outs', o_c, 'pprobs', pp_c, 'pprobs_outlier', ppo_c, 'err', '');
     catch ME
-        res{c} = struct('outs', [], 'pprobs', [], 'pprobs_outlier', [], 'local_scales', [], 'err', ME.message);
+        res{c} = struct('outs', [], 'pprobs', [], 'pprobs_outlier', [], 'err', ME.message);
         fprintf('  candidate %d (%s/%s, freeze=%d, scale=%s) failed: %s\n', c, C(c).noise_dist, ...
             C(c).signal_dist, C(c).freeze_noise, num2str(C(c).local_scale_sec), ME.message);
     end
@@ -2219,8 +2251,8 @@ for k = 1:K
     o.options.requested = struct('local_scale_sec', options.local_scale_sec, 'model_select', model_select);
     if isempty(outs), outs = o; else, outs(k) = o; end
     pprobs(:,k) = res{sel}.pprobs(:,k);
-    pprobs_outlier(:,k) = res{sel}.pprobs_outlier(:,k);
-    local_scales(:,k) = res{sel}.local_scales(:,k);
+    if ~isempty(res{sel}.pprobs_outlier), pprobs_outlier(:,k) = res{sel}.pprobs_outlier(:,k); end
+    local_scales(:,k) = ls_by_span{C(sel).span}(:,k);
     fprintf('  component %d: selected %s noise / %s signal, freeze=%d, local_scale_sec=%s (BIC %.1f, tail ratio %.2f)\n', ...
         k, C(sel).noise_dist, C(sel).signal_dist, C(sel).freeze_noise, num2str(o.local_scale.sec), ...
         T(sel).bic, T(sel).tail_ratio_999);
