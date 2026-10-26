@@ -490,10 +490,8 @@ kernel_sec_used = nan(1, length(hos));
 % Memo of a model-selection run (see run_model_selection). What does not
 % depend on the noise/signal families is computed by the first candidate
 % that needs it and reused by the others: the smoothed statistic with its
-% scale and weights and the EM bins (per component and span), the frozen
-% noise fit (also per noise family), and the cumulant proportion, which
-% depends on the component alone but rides in the span's entry (a grid of
-% several spans computes it once per span). Keys: component|span (the span
+% scale and weights and the EM bins (per component and span), and the
+% frozen noise fit (also per noise family). Keys: component|span (the span
 % in full precision, or 'auto'). (use_memo, not isempty: an empty
 % containers.Map is empty.)
 use_memo = isstruct(xdetect_cache) && isfield(xdetect_cache, 'memo');
@@ -608,27 +606,14 @@ for k = 1:length(hos)
         % xthr zero-crossings inside spindles -- those samples have falsely
         % high (1 - wgt) and bias the noise-gamma scale upward.
         sample_w = max(1 - wgt, 0) .^ sample_w_pow;
-
-        %%% Cumulant proportion: 1 - the expected truncated Gaussian cumulant
-        %%% over the unthresholded cumulant, a measure of how much truncation
-        %%% of a Gaussian noise background contributes to zeroing out the
-        %%% cumulant (out.cumulant_proportion in every branch).
-        xfc = cumulant(xfilt/xfsd, hos(k).order, [], false);
-        thr = nthroot(hos(k).current_threshold(xfilt/xfsd), hos(k).order);
-        if mod(hos(k).order, 2) == 0
-            cum_prop = 1 + trnormcum(-thr, thr, hos(k).order)./xfc;
-        else
-            cum_prop = 1 + trnormcum(-Inf, thr, hos(k).order)./xfc;
-        end
         pre = struct('scale_t', scale_t, 'info', local_scale_info(k), 'xrsm', xrsm, ...
-                     'sample_w', sample_w, 'cum_prop', cum_prop);
+                     'sample_w', sample_w);
         if use_memo, memo(pre_key) = pre; end
     end
     local_scales(:,k)   = pre.scale_t;
     local_scale_info(k) = pre.info;
     xrsm     = pre.xrsm;
     sample_w = pre.sample_w;
-    cum_prop = pre.cum_prop;
     xsnr = xrsm .* (xdet ~= 0);
     xrsm_used{k}     = xrsm;       % kept for the post-loop diagnostics
     sample_w_used{k} = sample_w;
@@ -1063,7 +1048,6 @@ for k = 1:length(hos)
         out.est_AUPRC  = -nansum((out.est_precision(1:end-1)+out.est_precision(2:end))/2.*diff(out.est_recall));
         [out.max_F1, mxi] = max(out.est_F1);
         out.F1_thresh   = px0(mxi);
-        out.cumulant_proportion = cum_prop;   % computed with the statistic, above
         % GoF: set the frozen-noise-fit-specific diagnostics to NaN; report
         % effective N from the (filtered) data the mixture saw.
         out.gof_ks_noise         = NaN;
@@ -1367,8 +1351,6 @@ for k = 1:length(hos)
         out.est_AUROC_raw = nansum((out.est_recall_raw(1:end-1)+out.est_recall_raw(2:end))/2.*diff(out.est_specificity));
         out.est_AUPRC  = -nansum((out.est_precision(1:end-1)+out.est_precision(2:end))/2.*diff(out.est_recall));
         [out.max_F1, mxi] = max(out.est_F1); out.F1_thresh = px0(mxi);
-
-        out.cumulant_proportion = cum_prop;   % computed with the statistic, above
 
         out.gof_ks_noise         = NaN;
         out.gof_tail_95_residual = NaN;
@@ -1693,8 +1675,6 @@ for k = 1:length(hos)
     % out.max_precision_thresh = px0(mxi);
     % probable_N = sum((out.snrs>out.thresholds).*out.est_precision);
     % [out.max_probable_N,mxi] = max(probable_N); 
-    
-    out.cumulant_proportion = cum_prop;   % computed with the statistic, above
 
     % --- AIC / BIC for model comparison (frozen-noise + empirical-signal) ---
     % logL evaluated as sum of log(mixture density) at each valid xrsm.
