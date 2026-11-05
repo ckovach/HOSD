@@ -76,7 +76,7 @@ classdef xargon < handle
 %       https://wiki.uiowa.edu/display/hpcdocs/Queue+Usage+and+Policies
 %
 %   Resources are allocated as "slots" on separate nodes, where each node
-%   is a computer. The processing nodes on the openly accessible queuess 
+%   is a computer. The processing nodes on the openly accessible queues 
 %   ("UI", "UI-HM", and "all.q") come in three flavors, "std_mem" (16 cores and 
 %   64 GB ram), "mid_mem" (16 cores and 256 GB ram) and "high_mem" (24
 %   cores and 512 GB). These set the upper limits on resources that can be
@@ -145,7 +145,7 @@ classdef xargon < handle
 % 
 %   SERVER SET UP
 %
-%   To initiate jobs, the script, scanjobs.sh, must be running on a argon login
+%   To initiate jobs, the script, scanjobs.sh, must be running on an argon login
 %   node. It checks periodically for new requests in the jobs directory. When 
 %   it finds a new request, it passes the request on to the cluster job handler. 
 %   If scanjobs.sh isn't running or is scanning a different folder, the request
@@ -195,7 +195,7 @@ classdef xargon < handle
         local_save_dir % Local directory to which the output data will be copied.
         dependencies = {}; % List of matlab file dependencies for the job
         tempdir = '';
-        quotalimit = 85;% Don't upload data files if usage exceeds this level (percent of quota)
+        quotalimit = 95;% Don't upload data files if usage exceeds this level (percent of quota)
         run_compiled = false; %Compile the job as a standalone binaries with mcc
         iscompiled = false; %if using existing compiled binaries, recompiles them when false. Any updates to scripts will necessitate recompiling.
          bash = struct([]); % Fields (eg bash.submit) contain the content of generated bash script(s).
