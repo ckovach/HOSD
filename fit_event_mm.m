@@ -19,6 +19,17 @@ function [outs,pprobs,pprobs_outlier,local_scales] = fit_event_mm(hos, det, vara
 %           .xthr   [N x K] thresholded filter output
 %           .g      [L x K] smoothing windows
 %         Other fields (.xsnr, .xrsm) may be present; they are not read.
+%         One optional field:
+%           .xmiss  [N x K] logical, true where the detection filter output
+%                   is undefined (xdetect's 8th output: the filter's
+%                   support held a NaN or masked sample of the input; its
+%                   xfilt and xthr are 0 there). Absent or empty means no
+%                   undefined sample. Those samples take no part in the
+%                   fit: the smoothed statistic is NaN wherever its window
+%                   reaches one, so they are left out of the running
+%                   scale, the noise and signal fits and the likelihood,
+%                   and their posterior is 0. A detection within reach of
+%                   one has NaN in outs(k).snrs.
 %         One more field is needed when the running noise scale is measured
 %         on the residual (local_scale_source 'residual', the default, with
 %         a span that reads it: local_scale_sec 'auto' or > 0, or several
@@ -49,7 +60,9 @@ function [outs,pprobs,pprobs_outlier,local_scales] = fit_event_mm(hos, det, vara
 %   the xdetect run used. 'smoothing_window' is not applied here (the
 %   smoothing is xdetect's, and det.g holds its windows); it is recorded in
 %   outs(k).options, so that the options reproduce the run through
-%   DETECTION_STATS.
+%   DETECTION_STATS. So is 'mask' (the samples xdetect sets to NaN); the
+%   filter output left undefined by them, and by the NaN samples of the
+%   input, is det.xmiss.
 %
 %   [opts, reads_residual] = fit_event_mm('options', ...) resolves the
 %   options without fitting anything: opts is the request as the fit reads
@@ -101,10 +114,11 @@ function [outs,pprobs,pprobs_outlier,local_scales] = fit_event_mm(hos, det, vara
 %   Detect with the whole array, then pass component k's columns and, when
 %   it is needed, the residual of the whole array:
 %       [opts, reads_residual] = fit_event_mm('options', ...);
-%       [xdet,~,~,xfsd,xfilt,xthr,g] = xdetect(hos, x, opts.pow, opts.smoothing_window);
+%       [xdet,~,~,xfsd,xfilt,xthr,g,xmiss] = xdetect(hos, x, opts.pow, opts.smoothing_window, opts.mask);
 %       detk = struct('xdet',xdet(:,k),'xfsd',xfsd(k),'xfilt',xfilt(:,k), ...
-%                     'xthr',xthr(:,k),'g',g(:,k));
+%                     'xthr',xthr(:,k),'g',g(:,k),'xmiss',xmiss(:,k));
 %       if reads_residual
+%           if ~ischar(opts.mask), x(logical(opts.mask)) = NaN; end
 %           xr = xrec(hos, x(:)); xr(isnan(xr)) = 0;
 %           xf = apply_filter(hos(k), x(:) - sum(xr,2), false, false);
 %           detk.xfilt_residual = xf(:);
@@ -160,6 +174,10 @@ if any([size(det.xdet, 2), size(det.xfilt, 2), size(det.xthr, 2), size(det.g, 2)
     error('fit_event_mm:sizeMismatch', ...
         ['det.xdet, .xfilt and .xthr must be N x %d, .xfsd 1 x %d and .g L x %d: ', ...
          'one column per element of hos.'], K, K, K);
+end
+if isfield(det, 'xmiss') && ~isempty(det.xmiss) && (~islogical(det.xmiss) || ~isequal(size(det.xmiss), [N K]))
+    error('fit_event_mm:badDetections', ...
+        'det.xmiss must be a logical N x %d array (true where the filter output is undefined), or empty.', K);
 end
 scale_src = [];          % the running scale is measured on xfilt
 src_xfilt = false(1, K); % components measured on xfilt although the residual is read
@@ -249,6 +267,8 @@ p.addParameter('select_criterion',      'bic',       @(s) ischar(s) || isstring(
 p.addParameter('sanity_checks',         'warn',      @(v) ischar(v) || isstring(v) || islogical(v));
 % xdetect's smoothing window: 'auto' | 0 | SD in seconds | window | one window per column.
 p.addParameter('smoothing_window',      'auto',      @(v) isempty(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && strcmpi(v, 'auto')));
+% Samples to leave out (xdetect's 5th input): 'auto' = the NaN samples of x | a logical per sample.
+p.addParameter('mask',                  'auto',      @(v) isempty(v) || islogical(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && strcmpi(v, 'auto')));
 p.KeepUnmatched = false;
 parse_args = merge_option_args(p, options_struct, args);
 p.parse(parse_args{:});
@@ -278,6 +298,10 @@ sanity_checks         = p.Results.sanity_checks;
 smoothing_window      = p.Results.smoothing_window;
 if isempty(smoothing_window) || ischar(smoothing_window) || isstring(smoothing_window)
     smoothing_window = 'auto';
+end
+mask                  = p.Results.mask;
+if isempty(mask) || ischar(mask) || isstring(mask)
+    mask = 'auto';
 end
 if islogical(sanity_checks)
     if sanity_checks, sanity_checks = 'warn'; else, sanity_checks = 'off'; end
@@ -368,7 +392,8 @@ options = struct( ...
     'model_select',           model_select, ...
     'select_criterion',       select_criterion, ...
     'sanity_checks',          sanity_checks, ...
-    'smoothing_window',       smoothing_window);
+    'smoothing_window',       smoothing_window, ...
+    'mask',                   mask);
 
 % Resolved options passed on their own are not warned about again unless
 % warn_if_resolved (see the help above).
@@ -427,6 +452,8 @@ use_pot                = derived.use_pot;
 use_trim               = derived.use_trim;
 parametric_signal      = derived.parametric_signal;
 xdets = det.xdet; xfsds = det.xfsd; xfilts = det.xfilt; xthrs = det.xthr; gs = det.g;
+xmisses = [];         % [N x K] logical, [] when no sample is undefined
+if isfield(det, 'xmiss'), xmisses = det.xmiss; end
 N = size(xdets, 1);   % the record length
 
 pprobs_outlier = zeros(size(xfilts));
@@ -462,7 +489,16 @@ for k = 1:length(hos)
     xfsd = xfsds(:,k);
     xthr = xthrs(:,k);
     xfilt = xfilts(:,k);
-    
+    % Where the filter output is undefined (xmiss: the filter's support held
+    % a NaN or masked input sample) xdetect returns 0, and no statistic may
+    % use it. NaN marks it here, so that the running scale (block medians
+    % omit NaN), the smoothed statistic (NaN over the smoothing window's
+    % reach from such a sample, hence left out of the noise and signal fits
+    % and of the likelihood by the isfinite tests below) and the posterior
+    % (0 there, by the gap mask) all leave it out. The caller's xfilts keep
+    % their zeros.
+    if ~isempty(xmisses), xfilt(xmisses(:,k)) = NaN; end
+
     g = gs(:,k);
 
     % --- Empirical noise model: weighted MLE on the smoothed-MS statistic ---
@@ -880,7 +916,7 @@ for k = 1:length(hos)
         pprob = exp(log_pi_s + log_f_s - log_denom);
 
         % Build px grid and discretize the two component pdfs parametrically.
-        snrs_all = xrsm(xdet);
+        snrs_all = xrsm(xdet); snrs_all = snrs_all(isfinite(snrs_all));   % a detection within reach of an undefined output sample has no statistic
         lb = 0; ub = max([snrs_all; 6]);
         px0 = linspace(lb, ub, (ub-lb)*10);
         px  = (px0(1:end-1) + px0(2:end)) / 2;
@@ -1243,7 +1279,7 @@ for k = 1:length(hos)
         pprob  = exp(log_pi_s + log_f_s_all - ld_all);
 
         % Build px grid for downstream consumers
-        snrs_all = xrsm(xdet);
+        snrs_all = xrsm(xdet); snrs_all = snrs_all(isfinite(snrs_all));   % a detection within reach of an undefined output sample has no statistic
         lb = 0; ub = max([snrs_all; 6]);
         px0 = linspace(lb, ub, max((ub-lb)*10, 100));
         px  = (px0(1:end-1) + px0(2:end))/2;
@@ -1393,7 +1429,7 @@ for k = 1:length(hos)
     end
     % Build sigpdf from xrsm at detection peaks, trimmed below the
     % noise mode of the initial fit.
-    snrs_all = xrsm(xdet);
+    snrs_all = xrsm(xdet); snrs_all = snrs_all(isfinite(snrs_all));   % a detection within reach of an undefined output sample has no statistic
     snrs = snrs_all(snrs_all >= noise_mode);
     if numel(snrs) < 10
         snrs = snrs_all;
@@ -1449,7 +1485,8 @@ for k = 1:length(hos)
     % empirical sigpdf is updated. Inner loop converges psig; outer
     % loop reweights sigpdf via pdfwgt until psig stops moving.
     dpsig0 = inf;
-    psig0 = max(mean(xrsm>.5), 1e-3);
+    ok_em = isfinite(xrsm);   % the samples the EM is over (NaN: within reach of an undefined output sample)
+    psig0 = max(mean(xrsm(ok_em)>.5), 1e-3);
     psig = psig0;
     niter = 0;
     while dpsig0 > 1e-6 && niter < 500
@@ -1458,7 +1495,7 @@ for k = 1:length(hos)
         niter2 = 0;
         while dpsig > 1e-6 && niter2 < 100
             pprob = pdfest .* psig ./ (pdfest .* psig + normest .* (1-psig));
-            nupprob = mean(pprob);
+            nupprob = mean(pprob(ok_em));
             dpsig = abs(psig - nupprob);
             psig = nupprob;
             niter2 = niter2 + 1;
@@ -1468,13 +1505,14 @@ for k = 1:length(hos)
         pdfwgt(isnan(pdfwgt)) = 0;
         sigpdf = sigpdf0 .* pdfwgt;
         sigpdf = sigpdf ./ nansum(sigpdf);
-        nupprob0 = mean(pprob);
+        nupprob0 = mean(pprob(ok_em));
         dpsig0 = abs(nupprob0 - psig0);
         psig0 = nupprob0;
         psig = psig0;
         niter = niter + 1;
     end
-    
+    pprob(~ok_em) = 0;   % no posterior where the statistic is undefined (the gap mask below agrees)
+
     out.times = find(xdet)./hos(k).sampling_rate; %Event times
     out.snrs = xsnr(xdet); %Event snrs
     out.posterior_prob_estimate = pprob(xdet);%Estimated event posterior probability
@@ -2058,6 +2096,8 @@ for ls = 1:numel(G.local_scale_sec)
   end
 end
 nC = numel(C); K = numel(hos); N = size(det.xdet, 1);
+xmiss = [];   % [N x K] logical, [] when no sample is undefined
+if isfield(det, 'xmiss'), xmiss = det.xmiss; end
 fprintf('detection_stats model selection: %d candidate(s) x %d component(s)\n', nC, K);
 % Kept per candidate and component: outs and pprobs; pprobs_outlier only
 % when non-zero (a joint-EM GPD outlier component); local_scales once per
@@ -2073,6 +2113,7 @@ detk = cell(1, K); srck = cell(1, K); memo = cell(1, K);
 for k = 1:K
     detk{k} = struct('xdet', det.xdet(:,k), 'xfsd', det.xfsd(k), 'xfilt', det.xfilt(:,k), ...
                      'xthr', det.xthr(:,k), 'g', det.g(:,k));
+    if ~isempty(xmiss), detk{k}.xmiss = xmiss(:,k); end
     if ~isempty(scale_src), srck{k} = scale_src(:,k); end
     memo{k} = containers.Map();
 end
@@ -2173,6 +2214,7 @@ for k = 1:K
         % (Inf/0 = global), then pick the family within the winning span.
         fs_k = hos(k).sampling_rate;
         if isempty(scale_src) || src_xfilt(k), src_k = det.xfilt(:,k); else, src_k = scale_src(:,k); end
+        if ~isempty(xmiss), src_k(xmiss(:,k)) = NaN; end   % undefined output samples are no part of the block levels
         [blk, ~, nBlk] = block_medians(src_k, det.xthr(:,k), fs_k, options.local_scale_block_sec);
         spanScore = inf(1, numel(ukeys)); best = nan(1, numel(ukeys));
         for u = 1:numel(ukeys)

@@ -1,7 +1,8 @@
-function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow,smwin)
+function [out,snr,xrsm,xfsd,xfilt,xthr,g,xmiss] = xdetect(me,x,pow,smwin,mask)
 
 % [xdet,xsnr,xfsm,xfsd,xfilt,xthr,g] = xdetect(obj,x,pow); 
 % [xdet,xsnr,xfsm,xfsd,xfilt,xthr,g] = xdetect(obj,x,pow,smwin); 
+% [xdet,xsnr,xfsm,xfsd,xfilt,xthr,g,xmiss] = xdetect(obj,x,pow,smwin,mask);
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
 % ximp and xthresh in that it applies a smoothing window whose width is determined from
@@ -33,6 +34,19 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow,smwin)
 %           matrix: one window per column, column k for component k of a
 %                 hosobject array, e.g. the g returned by an earlier call
 %                 (its zero padding is harmless).
+%   mask - samples to leave out (optional): 'auto' or [] (default) means
+%         the NaN samples of x; a logical array with one row per sample of
+%         x (one column, applied to every channel, or one per channel)
+%         marks further samples, which are set to NaN. A NaN sample makes
+%         the filter output undefined over the filter's whole support
+%         around it (fftN samples; see xmiss), and those output samples
+%         enter no statistic: the cumulant threshold is computed without
+%         them (HOSOBJECT/CURRENT_THRESHOLD sorts the finite samples) and
+%         so is the noise standard deviation xfsd. Before 2026-11 xfsd was
+%         the standard deviation of the sub-threshold output INCLUDING the
+%         undefined samples, which xrec returns as 0: a signal with gaps
+%         had its xfsd deflated by about sqrt(1 - share of undefined
+%         samples) and its SNR inflated by the same factor.
 % Output: 
 %   xdet - logical array indicating whether a detection is present at each sample
 %         of x.
@@ -45,6 +59,10 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g] = xdetect(me,x,pow,smwin)
 %   xthr - Thresholded filter output.
 %   g    - smoothing window applied to the xthr (one column per component,
 %          zero-padded around its center to the longest window).
+%   xmiss - logical, true where the detection filter output (xfilt) is
+%          undefined because the filter's support held a NaN (or masked)
+%          sample of the input; xfilt and xthr are 0 there. One column per
+%          component.
 
 % See also XIMP, XTHRESH and XFILT
 
@@ -79,8 +97,27 @@ if isnumeric(smwin) && ~isvector(smwin)
     smwin = smwin(:,1);
 end
 
+% Samples to leave out: 'auto' or [] (the default) means the NaN samples of
+% x; a logical array with one row per sample marks further samples, which
+% are set to NaN here. Either way the filter output is undefined over the
+% filter's support around each such sample (xmiss, from xrec), and those
+% samples enter no statistic (see the help).
+if nargin < 5 || isempty(mask) || ((ischar(mask) || isstring(mask)) && strcmpi(mask,'auto'))
+    mask = 'auto';
+elseif ~(islogical(mask) || isnumeric(mask)) || size(mask,1) ~= size(x,1) ...
+        || ~(size(mask,2) == 1 || size(mask,2) == size(x,2)) || ~ismatrix(mask)
+    error('hosobject:xdetect:badMask', ...
+        'mask must be ''auto'' or a logical array with one row per sample of x (one column, or one per channel).')
+else
+    mask = logical(mask);
+    if size(mask,2) == 1 && size(x,2) > 1
+        mask = repmat(mask,1,size(x,2));
+    end
+    x(mask) = NaN;
+end
+
 %Get component, filter output and thresholded filter output
-[xrec,xfilt,xthr] = me(1).xrec(x);
+[xrec,xfilt,xthr,~,xmiss] = me(1).xrec(x);
 
 if ~isauto
     g = smoothing_window(smwin,me(1).sampling_rate);
@@ -115,7 +152,10 @@ end
 %xfsd = nanstd(xfilt(~xthr));
 
 % xfsd = sqrt(nanmean(convn(xfilt.^2 + 0./~xthr,g,'same')));
-xfsd = std(xfilt(~xthr));
+% Noise SD of the sub-threshold output over the samples where the output is
+% defined: xmiss marks the samples xrec zero-filled (the filter's support
+% held a NaN input sample), and their zeros used to deflate the estimate.
+xfsd = std(xfilt(~xthr & ~xmiss));
 
 
 %%% Adjust the sd estimate because it is estimated from a truncated
@@ -150,10 +190,12 @@ xmax = nthroot(xrsm.^pow./norm,pow);
 
 
 if length(me)>1
+    % x already holds the NaN of an explicit mask, so the next component
+    % sees the same samples left out whatever is passed on.
     if nargout == 1
-         outnext = me(2:end).xdetect(x-squeeze(xrec),pow,smnext);
+         outnext = me(2:end).xdetect(x-squeeze(xrec),pow,smnext,mask);
     else
-        [outnext,snrnext,xrsmnext,xfsdnext,xfiltnext,xthrnext,gnext] = me(2:end).xdetect(x-squeeze(xrec),pow,smnext);
+        [outnext,snrnext,xrsmnext,xfsdnext,xfiltnext,xthrnext,gnext,xmissnext] = me(2:end).xdetect(x-squeeze(xrec),pow,smnext,mask);
     end
 else
     outnext = logical([]);
@@ -163,6 +205,7 @@ else
     xfiltnext = [];
     xthrnext = [];
     gnext = [];
+    xmissnext = logical([]);
 end
 
 
@@ -181,6 +224,7 @@ if nargout > 1
     xfsd = [xfsd,xfsdnext];
     xfilt = [xfilt,xfiltnext];
     xthr = [xthr,xthrnext];
+    xmiss = [xmiss,xmissnext];
     if ~isempty(gnext)
         if size(gnext,1)< size(g,1)
             ln = size(gnext,1);

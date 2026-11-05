@@ -1,6 +1,6 @@
-function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold, use_filtered_lmse,varargin)
+function [Xrec,Xfilt,Xthr,beta,Xmiss] = reconstruct(me,X,threshold,apply_window,use_adaptive_threshold, use_filtered_lmse,varargin)
       
-% [Xrec,Xfilt] = reconstruct(me,X,[threshold],[apply_window],[use_adaptive_threshold],[use_filtered_lmse])
+% [Xrec,Xfilt,Xthr,beta,Xmiss] = reconstruct(me,X,[threshold],[apply_window],[use_adaptive_threshold],[use_filtered_lmse])
 %       
 % Reconstruct a component signal according to the feature detection filter
 % and waveform. This is done in the following steps:
@@ -26,6 +26,18 @@ function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_ad
 %                       adjusts for the baseline spectrum through
 %                       whitening, which equalizes the weight of different
 %                       bandwidths in least square estimation. Default is true.
+%
+% Outputs:
+%   Xrec - reconstructed component signal (NaN where X is NaN).
+%   Xfilt - detection filter output. Where the filter's support holds a NaN
+%       sample of X the output is undefined; it is returned as 0 when
+%       use_filtered_lmse is true (the default) and as NaN otherwise.
+%   Xthr - thresholded filter output (0 where Xfilt is undefined).
+%   beta - the scaling of step 4.
+%   Xmiss - true where Xfilt is undefined (one entry per sample of Xfilt).
+%       The threshold (HOSOBJECT/CURRENT_THRESHOLD) is computed without
+%       those samples; callers that estimate statistics from Xfilt should
+%       leave them out too (HOSOBJECT/XDETECT does).
 %
 % To obtain a complete multi-component decomposition use HOSOBJECT/XREC rather than
 % HOSOBJECT/RECONSTRUCT.
@@ -58,6 +70,7 @@ function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window,use_ad
          Xfilt = fftshift(Xfilt,1);
 
     end
+    Xmiss = isnan(Xfilt); % the output is undefined where the filter's support held a NaN input sample
 
     Xthr=me.filter_threshold(Xfilt,threshold,use_adaptive_threshold);
 

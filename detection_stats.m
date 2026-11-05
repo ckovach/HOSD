@@ -1,4 +1,4 @@
-function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,local_scales] = detection_stats(hos, x, varargin)
+function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,local_scales,xmisses] = detection_stats(hos, x, varargin)
 
 %[outs,pprob,xdet,xsnr,xrsm] = detection_stats(hos, x, 'noise_dist','gamma', ...)
 % Estimates a posterior probability on events detected by xdetect(hos,x)
@@ -117,6 +117,22 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %                  window (non-negative); a matrix = one window per
 %                  component (e.g. the gs of an earlier call). The mixture
 %                  is fit on the statistic smoothed with the same window.
+%   'mask'         samples to leave out (xdetect's 5th input): 'auto'
+%                  (default) = the NaN samples of x; a logical array with
+%                  one row per sample marks further samples, which are set
+%                  to NaN (the residual the running scale is measured on
+%                  gets the same gaps). The detection filter output is
+%                  undefined over the filter's support around each such
+%                  sample (xmisses, xdetect's 8th output); xdetect leaves
+%                  those samples out of the noise SD and the cumulant
+%                  threshold, and here the smoothed statistic is NaN
+%                  wherever its window reaches one, so those samples take
+%                  no part in the noise or signal fit, the likelihood, the
+%                  running scale or the cumulant readouts, and their
+%                  posterior is 0. A detection within reach of one has NaN
+%                  in outs(k).snrs. Recorded in outs(k).options.mask as
+%                  given: pass a sparse logical, or NaN the data and leave
+%                  'auto', to keep options small.
 %   'noise_dist'   {'gamma','lognormal','weibull','chi2','gengamma'} (default 'lognormal')
 %       Marginal noise family on the smoothed xrsm:
 %         'lognormal' : X = xrsm  ~ LogN(mu, sigma). Heavier right tail.
@@ -271,6 +287,8 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %
 %   local_scales - [N x K] running noise scale used for each component
 %       (all xfsd when local_scale_sec = 0)
+%   xmisses - [N x K] logical, true where a component's detection filter
+%       output is undefined (see 'mask'); xfilts and xthrs are 0 there.
 %
 %See also HOSOBJECT/XDETECT, FIT_EVENT_MM
 
@@ -279,9 +297,9 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 % Every option is checked, and every warning about the options given,
 % before the detection runs (the 'options' form of fit_event_mm).
 [options, reads_residual] = fit_event_mm('options', varargin{:});
-[xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs] = xdetect(hos,x,options.pow,options.smoothing_window);
+[xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,xmisses] = xdetect(hos,x,options.pow,options.smoothing_window,options.mask);
 det = struct('xdet', xdets, 'xsnr', xsnrs, 'xrsm', xrsms, 'xfsd', xfsds, ...
-             'xfilt', xfilts, 'xthr', xthrs, 'g', gs);
+             'xfilt', xfilts, 'xthr', xthrs, 'g', gs, 'xmiss', xmisses);
 % Signal the running scale is measured on (see 'local_scale_source'),
 % formed only when a span reads it: 'auto', a span > 0, or several spans
 % (model selection ranks them on it). A model_select struct's
@@ -289,6 +307,10 @@ det = struct('xdet', xdets, 'xsnr', xsnrs, 'xrsm', xrsms, 'xfsd', xfsds, ...
 % selection at a zero span never reads it. The residual costs one xrec
 % plus one filter pass per component.
 if reads_residual
+    % An explicit mask: xdetect has checked its shape and set those samples
+    % to NaN on its own copy of x. The same here, so that the residual has
+    % the same gaps.
+    if ~ischar(options.mask), x(logical(options.mask)) = NaN; end
     det.xfilt_residual = residual_filter_output(hos, x, xfilts);
 end
 [outs, pprobs, pprobs_outlier, local_scales] = fit_event_mm(hos, det, options);
