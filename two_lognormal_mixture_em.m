@@ -7,8 +7,9 @@ function out = two_lognormal_mixture_em(x, varargin)
 %   x ~ pi_s * f_s(x) + (1 - pi_s - pi_o) * f_n(x) [ + pi_o * f_o(x) ]
 %
 % The frozen-noise variant (signal-only lognormal EM with noise pinned by
-% the kernel-weighted MLE on sample_w) lives inline in detection_stats.m
-% under the freeze_noise=true + signal_dist='lognormal' branch. This file
+% the kernel-weighted MLE on sample_w) lives in fit_event_mm.m (local
+% function frozen_signal_em, under the freeze_noise=true +
+% signal_dist='lognormal' branch). This file
 % provides the unfrozen / joint variant where both lognormals are updated
 % each iteration -- analogous to TWO_GAMMA_MIXTURE_EM but in (mu, sigma)
 % parameter space.
@@ -17,7 +18,7 @@ function out = two_lognormal_mixture_em(x, varargin)
 % at the end of every M-step. If the M-step crosses (signal mu drops
 % below noise mu), we swap component labels and rewrite pi_s -> 1 - pi_s
 % - pi_o (same trick TWO_GAMMA_MIXTURE_EM uses on beta). In practice the
-% asymmetric initialisation (mu_n at the 30th log-quantile, mu_s at the
+% asymmetric initialization (mu_n at the 30th log-quantile, mu_s at the
 % 70th) gives the right basin of attraction on every MASS subject tested
 % with xrsm; the swap is a safety net for adversarial inputs.
 %
@@ -28,7 +29,7 @@ function out = two_lognormal_mixture_em(x, varargin)
 %            x-bins, weights = bin counts via 'sample_w') so the EM
 %            iterates over ~K bin centers instead of millions of raw
 %            samples -- mathematically equivalent up to discretization
-%            (see bin_em_K in detection_stats; ~0.03%-level parameter
+%            (see bin_em_K in fit_event_mm; ~0.03%-level parameter
 %            agreement at K=500 log bins on heavy-tailed xrsm). The
 %            same convention applies to every sibling helper
 %            (TWO_GAMMA_MIXTURE_EM, GAMMA_LOGNORMAL_MIXTURE_EM,
@@ -108,7 +109,7 @@ if isempty(opt.init)
     mu_n = q_lo;
     mu_s = q_hi;
     % Half-window standard deviations of log x, floored at 0.3 to keep
-    % both components from initialising too narrow.
+    % both components from initializing too narrow.
     med = weighted_quantile(logx, w, 0.50);
     sel_lo = logx <= med;
     sel_hi = ~sel_lo;
