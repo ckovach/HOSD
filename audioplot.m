@@ -34,11 +34,11 @@ kpw = false(size(w));
 kpw(hos.keepfreqs{1}) = true;
 w = w(fftshift(kpw));
 im(1) = imagesc(w,w,fftshift(abs(hos.Bfull(:,:)))); 
-axis([min(abs(w)) max(abs(w)) min(abs(w)) max(abs(w))])
 axis xy
 %caxis([0 1])
 colorbar
 axis image
+axis([min(abs(w)) max(abs(w)) min(abs(w)) max(abs(w))/2])
 subplot(2,2,2), 
  imwf = plot(ifftshift(hos.sampt)/Fs,zscore([hoss.waveform]) + 2*ones(hos.buffersize,1)*[1:ncascade]); 
 % im(2:3) = plot(ifftshift(hos.sampt)/Fs,[hos.waveform,hos.shiftbuffer]);
