@@ -6,8 +6,8 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g,xmiss] = xdetect(me,x,pow,smwin,mask)
 %
 % XDETECT detects instances of the feature in the input signal, x. It differs from
 % ximp and xthresh in that it applies a smoothing window whose width is determined from
-% xthresh applied to the feature waveform, serving as a proxy for the timing ambiguity
-% of individual feature instances. Detections are identified at peaks in the smoothed output.
+% the feature waveform passed through the detection filter, serving as a proxy for the
+% timing ambiguity of individual feature instances. Detections are identified at peaks in the smoothed output.
 % The rationale is that (in particular narrow band or periodic) features may generate multiple
 % super-threshold peaks per feature instance, reflecting ambiguity in the
 % timing of a single feature rather than multiple features. 
@@ -20,14 +20,16 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g,xmiss] = xdetect(me,x,pow,smwin,mask)
 %         feature. Default is 10 (to approximate a max filter. 
 %   smwin - smoothing window applied to the thresholded output before the
 %         peaks are picked (optional):
-%           'auto' or [] (default): a Hann window whose standard deviation
-%                 matches the temporal spread of the thresholded feature
-%                 waveform, the timing ambiguity of a single instance.
-%           'iqr': the Hann window whose interquartile range equals that of
-%                 the energy of the feature passed through the detection
-%                 filter, over lag. The quartiles leave out the low-level
-%                 background spread over the analysis window, which inflates
-%                 the 'auto' width (more so the longer the window).
+%           'iqr' or [] (default): the Hann window whose interquartile
+%                 range equals that of the energy of the feature passed
+%                 through the detection filter, over lag: the timing
+%                 ambiguity of a single instance in the filter output.
+%           'auto': a Hann window whose standard deviation matches the
+%                 temporal spread of the thresholded feature waveform,
+%                 within the central 99 % of its energy. The default until
+%                 November 2026. Low-level background spread over the
+%                 analysis window dominates that spread, so the width grows
+%                 with the window length.
 %           0   : no smoothing. Detections are the peaks of the thresholded
 %                 filter output itself (g = [0;1;0], a one-sample window
 %                 centered in three, so that a returned g can be passed back).
@@ -80,25 +82,19 @@ if nargin < 3 || isempty(pow)
           %Hilbert amplitude smears too much in time and introduces
           %artifacts.
 end
-% if nargin < 4 || isempty(pow2)
-%     pow2 = 10; %Power for Lp max filter approximation.
-%     % pow = 10; %Using root-mean-high-order-power so that the envelope is closer to the peak value as an approximation to the max filter, while keeping the output smooth
-%     %Hilbert amplitude smears too much in time and introduces
-%     %artifacts.
-% end
 
-% The smoothing window: 'auto' (the default), 'iqr', or this component's
+% The smoothing window: 'iqr' (the default), 'auto', or this component's
 % window and what the remaining components of the array receive.
 rule = '';
-if nargin < 4 || isempty(smwin) || ((ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'auto'))
-    smwin = 'auto';
-    rule = 'auto';
-elseif (ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'iqr')
+if nargin < 4 || isempty(smwin) || ((ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'iqr'))
     smwin = 'iqr';
     rule = 'iqr';
+elseif (ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'auto')
+    smwin = 'auto';
+    rule = 'auto';
 elseif ~isnumeric(smwin) || ~isreal(smwin) || any(~isfinite(smwin(:)))
     error('hosobject:xdetect:badSmoothing', ...
-        'smwin must be ''auto'', ''iqr'', a non-negative standard deviation in seconds, a window vector or one window per column.')
+        'smwin must be ''iqr'', ''auto'', a non-negative standard deviation in seconds, a window vector or one window per column.')
 end
 smnext = smwin;
 if isnumeric(smwin) && ~isvector(smwin)

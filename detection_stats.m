@@ -110,11 +110,12 @@ function [outs,pprobs,xdets,xsnrs,xrsms,xfsds,xfilts,xthrs,gs,pprobs_outlier,loc
 %                  listed under outs(k).checks below and warns (or errors)
 %                  when any fails.
 %   'smoothing_window'  the window xdetect smooths the thresholded output
-%                  with before picking peaks (its 4th input): 'auto'
-%                  (default) = the window derived from each component's
-%                  feature; 'iqr' = the Hann window whose interquartile
-%                  range equals that of each component's filtered feature
-%                  energy over lag; 0 = no smoothing; a scalar = the standard
+%                  with before picking peaks (its 4th input): 'iqr'
+%                  (default) = the Hann window whose interquartile range
+%                  equals that of each component's filtered feature energy
+%                  over lag; 'auto' = the window from the spread of each
+%                  component's thresholded filtered feature (the default
+%                  until November 2026); 0 = no smoothing; a scalar = the standard
 %                  deviation of a Hann window in seconds; a vector = the
 %                  window (non-negative); a matrix = one window per
 %                  component (e.g. the gs of an earlier call). The mixture

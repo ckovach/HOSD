@@ -265,8 +265,8 @@ p.addParameter('model_select',          false,       @(v) islogical(v) || isstru
 p.addParameter('select_criterion',      'bic',       @(s) ischar(s) || isstring(s));
 % Output sanity checks: 'warn' | 'off' | 'error'.
 p.addParameter('sanity_checks',         'warn',      @(v) ischar(v) || isstring(v) || islogical(v));
-% xdetect's smoothing window: 'auto' | 0 | SD in seconds | window | one window per column.
-p.addParameter('smoothing_window',      'auto',      @(v) isempty(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && any(strcmpi(v, {'auto', 'iqr'}))));
+% xdetect's smoothing window: 'iqr' (default) | 'auto' | 0 | SD in seconds | window | one window per column.
+p.addParameter('smoothing_window',      'iqr',       @(v) isempty(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && any(strcmpi(v, {'iqr', 'auto'}))));
 % Samples to leave out (xdetect's 5th input): 'auto' = the NaN samples of x | a logical per sample.
 p.addParameter('mask',                  'auto',      @(v) isempty(v) || islogical(v) || isnumeric(v) || ((ischar(v) || isstring(v)) && strcmpi(v, 'auto')));
 p.KeepUnmatched = false;
@@ -297,9 +297,9 @@ select_criterion      = lower(char(p.Results.select_criterion));
 sanity_checks         = p.Results.sanity_checks;
 smoothing_window      = p.Results.smoothing_window;
 if isempty(smoothing_window)
-    smoothing_window = 'auto';
+    smoothing_window = 'iqr';
 elseif ischar(smoothing_window) || isstring(smoothing_window)
-    smoothing_window = lower(char(smoothing_window));   % 'auto' or 'iqr'
+    smoothing_window = lower(char(smoothing_window));   % 'iqr' or 'auto'
 end
 mask                  = p.Results.mask;
 if isempty(mask) || ischar(mask) || isstring(mask)
