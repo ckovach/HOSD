@@ -24,7 +24,9 @@
 %        null).
 %
 % Outputs:
-%   out - A structure with fields:
+%   out - A structure with fields (with me.cumulant_correction set, every
+%        statistic is of the products less the lower-order cumulant terms,
+%        see CUMULANT_CORRECTION_TERM):
 %        .beta - Beta (P+1) x M array of fitted beta values and intercept in the regression model
 %     	 .dev  - 1 x M array of deviance.
 %        .pval - 1 x M array of P-values for the parametric complex Gaussian model. 
@@ -97,6 +99,13 @@
     for k = me(1).order-1:-1:1
         FYk = FY(me(1).freqindx.Is(:,k),:);
         FFY = FFY.*FYk;
+    end
+    % With me.cumulant_correction set, the lower-order cumulant terms
+    % (CUMULANT_CORRECTION_TERM, over the windows tested, uniformly
+    % weighted) are removed from every window's product, so that the test is
+    % on the cumulant; the products returned are the corrected ones.
+    if ~isempty(me(1).cumulant_correction)
+        FFY = FFY - me(1).cumulant_correction_term({FY},ones(1,size(FY,2)));
     end
 %             [~,out.dev0] = complexglm(FFX',ones(size(x,1),1),'diagonly',false,'intercept',false);
     [out.beta,out.dev,out.pval,out.iXX,out.sigma] = complexglm(FFY.',x,'diagonly',false,reg_args{:});

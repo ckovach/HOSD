@@ -15,6 +15,10 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     if nargin < 3 || isempty(initialize)
         initialize = false;
     end
+    if ~isempty(me.cumulant_correction)
+        error('hosobject:cumulant_correction:multivariate', ...
+            'The cumulant correction is not available for multivariate (mvhosd) estimates. Set cumulant_correction to [].')
+    end
 
 
     if isempty(FXs{1})

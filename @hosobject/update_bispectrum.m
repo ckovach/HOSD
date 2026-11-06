@@ -15,6 +15,11 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
     if nargin < 3 || isempty(initialize)
         initialize = false;
     end
+    if ~isempty(me.cumulant_correction) && ~initialize
+        error('hosobject:cumulant_correction:online', ...
+            ['The cumulant correction is estimated from a block of windows (initialize = true); ', ...
+             'it is not available for online updates. Set cumulant_correction to [].'])
+    end
 
 
     if isempty(FXs{1})
@@ -112,6 +117,15 @@ function FFXpart = update_bispectrum(me,FXs,initialize)
 
 %             BX = mean(FFX,2);
     BX = sum(FFX.*wgt',2);
+    %%% Cumulant correction (see CUMULANT_CORRECTION_TERM): the products of
+    %%% the listed lower-order cumulants, estimated from the same windows and
+    %%% weights, are removed from the moment estimate. Entries flagged one by
+    %%% one by the EDF rule stay in the lower-order moments; windows it drops
+    %%% have zero weight there too.
+    if ~isempty(me.cumulant_correction)
+        [cc,wsum] = me.cumulant_correction_term(FXs,wgt);
+        BX = BX - wsum*cc;
+    end
     if any(edfdrop)
         XPSD = mean(abs(FX(:,~edfdrop,:)).^2,2);
     else

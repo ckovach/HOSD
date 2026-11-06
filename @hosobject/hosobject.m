@@ -152,6 +152,16 @@ classdef hosobject < handle
         % it zero weight, and GET_BLOCK drops it before the alignment.
         edf_outlier_window_fraction = 0.25;
 
+        % Remove the products of lower-order cumulants from the moment
+        % estimate of the polyspectrum (see CUMULANT_CORRECTION_TERM): the
+        % orders of the lower-order cumulants to remove, [] (default) for
+        % none. 2 removes the second-order terms, the leakage of the
+        % spectrum into the estimate where the frequencies of a subset of
+        % the factors sum to (nearly) zero, with zero-mean coefficients
+        % assumed; 1:order-1 leaves the sample cumulant. Block estimates
+        % only (UPDATE_BISPECTRUM with initialize, HOS_REGRESS).
+        cumulant_correction = [];
+
         use_gpu = false; %Use GPU when available
 
         chanweight =1; %Channel weighting in filter.
@@ -966,6 +976,22 @@ classdef hosobject < handle
             me.edf_outlier_threshold = double(v);
         end
 
+        function set.cumulant_correction(me,v)
+            % Positive integers; [], 0 or false: none; true: 2.
+            if islogical(v) && isscalar(v)
+                v = 2*double(v);
+            end
+            if isempty(v) || isequal(v,0)
+                me.cumulant_correction = [];
+                return
+            end
+            if ~(isnumeric(v) && isreal(v) && all(isfinite(v(:))) && all(v(:) >= 1) && all(v(:) == round(v(:))))
+                error('hosobject:cumulant_correction:badValue', ...
+                    'cumulant_correction must list positive integer orders ([] or false: none).')
+            end
+            me.cumulant_correction = unique(double(v(:)'));
+        end
+
         function set.regressor(me,xin)
             setreg(me,xin);
         end
@@ -1033,6 +1059,8 @@ classdef hosobject < handle
         power_iteration(me,X)
         %%%
         [msk,badwin,info] = edf_outlier_mask(me,A,wgt)
+        %%%
+        [c,wsum] = cumulant_correction_term(me,FXs,wgt)
         %%%
         varargout = get_block(me,xin,maxiter,makeplot,segment,compno,initialize)
         %%%
