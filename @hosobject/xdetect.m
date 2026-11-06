@@ -134,13 +134,18 @@ elseif strcmp(rule,'iqr')
     % The quartiles of the filtered feature's energy over lag (fftshift puts
     % it in lag order, as sampt sorted), each placed within its sample by
     % the share of that sample's energy it needs. A Hann window of length L
-    % has interquartile range 0.26474 L.
+    % has interquartile range 0.26474 L. A null component, whose filtered
+    % feature holds no energy (the normalization is NaN, so no quartile is
+    % found), keeps the one-sample window, as under 'auto'.
     en = fftshift(sum(abs(me(1).xfilt(me(1).feature)).^2,2));
     en = en./sum(en);
     c = cumsum(en);
     k = [find(c >= .25,1); find(c >= .75,1)];
-    q = k - (c(k) - [.25;.75])./en(k);
-    nsamp = max(3,round(diff(q)/0.2647418954));
+    nsamp = 3;
+    if numel(k) == 2
+        q = k - (c(k) - [.25;.75])./en(k);
+        nsamp = max(3,round(diff(q)/0.2647418954));
+    end
     nsamp = nsamp + 1-mod(nsamp,2); %Keep the window size odd
     g = hann(nsamp);
     g = g./sum(g);
