@@ -175,7 +175,7 @@ xfsd = std(xfilt(~xthr & ~xmiss));
 %xrsm = nthroot(convn(abs(xthr./xfsd).^pow,g,'same'),pow);
 
 %RMS normalized to estimated noise SD
-xrsm = nthroot(convn((xthr./xfsd).^pow,g,'same'),2);
+xrsm = nthroot(convn((xthr./xfsd).^pow,g,'same'),pow);
 [~,pk] = getpeak2(xrsm);
 %%% Peak weighted xrsms: the RMS over the SUPRA-THRESHOLD samples in the
 %%% window, of EITHER polarity (xthr~=0). An even order thresholds both
