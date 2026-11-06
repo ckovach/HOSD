@@ -23,6 +23,11 @@ function [out,snr,xrsm,xfsd,xfilt,xthr,g,xmiss] = xdetect(me,x,pow,smwin,mask)
 %           'auto' or [] (default): a Hann window whose standard deviation
 %                 matches the temporal spread of the thresholded feature
 %                 waveform, the timing ambiguity of a single instance.
+%           'iqr': the Hann window whose interquartile range equals that of
+%                 the energy of the feature passed through the detection
+%                 filter, over lag. The quartiles leave out the low-level
+%                 background spread over the analysis window, which inflates
+%                 the 'auto' width (more so the longer the window).
 %           0   : no smoothing. Detections are the peaks of the thresholded
 %                 filter output itself (g = [0;1;0], a one-sample window
 %                 centered in three, so that a returned g can be passed back).
@@ -75,17 +80,25 @@ if nargin < 3 || isempty(pow)
           %Hilbert amplitude smears too much in time and introduces
           %artifacts.
 end
+% if nargin < 4 || isempty(pow2)
+%     pow2 = 10; %Power for Lp max filter approximation.
+%     % pow = 10; %Using root-mean-high-order-power so that the envelope is closer to the peak value as an approximation to the max filter, while keeping the output smooth
+%     %Hilbert amplitude smears too much in time and introduces
+%     %artifacts.
+% end
 
-% The smoothing window: 'auto' (the default), or this component's window
-% and what the remaining components of the array receive.
+% The smoothing window: 'auto' (the default), 'iqr', or this component's
+% window and what the remaining components of the array receive.
+rule = '';
 if nargin < 4 || isempty(smwin) || ((ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'auto'))
     smwin = 'auto';
-    isauto = true;
+    rule = 'auto';
+elseif (ischar(smwin) || isstring(smwin)) && strcmpi(smwin,'iqr')
+    smwin = 'iqr';
+    rule = 'iqr';
 elseif ~isnumeric(smwin) || ~isreal(smwin) || any(~isfinite(smwin(:)))
     error('hosobject:xdetect:badSmoothing', ...
-        'smwin must be ''auto'', a non-negative standard deviation in seconds, a window vector or one window per column.')
-else
-    isauto = false;
+        'smwin must be ''auto'', ''iqr'', a non-negative standard deviation in seconds, a window vector or one window per column.')
 end
 smnext = smwin;
 if isnumeric(smwin) && ~isvector(smwin)
@@ -119,8 +132,22 @@ end
 %Get component, filter output and thresholded filter output
 [xrec,xfilt,xthr,~,xmiss] = me(1).xrec(x);
 
-if ~isauto
+if isempty(rule)
     g = smoothing_window(smwin,me(1).sampling_rate);
+elseif strcmp(rule,'iqr')
+    % The quartiles of the filtered feature's energy over lag (fftshift puts
+    % it in lag order, as sampt sorted), each placed within its sample by
+    % the share of that sample's energy it needs. A Hann window of length L
+    % has interquartile range 0.26474 L.
+    en = fftshift(sum(abs(me(1).xfilt(me(1).feature)).^2,2));
+    en = en./sum(en);
+    c = cumsum(en);
+    k = [find(c >= .25,1); find(c >= .75,1)];
+    q = k - (c(k) - [.25;.75])./en(k);
+    nsamp = max(3,round(diff(q)/0.2647418954));
+    nsamp = nsamp + 1-mod(nsamp,2); %Keep the window size odd
+    g = hann(nsamp);
+    g = g./sum(g);
 else
 % Get a characteristic duration for the feature using fthresh
 % This is a proxy for how the feature appears after filtering and
