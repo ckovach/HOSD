@@ -243,6 +243,11 @@
 %                             set(plh(pli),'ydata',get(makeplot(pli),'ydata')+std(me(1).feature)*.5);
 %                          end
                 set(makeplot(mod(k,5)+2),'ydata',me(1).feature,'Color',hsv2rgb([mod(k,color_cycle)/color_cycle 1 .8]));
+                if me(1).buffersize ~= length(get(makeplot(mod(k,5)+2),'xdata'))
+                    set(makeplot(mod(k,5)+2),'xdata',fftshift(me(1).sampt)./me(1).sampling_rate);
+                    axis tight
+                end
+
                 drawnow
             elseif double(makeplot) > 0
                 figure,
