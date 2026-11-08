@@ -1976,18 +1976,24 @@ okN = out.adjusted_N_estimate <= out.raw_N_estimate + 1e-9 && out.adjusted_N_est
 [checks, msgs] = mark(checks, msgs, 'adjustedN_le_rawN', okN, ...
     sprintf('adjusted N (%.1f) exceeds raw N (%d)', out.adjusted_N_estimate, out.raw_N_estimate));
 
-% 6. the strongest detections should be classified as signal
+% 6. the strongest detections should be classified as signal. A detection
+% whose smoothing window reaches an undefined sample has a NaN SNR and a
+% posterior of 0 (it takes no part in the fit), and a descending sort puts
+% NaN first: rank only the detections with a finite SNR.
 okTop = true; top = NaN;
 if any(xdet)
     ppd = pprob(xdet); sn = out.snrs(:);
-    [~, ord] = sort(sn, 'descend');
-    ntop = max(1, ceil(0.02 * numel(ord)));
-    top = mean(ppd(ord(1:ntop)));
-    okTop = top >= 0.5;
+    fin = find(isfinite(sn));
+    if ~isempty(fin)
+        [~, ord] = sort(sn(fin), 'descend');
+        ntop = max(1, ceil(0.02 * numel(fin)));
+        top = mean(ppd(fin(ord(1:ntop))));
+        okTop = top >= 0.5;
+    end
 end
 [checks, msgs] = mark(checks, msgs, 'top_detections_are_signal', okTop, ...
-    sprintf(['mean posterior of the top 2%% of detections is %.2f: the signal component ' ...
-             'does not capture the strongest events (nothing is detected)'], top));
+    sprintf(['mean posterior of the 2%% of detections with the highest SNR is %.2f: ' ...
+             'the posterior does not classify the strongest detections as signal'], top));
 
 % 7. mixture tail calibration (0.999 quantile of the fitted mixture on all samples)
 okTail = true; msg7 = '';
