@@ -1,6 +1,7 @@
-function out = component_hos(me, X, getcomps, samewindows)
+function [out, before] = component_hos(me, X, getcomps, samewindows, channel)
 
 % out = component_hos(obj, X, [getcomps], [samewindows])
+% [out, before] = component_hos(obj, X, [getcomps], [samewindows], [channel])
 %
 % The higher-order spectrum attributable to each component alone: the HOS
 % of the signal the component was extracted from (the residual after the
@@ -30,6 +31,18 @@ function out = component_hos(me, X, getcomps, samewindows)
 %              is invariant to shifting each window by an integer number of
 %              samples, so aligning the residual's windows to its features
 %              would change nothing.
+%   channel  - multivariate fits only: the signal both terms are estimated
+%              on. [] (default): the output of the component's
+%              spatiotemporal filter, the signal the fit maximizes the
+%              cumulant of. A channel index c: channel c of the residuals
+%              (a column of X). A column of channel weights w (one per
+%              column of X, e.g. a column of ICA_unmixing): the projection
+%              of the residuals on w. A channel with zero weight does not
+%              enter, so a missing (NaN) sample there is not a missing
+%              sample of the projection. On one channel or projection the
+%              residual after component k is again the signal component
+%              k+1 was extracted from, so consecutive components share that
+%              estimate as in a univariate fit.
 %
 % Output:
 %
@@ -37,6 +50,11 @@ function out = component_hos(me, X, getcomps, samewindows)
 %            normalization in D (so bicoh / bicohreduced give the component
 %            polycoherence) and no bias term: the bias correction belongs to
 %            each estimate, not to their difference.
+%   before(k) - hosobject holding the first term by itself: the HOS of the
+%            signal component k was extracted from, with its own
+%            normalization and bias term (so bicoh gives the polycoherence
+%            of that signal): the batch estimate on uniform windows, or
+%            with samewindows false the HOS accumulated during the fit.
 
 if nargin < 3 || isempty(getcomps)
     getcomps = 1:length(me.hos);
@@ -46,6 +64,40 @@ if islogical(getcomps)
 end
 if nargin < 4 || isempty(samewindows)
     samewindows = true;
+end
+if nargin < 5
+    channel = [];
+end
+if ~isempty(channel)
+    if ~me.multivariate
+        error('hosd:component_hos:channel','The channel input applies to a multivariate fit.')
+    end
+    if ~samewindows
+        % the HOS accumulated during a multivariate fit is that of the
+        % filter output, not of a channel
+        error('hosd:component_hos:channel','The channel input needs samewindows = true.')
+    end
+    if ~ismatrix(X)
+        error('hosd:component_hos:channel','The channel input takes a record: samples x channels.')
+    end
+    if isscalar(channel) && size(X,2) > 1
+        channel = double(channel);
+        if channel ~= round(channel) || channel < 1 || channel > size(X,2)
+            error('hosd:component_hos:channel','channel must be a column index of X or one weight per column of X.')
+        end
+        w = zeros(size(X,2),1);
+        w(channel) = 1;
+    else
+        w = double(channel(:));
+    end
+    if numel(w) ~= size(X,2) || ~any(w) || ~all(isfinite(w))
+        error('hosd:component_hos:channel','channel must be a column index of X or one weight per column of X.')
+    end
+    % The channels that enter the projection: with a zero weight a NaN would
+    % still make the product NaN (0*NaN), and drop a window the channel or
+    % the projection has in full.
+    wuse = w ~= 0;
+    w = w(wuse);
 end
 
 % The per-component fit objects. hosf is the univariate fit of each
@@ -75,7 +127,7 @@ sub = repmat({':'},1,max(3,cdim));
 % sum(xr(:,1:m,:),2) does for a record: the same sums, bit for bit.
 xr = cumsum(me.hos(1:max(getcomps)).xrec(X), cdim);
 
-prev = [];   % the last residual's estimate: component, estimator settings, B, D
+prev = [];   % the last residual's estimate: component, estimator settings, the hosobject that holds it
 for k = 1:length(getcomps)
 
     cmpi = getcomps(k);
@@ -114,13 +166,15 @@ for k = 1:length(getcomps)
     % The signal component cmpi was extracted from is the residual after
     % component cmpi-1, so if that one's estimate was made with the same
     % settings it IS this one's first term, bit for bit. Not for a
-    % multivariate fit: there each term is the output of the component's
-    % own spatiotemporal filter. Nor with a step longer than the window plus
+    % multivariate fit estimated on the filter output: there each term is
+    % the output of the component's own spatiotemporal filter (on one channel
+    % or projection the residual is shared, as in a univariate fit). Nor
+    % with a step longer than the window plus
     % one sample: the tail left after the last window can then outrun the
     % window, and get_input puts it through an ONLINE update first (learning
     % rates, a re-estimated filter and lag), which the estimate then depends
     % on.
-    reuse = samewindows && ~me.multivariate && ~isempty(prev) && prev.comp == cmpi-1 && ...
+    reuse = samewindows && (~me.multivariate || ~isempty(channel)) && ~isempty(prev) && prev.comp == cmpi-1 && ...
         round(hafter.poverlap*hafter.buffersize) <= hafter.buffersize+1 && isequal(prev.est, est);
 
     sub{cdim} = cmpi;
@@ -136,7 +190,13 @@ for k = 1:length(getcomps)
             xbefore = X - squeeze(sum(xr(sub{:}), cdim));
         end
     end
-    if me.multivariate
+    if me.multivariate && ~isempty(channel)
+        % One channel, or one projection, of the residuals.
+        if samewindows && ~reuse
+            xbefore = xbefore(:,wuse)*w;
+        end
+        xafter = xafter(:,wuse)*w;
+    elseif me.multivariate
         % The HOS of a multivariate component lives on the output of its
         % spatiotemporal filter (the signal hosf(cmpi) was fit on in run),
         % which is the multivariate object's xfilt, not the univariate
@@ -150,19 +210,20 @@ for k = 1:length(getcomps)
     hafter.get_input(xafter, [], false, true);
 
     if ~samewindows
-        B0 = tmp0.B;
-        D0 = tmp0.D;
+        hbefore = tmp0;
     elseif reuse
-        B0 = prev.B;
-        D0 = prev.D;
+        hbefore = prev.h;
     else
         hbefore = hosobject(tmp0);
         hbefore.reset;
         hbefore.get_input(xbefore, [], false, true);
-        B0 = hbefore.B;
-        D0 = hbefore.D;
     end
-    prev = struct('comp', cmpi, 'est', {est}, 'B', hafter.B, 'D', hafter.D);
+    B0 = hbefore.B;
+    D0 = hbefore.D;
+    prev = struct('comp', cmpi, 'est', {est}, 'h', hafter);
+    if nargout > 1
+        before(k) = hosobject(hbefore); %#ok<AGROW>
+    end
 
     tmp2 = hosobject(tmp0);
     tmp2.reset;
