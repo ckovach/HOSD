@@ -69,7 +69,9 @@
                 nfp=fprintf([repmat('\b',1,nfp),'\nComp. %i,estimating HOS for chan. %i'],compno,k)-nfp;
                 X(:,:,k) = me(1).chop_input(in(:,:,k),true,0,segment);
                 Gpart(:,:,k) = me(1).partial_delay_filt(X(:,:,k),true,true); 
-                if k==1
+                if k==1 && nchan>1
+                    % allocate the remaining channels (with one channel
+                    % this would zero the channel just computed)
                     X(:,:,nchan)=0;
                     Gpart(:,:,nchan)=0;
                 end
