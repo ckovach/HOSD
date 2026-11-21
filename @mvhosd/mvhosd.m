@@ -249,7 +249,7 @@ classdef mvhosd < hosobject
         end
         %%%%%%%
        
-        function [Xrec,Xfilt,Xthr,beta] = reconstruct(me,X,threshold,apply_window)
+        function [Xrec,Xfilt,Xthr,beta,Xmiss] = reconstruct(me,X,threshold,apply_window)
             
             if nargin < 2
                 X = [me(:,k).inputbuffer];
@@ -329,6 +329,7 @@ classdef mvhosd < hosobject
             end
             Xfilt(xfisnan) = nan;
             Xrec(xisnan) = nan;
+            Xmiss = xfisnan; % the output is undefined where the filter's support held a NaN input sample
 %             if nargin < 2
 %                 me(1).reconbuffer = Xrec;
 %             end
@@ -364,7 +365,7 @@ classdef mvhosd < hosobject
            end
          end
            %%%
-        function [out,xfilt,xthr,betas] = xrec(me,in,thresh,apply_window,varargin)
+        function [out,xfilt,xthr,betas,xmiss] = xrec(me,in,thresh,apply_window,varargin)
            if nargin < 2
                in = me.dat;
            end
@@ -379,7 +380,7 @@ classdef mvhosd < hosobject
            end
            
            if nargout > 1
-               [out,xfilt,xthr,betas] = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
+               [out,xfilt,xthr,betas,xmiss] = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            else
                out = me(1).reconstruct(in,thresh,apply_window,varargin{:}); 
            end     
@@ -390,11 +391,12 @@ classdef mvhosd < hosobject
 %                    applydim = max(find(size(in)>1))+1;
 %                end
                 if nargout >1 
-                    [out2,out3,out4,out5] = me(2:end).xrec(in-out,thresh,apply_window,varargin{:});
+                    [out2,out3,out4,out5,out6] = me(2:end).xrec(in-out,thresh,apply_window,varargin{:});
                     out = cat(find([size(in),1]==1,1),out,out2);
                     xfilt = cat(find([size(in),1]==1,1),xfilt,out3);
                     xthr = cat(find([size(in),1]==1,1),xthr,out4);
                     betas = cat(find([size(in),1]==1,1),betas,out5);
+                    xmiss = cat(find([size(in),1]==1,1),xmiss,out6);
                     
                 else
                     out =  cat(find([size(in),1]==1,1),out,me(2:end).xrec(in-out,thresh,apply_window,varargin{:}));
