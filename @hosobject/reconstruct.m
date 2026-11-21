@@ -28,7 +28,8 @@ function [Xrec,Xfilt,Xthr,beta,Xmiss] = reconstruct(me,X,threshold,apply_window,
 %                       bandwidths in least square estimation. Default is true.
 %
 % Outputs:
-%   Xrec - reconstructed component signal (NaN where X is NaN).
+%   Xrec - reconstructed component signal (NaN where X is NaN; 0 elsewhere
+%       when no sample of the filter output passes the threshold).
 %   Xfilt - detection filter output. Where the filter's support holds a NaN
 %       sample of X the output is undefined; it is returned as 0 when
 %       use_filtered_lmse is true (the default) and as NaN otherwise.
@@ -99,7 +100,16 @@ function [Xrec,Xfilt,Xthr,beta,Xmiss] = reconstruct(me,X,threshold,apply_window,
         Xrecfilt(isnan(Xfilt))=0;
         Xfilt(isnan(Xfilt)) = 0;
 
-        beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
+        ssq = sum(Xrecfilt(:).^2);
+        if ssq > 0
+            beta = Xrecfilt(:)'*Xfilt(:)./ssq;
+        else
+            %%% No sample passed the threshold: the reconstruction is empty,
+            %%% and stays 0 where X is defined (the ratio would be 0/0, a NaN
+            %%% over the whole input, which a deflation then carries into
+            %%% every later component).
+            beta = 0;
+        end
         Xrec = beta*Xrec; 
     else
         a= sum(abs(Xrec(:)).^2); %#ok<*UNRCH>

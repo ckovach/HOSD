@@ -311,7 +311,12 @@ classdef mvhosd < hosobject
                 Xrecfilt(xfisnan)=0;
                 Xfilt(xfisnan) = 0;
                 
-                beta = Xrecfilt(:)'*Xfilt(:)./sum(Xrecfilt(:).^2);
+                ssq = sum(Xrecfilt(:).^2);
+                if ssq > 0
+                    beta = Xrecfilt(:)'*Xfilt(:)./ssq;
+                else
+                    beta = 0; % nothing passed the threshold: an empty reconstruction, not 0/0
+                end
                 Xrec = beta*Xrec; 
             else
                 a= sum(abs(Xrec(:)).^2); %#ok<*UNRCH>
