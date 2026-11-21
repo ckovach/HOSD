@@ -25,18 +25,28 @@ end
 
 if me.blank
     me.component_template = tmpl;
-    if nargout > 1
+    if nargout > 0
         [XF,xthr,betas] = me.run(x,varargin{:});
     else
         me.run(x,varargin{:});
     end
 else
-    xr = squeeze(sum(me.hos.xrec(x),2));
+    % The sum of the components' reconstructions. xrec lists the components
+    % along the first dimension after the input's own (see HOSOBJECT/XREC):
+    % along 2 for a record (a column vector), along 3 for windows (the
+    % columns of a matrix), whose own second dimension is the windows. A
+    % multivariate fit lists them along 2, with the channels along 3.
+    xr = me.hos.xrec(x);
+    if isa(me.hosica,'mvhosd')
+        xr = squeeze(sum(xr,2));
+    else
+        xr = sum(xr,sum(size(x)>1)+1);
+    end
     % Set the template only once the residual is in hand: if xrec throws,
     % a template parked on the handle would otherwise survive and be
     % silently consumed by the next, unrelated run().
     me.component_template = tmpl;
-    if nargout > 1
+    if nargout > 0
         [XF,xthr,betas] = me.run(x-xr,varargin{:});
     else
         me.run(x-xr,varargin{:});

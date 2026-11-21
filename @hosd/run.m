@@ -1,6 +1,12 @@
 function [XF,xthr,betas] = run(me,x,start_at_component,varargin)
 
 %Run HOSD fitting until stopping criteria are met.
+%
+% [XF,xthr,betas] = run(me,x) also returns each component's filter output
+% (XF), thresholded filter output (xthr) and reconstruction scaling (betas),
+% as HOSOBJECT/XREC lists them: one column per component for a record (a
+% column vector x), one page per component, along the third dimension, when
+% x holds windows as the columns of a matrix.
 
 if me.blank 
     compi = 1;
@@ -83,19 +89,27 @@ while max(cml) > me.threshold && compi-start_at_component < me.maxcomps
         [~,~,~,~,~,plh] = me.hosica(compi).get_block(xresid,me.niter,plh,[],compi);
     end
     me.liveplot = plh;
-    [xr,xf,xthr,beta]  = me.hosica(compi).xrec(xresid);
+    [xr,xf,xt,beta]  = me.hosica(compi).xrec(xresid);
     %  xf = me.hos(compi).xfilt(xresid);
-    if nargout > 1
-        XF(:,compi) = xf;
-        xthr(:,compi) = xthr;
-        betas(:,compi) = beta;
+    if nargout > 0
+        % The filter output has the input's dimensions, and the components
+        % follow them: one column per component for a record, one page per
+        % component for windows (the columns of a matrix).
+        sub = repmat({':'},1,max(1,sum(size(xf)>1)));
+        XF(sub{:},compi) = xf; %#ok<AGROW>
+        xthr(sub{:},compi) = xt; %#ok<AGROW>
+        betas(:,compi) = beta; %#ok<AGROW>
     end
     if me.multivariate
         me.hosf(compi) = hosobject(hos0);
         me.hosf(compi).get_input(xf);
     end
 
-    cml = [cumulant(xf,me.hosica(compi).order),cml];
+    % The standardized cumulant of the component's filter output over every
+    % sample of it. For windows that is all the windows together: cumulant
+    % works along the first dimension, so on the matrix it would return one
+    % value per window.
+    cml = [cumulant(xf(:),me.hosica(compi).order),cml];
 
 
     xresid = xresid-squeeze(xr);

@@ -58,11 +58,22 @@ else
     hosf = me.hosf;
 end
 
-% Column m becomes the sum of the reconstructions of components 1..m, so
+% The dimension along which xrec lists the components: the first after the
+% input's own (see HOSOBJECT/XREC), so 2 for a record (a column vector) and
+% 3 for windows (the columns of a matrix); a multivariate fit lists them
+% along 2, with the channels along 3. sub indexes one component.
+if isa(me.hosica,'mvhosd')
+    cdim = 2;
+else
+    cdim = sum(size(X)>1)+1;
+end
+sub = repmat({':'},1,max(3,cdim));
+
+% Slice m becomes the sum of the reconstructions of components 1..m, so
 % each signal below is one subtraction rather than a sum over every
-% component before it. cumsum adds the columns in sequence, as
-% sum(xr(:,1:m,:),2) does: the same sums, bit for bit.
-xr = cumsum(me.hos(1:max(getcomps)).xrec(X), 2);
+% component before it. cumsum adds the slices in sequence, as
+% sum(xr(:,1:m,:),2) does for a record: the same sums, bit for bit.
+xr = cumsum(me.hos(1:max(getcomps)).xrec(X), cdim);
 
 prev = [];   % the last residual's estimate: component, estimator settings, B, D
 for k = 1:length(getcomps)
@@ -112,14 +123,17 @@ for k = 1:length(getcomps)
     reuse = samewindows && ~me.multivariate && ~isempty(prev) && prev.comp == cmpi-1 && ...
         round(hafter.poverlap*hafter.buffersize) <= hafter.buffersize+1 && isequal(prev.est, est);
 
-    xafter = X - squeeze(xr(:, cmpi, :));    % what is left after component cmpi
+    sub{cdim} = cmpi;
+    xafter = X - squeeze(xr(sub{:}));    % what is left after component cmpi
     if samewindows && ~reuse
         if cmpi > 1
-            xbefore = X - squeeze(xr(:, cmpi-1, :));   % what component cmpi was extracted from
+            sub{cdim} = cmpi-1;
+            xbefore = X - squeeze(xr(sub{:}));   % what component cmpi was extracted from
         else
             % X less the sum over no component: zeros of the reconstruction's
             % class, which a single or GPU reconstruction passes on to X
-            xbefore = X - squeeze(sum(xr(:, [], :), 2));
+            sub{cdim} = [];
+            xbefore = X - squeeze(sum(xr(sub{:}), cdim));
         end
     end
     if me.multivariate
