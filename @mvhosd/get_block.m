@@ -36,7 +36,9 @@
         isn = any(isnan(in),3);
 
         if size(in,2)==1
-            [isn,~,segment] = me(1).chop_input(isn,[],[],segment);
+            % The NaN indicator is not tapered: the taper is 0 at a window's
+            % first and last samples, and a NaN there would be missed.
+            [isn,~,segment] = me(1).chop_input(isn,false,[],segment);
             discard = any(isn);
             if any(discard)
                 fprintf('\n%i windows (%0.1f%%) contain nans and will be discarded.',sum(discard),mean(discard)*100)
