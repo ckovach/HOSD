@@ -1,7 +1,7 @@
-function [out, before] = component_hos(me, X, getcomps, samewindows, channel)
+function [out, before, stopped] = component_hos(me, X, getcomps, samewindows, channel, progress)
 
 % out = component_hos(obj, X, [getcomps], [samewindows])
-% [out, before] = component_hos(obj, X, [getcomps], [samewindows], [channel])
+% [out, before, stopped] = component_hos(obj, X, [getcomps], [samewindows], [channel], [progress])
 %
 % The higher-order spectrum attributable to each component alone: the HOS
 % of the signal the component was extracted from (the residual after the
@@ -37,12 +37,24 @@ function [out, before] = component_hos(me, X, getcomps, samewindows, channel)
 %              cumulant of. A channel index c: channel c of the residuals
 %              (a column of X). A column of channel weights w (one per
 %              column of X, e.g. a column of ICA_unmixing): the projection
-%              of the residuals on w. A channel with zero weight does not
-%              enter, so a missing (NaN) sample there is not a missing
-%              sample of the projection. On one channel or projection the
-%              residual after component k is again the signal component
-%              k+1 was extracted from, so consecutive components share that
-%              estimate as in a univariate fit.
+%              of the residuals on w. A matrix of P such columns, one row
+%              per column of X (eye(size(X,2)) for every channel): the P
+%              projections in one call, which reconstructs each component
+%              once for all of them. A channel with zero weight does not
+%              enter a projection, so a missing (NaN) sample there is not a
+%              missing sample of the projection. On one channel or
+%              projection the residual after component k is again the
+%              signal component k+1 was extracted from, so consecutive
+%              components share that estimate as in a univariate fit.
+%   progress - a function handle called after each component's estimates
+%              (of every projection) as stop = progress(k, n): k components
+%              of the n = numel(getcomps) asked for are done. When it returns
+%              logical true the call stops after that component and returns
+%              the components done so far; any other value goes on, 1
+%              included (fprintf, say, returns the number of bytes it
+%              printed). A function declared without outputs is called
+%              without one; an anonymous function is asked for one and must
+%              return a value. [] (default): none.
 %
 % Output:
 %
@@ -55,9 +67,20 @@ function [out, before] = component_hos(me, X, getcomps, samewindows, channel)
 %            normalization and bias term (so bicoh gives the polycoherence
 %            of that signal): the batch estimate on uniform windows, or
 %            with samewindows false the HOS accumulated during the fit.
+%   Both are 1 x numel(getcomps), and with a matrix of P > 1 columns as the
+%   channel input P x numel(getcomps): out(p,k) and before(p,k) are what
+%   out(k) and before(k) are with column p alone as the channel input. When
+%   the progress function stopped the call they hold the components done,
+%   the first of getcomps onward, and nothing of the others.
+%   stopped - true when the progress function returned true (the outputs
+%            then hold the components done up to that point: all of them
+%            when it returned true after the last), else false.
 
+% The components. The hos getter copies the whole array on every read, so it
+% is read once.
+hos = me.hos;
 if nargin < 3 || isempty(getcomps)
-    getcomps = 1:length(me.hos);
+    getcomps = 1:length(hos);
 end
 if islogical(getcomps)
     getcomps = find(getcomps);
@@ -68,6 +91,13 @@ end
 if nargin < 5
     channel = [];
 end
+if nargin < 6
+    progress = [];
+end
+if ~isempty(progress) && ~isa(progress, 'function_handle')
+    error('hosd:component_hos:progress','progress must be a function handle, called as stop = progress(k, n).')
+end
+P = 1;   % the projections: the columns of the channel weights
 if ~isempty(channel)
     if ~me.multivariate
         error('hosd:component_hos:channel','The channel input applies to a multivariate fit.')
@@ -85,19 +115,21 @@ if ~isempty(channel)
         if channel ~= round(channel) || channel < 1 || channel > size(X,2)
             error('hosd:component_hos:channel','channel must be a column index of X or one weight per column of X.')
         end
-        w = zeros(size(X,2),1);
-        w(channel) = 1;
+        W = zeros(size(X,2),1);
+        W(channel) = 1;
+    elseif isvector(channel) && numel(channel) == size(X,2)
+        W = double(channel(:));   % one projection, its weights given as a row or a column
     else
-        w = double(channel(:));
+        W = double(channel);      % one projection per column
     end
-    if numel(w) ~= size(X,2) || ~any(w) || ~all(isfinite(w))
-        error('hosd:component_hos:channel','channel must be a column index of X or one weight per column of X.')
+    if size(W,1) ~= size(X,2) || ~ismatrix(W) || ~all(any(W,1)) || ~all(isfinite(W(:)))
+        error('hosd:component_hos:channel','channel must be a column index of X, or one weight per column of X in each of its columns.')
     end
-    % The channels that enter the projection: with a zero weight a NaN would
+    % The channels that enter each projection: with a zero weight a NaN would
     % still make the product NaN (0*NaN), and drop a window the channel or
     % the projection has in full.
-    wuse = w ~= 0;
-    w = w(wuse);
+    wuse = W ~= 0;
+    P = size(W,2);
 end
 
 % The per-component fit objects. hosf is the univariate fit of each
@@ -110,24 +142,24 @@ else
     hosf = me.hosf;
 end
 
-% The dimension along which xrec lists the components: the first after the
-% input's own (see HOSOBJECT/XREC), so 2 for a record (a column vector) and
-% 3 for windows (the columns of a matrix); a multivariate fit lists them
-% along 2, with the channels along 3. sub indexes one component.
-if isa(me.hosica,'mvhosd')
-    cdim = 2;
-else
-    cdim = sum(size(X)>1)+1;
-end
-sub = repmat({':'},1,max(3,cdim));
+% The residuals come from two running sums, each step reconstructing one
+% component: s, the sum of the reconstructions of components 1..m, adds them
+% in sequence, as cumsum adds the slices of the reconstruction of the whole
+% chain -- the same sums, bit for bit; d, the signal component m+1 is
+% reconstructed from, subtracts them one at a time, as xrec (HOSOBJECT/XREC,
+% MVHOSD/XREC) deflates its input for each next component -- the same
+% reconstructions. So only arrays the size of X are held, never the
+% reconstruction of every component at once (samples x components, and x
+% channels for a multivariate fit), and only components 1..max(getcomps) are
+% reconstructed.
+m = 0;   % the components summed in s
+d = X;
+s = [];
 
-% Slice m becomes the sum of the reconstructions of components 1..m, so
-% each signal below is one subtraction rather than a sum over every
-% component before it. cumsum adds the slices in sequence, as
-% sum(xr(:,1:m,:),2) does for a record: the same sums, bit for bit.
-xr = cumsum(me.hos(1:max(getcomps)).xrec(X), cdim);
-
-prev = [];   % the last residual's estimate: component, estimator settings, the hosobject that holds it
+stopped = false;   % the progress function stopped the call
+outc = cell(P, length(getcomps));
+beforec = cell(P, length(getcomps));
+prev = [];   % the last residual's estimates: component, estimator settings, the hosobjects that hold them (one per projection)
 for k = 1:length(getcomps)
 
     cmpi = getcomps(k);
@@ -176,65 +208,127 @@ for k = 1:length(getcomps)
     % on.
     reuse = samewindows && (~me.multivariate || ~isempty(channel)) && ~isempty(prev) && prev.comp == cmpi-1 && ...
         round(hafter.poverlap*hafter.buffersize) <= hafter.buffersize+1 && isequal(prev.est, est);
+    needbefore = samewindows && ~reuse;
 
-    sub{cdim} = cmpi;
-    xafter = X - squeeze(xr(sub{:}));    % what is left after component cmpi
-    if samewindows && ~reuse
+    % Bring the sums to component cmpi, keeping the sum over the components
+    % before it (sprev) for the signal cmpi was extracted from. Components
+    % asked for out of order, or again, start the sums over: the same sums
+    % again.
+    if m > cmpi || (m == cmpi && needbefore && cmpi > 1)
+        m = 0;
+        d = X;
+        s = [];
+    end
+    sprev = [];
+    while m < cmpi
+        m = m+1;
+        sprev = [];   % not held while a component is reconstructed
+        % component m's reconstruction, shaped as X (MVHOSD/XREC lists the
+        % channels along the third dimension)
+        r = reshape(hos(m).xrec(d), size(X));
+        d = d - r;
+        sprev = s;
+        if m == 1
+            s = r;
+        else
+            s = s + r;
+        end
+        r = []; %#ok<NASGU>
+    end
+
+    xafter = X - s;    % what is left after component cmpi
+    if needbefore
         if cmpi > 1
-            sub{cdim} = cmpi-1;
-            xbefore = X - squeeze(xr(sub{:}));   % what component cmpi was extracted from
+            xbefore = X - sprev;   % what component cmpi was extracted from
         else
             % X less the sum over no component: zeros of the reconstruction's
             % class, which a single or GPU reconstruction passes on to X
-            sub{cdim} = [];
-            xbefore = X - squeeze(sum(xr(sub{:}), cdim));
+            xbefore = X - zeros(size(s),'like',s);
         end
     end
-    if me.multivariate && ~isempty(channel)
-        % One channel, or one projection, of the residuals.
-        if samewindows && ~reuse
-            xbefore = xbefore(:,wuse)*w;
+    sprev = []; %#ok<NASGU>
+
+    hafters = cell(1,P);
+    for p = 1:P
+        if p > 1
+            hafter = hosobject(tmp0);
+            hafter.reset;
         end
-        xafter = xafter(:,wuse)*w;
-    elseif me.multivariate
-        % The HOS of a multivariate component lives on the output of its
-        % spatiotemporal filter (the signal hosf(cmpi) was fit on in run),
-        % which is the multivariate object's xfilt, not the univariate
-        % hosf(cmpi)'s (that one has a single channel's filter).
-        if samewindows
-            xbefore = me.hos(cmpi).xfilt(xbefore);
+        if me.multivariate && ~isempty(channel)
+            % One channel, or one projection, of the residuals.
+            if needbefore
+                xb = xbefore(:,wuse(:,p))*W(wuse(:,p),p);
+            end
+            xa = xafter(:,wuse(:,p))*W(wuse(:,p),p);
+        elseif me.multivariate
+            % The HOS of a multivariate component lives on the output of its
+            % spatiotemporal filter (the signal hosf(cmpi) was fit on in run),
+            % which is the multivariate object's xfilt, not the univariate
+            % hosf(cmpi)'s (that one has a single channel's filter).
+            if samewindows
+                xb = hos(cmpi).xfilt(xbefore);
+            end
+            xa = hos(cmpi).xfilt(xafter);
+        else
+            if needbefore
+                xb = xbefore;
+            end
+            xa = xafter;
         end
-        xafter  = me.hos(cmpi).xfilt(xafter);
+
+        hafter.get_input(xa, [], false, true);
+
+        if ~samewindows
+            hbefore = tmp0;
+        elseif reuse
+            hbefore = prev.h{p};
+        else
+            hbefore = hosobject(tmp0);
+            hbefore.reset;
+            hbefore.get_input(xb, [], false, true);
+        end
+        B0 = hbefore.B;
+        D0 = hbefore.D;
+        hafters{p} = hafter;
+        if nargout > 1
+            beforec{p,k} = hosobject(hbefore);
+        end
+
+        tmp2 = hosobject(tmp0);
+        tmp2.reset;
+        % The difference of the two HOS estimates ...
+        tmp2.B = B0 - hafter.B;
+        % ... normalized like the signal the component came from ...
+        tmp2.D = D0;
+        % ... with no bias term (reset leaves BIASnum = 1, which get.bicoh
+        % would subtract as a spurious 1 / |D|).
+        tmp2.BIAS = zeros(size(tmp2.D));
+
+        outc{p,k} = tmp2;
     end
+    prev = struct('comp', cmpi, 'est', {est}, 'h', {hafters});
+    % released before the next component is reconstructed
+    xafter = []; xbefore = []; xa = []; xb = []; %#ok<NASGU>
 
-    hafter.get_input(xafter, [], false, true);
-
-    if ~samewindows
-        hbefore = tmp0;
-    elseif reuse
-        hbefore = prev.h;
-    else
-        hbefore = hosobject(tmp0);
-        hbefore.reset;
-        hbefore.get_input(xbefore, [], false, true);
+    if ~isempty(progress)
+        % Only a logical true stops the call, not 1: fprintf, say, returns the
+        % number of bytes it printed. A function declared without outputs is
+        % called without one; an anonymous function is always asked for one.
+        if nargout(progress) == 0
+            progress(k, length(getcomps));
+        else
+            stopnow = progress(k, length(getcomps));
+            if islogical(stopnow) && isscalar(stopnow) && stopnow
+                stopped = true;
+                outc = outc(:,1:k);
+                beforec = beforec(:,1:k);
+                break
+            end
+        end
     end
-    B0 = hbefore.B;
-    D0 = hbefore.D;
-    prev = struct('comp', cmpi, 'est', {est}, 'h', hafter);
-    if nargout > 1
-        before(k) = hosobject(hbefore); %#ok<AGROW>
-    end
+end
 
-    tmp2 = hosobject(tmp0);
-    tmp2.reset;
-    % The difference of the two HOS estimates ...
-    tmp2.B = B0 - hafter.B;
-    % ... normalized like the signal the component came from ...
-    tmp2.D = D0;
-    % ... with no bias term (reset leaves BIASnum = 1, which get.bicoh
-    % would subtract as a spurious 1 / |D|).
-    tmp2.BIAS = zeros(size(tmp2.D));
-
-    out(k) = tmp2; %#ok<AGROW>
-
+out = reshape([outc{:}], size(outc));
+if nargout > 1
+    before = reshape([beforec{:}], size(beforec));
 end
